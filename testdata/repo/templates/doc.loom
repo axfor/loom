@@ -1,0 +1,12 @@
+weave "doc.md" {
+  type = "markdown"
+
+  frontmatter = mine
+  bilingual   = ["description"]
+
+  after "heading" "Overview" {
+    insert = mine.heading["调度层关系"]
+  }
+
+  append = mine.heading["附录"]
+}

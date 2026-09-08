@@ -1,0 +1,3 @@
+boot() {
+  echo boot
+}

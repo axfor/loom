@@ -1,0 +1,7 @@
+weave "run.sh" {
+  type = "shell"
+
+  before "function" "main" {
+    insert = mine.function["boot"]
+  }
+}
