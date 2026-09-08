@@ -1,6 +1,6 @@
 package loom
 
-// 模板的语法层：把一份 .loom（HCL）读成一串语句。
+// 模板的语法层：把一份 .lm（HCL）读成一串语句。
 //
 // 【为什么用 HCL 而不是自造语法】自造的每一条规则都得自己实现、自己报错、自己教。
 // HCL 是 Terraform 那一套，认知成本已经付过了：块 + 属性 + 表达式，
@@ -98,7 +98,7 @@ var bodyBlocks = []hcl.BlockHeaderSchema{
 
 var stmtSchema = &hcl.BodySchema{Attributes: bodyAttrs, Blocks: bodyBlocks}
 
-// ParseTemplate 读一份 .loom。
+// ParseTemplate 读一份 .lm。
 func ParseTemplate(path string, src []byte) (*Template, error) {
 	f, diags := hclsyntax.ParseConfig(src, path, hcl.InitialPos)
 	if diags.HasErrors() {

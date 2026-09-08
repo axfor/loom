@@ -71,7 +71,7 @@ registry {
 
 ## 模板
 
-一份 `.loom` = 一个 `weave` 块。语法是 HCL（Terraform 那一套），
+一份 `.lm` = 一个 `weave` 块。语法是 HCL（Terraform 那一套），
 所以报错带 `文件:行:列`，编辑器高亮现成。
 
 ```hcl

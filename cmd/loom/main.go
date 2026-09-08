@@ -16,7 +16,7 @@ import (
 const usage = `loom —— 把两层源织成一个产物
 
 用法：
-  loom weave <模板.loom>      织一份，产物写到标准输出
+  loom weave <模板.lm>      织一份，产物写到标准输出
   loom build                  织全部模板，写到各自的 target
   loom list                   把每份模板的元信息按 JSON 吐出来（给外层的门用）
   loom list -tsv              同上，只出六列纯文本：产物 / 模板 / 类型 / 基底层 / 基底路径 / 补丁文件
@@ -55,7 +55,7 @@ func run(cmd string, args []string) error {
 	switch cmd {
 	case "weave":
 		if len(args) != 1 {
-			return fmt.Errorf("用法：loom weave <模板.loom>")
+			return fmt.Errorf("用法：loom weave <模板.lm>")
 		}
 		out, err := weaveFile(c, args[0])
 		if err != nil {

@@ -8,8 +8,9 @@ import (
 	"strings"
 )
 
-// Ext 是模板的扩展名。
-const Ext = ".loom"
+// Ext 是模板的扩展名 —— 与设置文件同一个后缀：**同一种语法只该有一个后缀**。
+// 设置文件靠名字（loom.lm）认，模板靠所在目录认。
+const Ext = ".lm"
 
 // LoadTemplate 读一份模板文件。
 func LoadTemplate(path string) (*Template, error) {

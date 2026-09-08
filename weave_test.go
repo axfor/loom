@@ -37,8 +37,8 @@ func weave(t *testing.T, c *loom.Config, tpl string) string {
 func TestWeaveGolden(t *testing.T) {
 	c := load(t)
 	for _, cse := range []struct{ tpl, golden string }{
-		{"doc.loom", "doc.md"},
-		{"run.sh.loom", "run.sh"},
+		{"doc.lm", "doc.md"},
+		{"run.sh.lm", "run.sh"},
 	} {
 		got := weave(t, c, cse.tpl)
 		want, err := os.ReadFile(filepath.Join(fixture, "golden", cse.golden))
@@ -55,7 +55,7 @@ func TestWeaveGolden(t *testing.T) {
 // 这条不是文档里的一句话，是可以机械验证的性质。
 func TestWarpSurvivesStrip(t *testing.T) {
 	c := load(t)
-	got := weave(t, c, "doc.loom")
+	got := weave(t, c, "doc.lm")
 	stripped := stripMarks(got, "<!-- MINE:BEGIN -->", "<!-- MINE:END -->")
 
 	up, err := os.ReadFile(filepath.Join(fixture, "upstream", "doc.md"))
@@ -127,7 +127,7 @@ func TestErrorsAreLoud(t *testing.T) {
 	}
 	for _, cse := range cases {
 		t.Run(cse.name, func(t *testing.T) {
-			tm, err := loom.ParseTemplate("t.loom", []byte(cse.tpl))
+			tm, err := loom.ParseTemplate("t.lm", []byte(cse.tpl))
 			if err == nil {
 				_, err = loom.Weave(c, tm)
 			}
@@ -157,7 +157,7 @@ templates = "t"
 `)
 	mustWrite(t, filepath.Join(dir, "up", "a.md"), "## Same\n\nx\n\n## Same\n\ny\n")
 	mustWrite(t, filepath.Join(dir, "me", "a.md"), "## Mine\n\nz\n")
-	mustWrite(t, filepath.Join(dir, "t", "a.loom"), `
+	mustWrite(t, filepath.Join(dir, "t", "a.lm"), `
 weave "a.md" {
   type = "markdown"
   from = "up"
@@ -167,7 +167,7 @@ weave "a.md" {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tm, err := loom.LoadTemplate(filepath.Join(dir, "t", "a.loom"))
+	tm, err := loom.LoadTemplate(filepath.Join(dir, "t", "a.lm"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +189,7 @@ func mustWrite(t *testing.T, p, s string) {
 // 语句顺序有意义：同一个锚点上的两条插入，写在前的就在前。
 func TestStatementOrderIsSourceOrder(t *testing.T) {
 	c := load(t)
-	tm, err := loom.ParseTemplate("t.loom", []byte(`weave "doc.md" {
+	tm, err := loom.ParseTemplate("t.lm", []byte(`weave "doc.md" {
   type = "markdown"
   append = [mine.heading["调度层关系"], mine.heading["附录"]]
 }`))
@@ -210,7 +210,7 @@ func TestStatementOrderIsSourceOrder(t *testing.T) {
 // 而「每道门自己再解析一遍」正是这条命令要消灭的东西。
 func TestDescribeMatchesWeave(t *testing.T) {
 	c := load(t)
-	i, err := loom.Describe(c, filepath.Join(fixture, "templates", "doc.loom"))
+	i, err := loom.Describe(c, filepath.Join(fixture, "templates", "doc.lm"))
 	if err != nil {
 		t.Fatal(err)
 	}
