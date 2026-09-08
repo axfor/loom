@@ -205,3 +205,26 @@ func TestStatementOrderIsSourceOrder(t *testing.T) {
 		t.Errorf("追加顺序没有跟着模板走：调度层关系@%d 附录@%d", i, j)
 	}
 }
+
+// list 的元信息必须和真正编织时用的是同一份解析 —— 外层的门靠它，
+// 而「每道门自己再解析一遍」正是这条命令要消灭的东西。
+func TestDescribeMatchesWeave(t *testing.T) {
+	c := load(t)
+	i, err := loom.Describe(c, filepath.Join(fixture, "templates", "doc.loom"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i.Target != "doc.md" || i.Type != "markdown" || i.From != "upstream" {
+		t.Errorf("元信息不对: %+v", i)
+	}
+	if i.Path != "doc.md" {
+		t.Errorf("基底路径默认该等于产物路径，得到 %q", i.Path)
+	}
+	if len(i.Anchors) != 1 || i.Anchors[0].Kind != "heading" || i.Anchors[0].Anchor != "Overview" {
+		t.Errorf("锚点没报全: %+v", i.Anchors)
+	}
+	// frontmatter + after 的 insert + append 的 insert
+	if len(i.Inserts) != 3 {
+		t.Errorf("内容来源该有 3 条，得到 %d: %+v", len(i.Inserts), i.Inserts)
+	}
+}

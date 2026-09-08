@@ -18,6 +18,7 @@ const usage = `loom —— 把两层源织成一个产物
 用法：
   loom weave <模板.loom>      织一份，产物写到标准输出
   loom build                  织全部模板，写到各自的 target
+  loom list                   把每份模板的元信息按 JSON 吐出来（给外层的门用）
   loom check                  复核所有锚点在当前经线里还找不找得到、唯不唯一
   loom anchors                列出每个锚点此刻解析到经线的哪一行
   loom view                   生成带锚点标注的派生视图
@@ -94,6 +95,8 @@ func run(cmd string, args []string) error {
 		fmt.Printf("✓ 织了 %d 份 → %s\n", len(tpls), outDir)
 		return nil
 
+	case "list":
+		return loom.List(c, os.Stdout)
 	case "check":
 		return loom.CheckAnchors(c, os.Stdout)
 	case "anchors":
