@@ -1,6 +1,6 @@
 package loom
 
-// loom.hcl —— 织机怎么认这个仓库。
+// loom.lm —— 织机怎么认这个仓库。
 //
 // 【为什么配置也是 HCL】模板是 HCL，配置再换一种格式，读的人就得记两套规则。
 // 一门语言只该有一种写法 —— 这条在模板里也反复出现（bilingual 曾经 markdown 一种写法、
@@ -18,7 +18,12 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
-const ConfigName = "loom.hcl"
+// ConfigName 是织机的设置文件。
+//
+// 【为什么不叫 loom.hcl】HCL 是这门语言**借来的语法**，不是它的身份 ——
+// 文件名该说"这是给织机看的"，而不是"这是用某个第三方格式写的"。
+// 语法哪天换了，叫 .hcl 的文件就成了一句谎话。
+const ConfigName = "loom.lm"
 
 // Marks 是一对包裹标记。纬线内容进产物时包上，于是「经线 100% 保留」可以机械验证：
 // 剥掉标记块，剩下的必须与经线那份逐字节相同。
@@ -51,7 +56,7 @@ type Config struct {
 	RegID    *regexp.Regexp
 }
 
-// FindConfig 从 start 起向上找 loom.hcl。
+// FindConfig 从 start 起向上找 loom.lm。
 func FindConfig(start string) (string, error) {
 	d, err := filepath.Abs(start)
 	if err != nil {
@@ -93,7 +98,7 @@ var regSchema = &hcl.BodySchema{
 	Attributes: []hcl.AttributeSchema{{Name: "group", Required: true}, {Name: "id_pattern", Required: true}},
 }
 
-// LoadConfig 读 loom.hcl。
+// LoadConfig 读 loom.lm。
 func LoadConfig(path string) (*Config, error) {
 	src, err := os.ReadFile(path)
 	if err != nil {

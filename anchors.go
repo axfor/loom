@@ -182,7 +182,7 @@ var commentOf = map[string][2]string{
 // 只标用过的，等于只显示已经用过的；而没用过的那些才是你要找的。
 func AnchoredView(c *Config, w io.Writer) error {
 	if c.Anchored == "" {
-		return fmt.Errorf("loom.hcl 里没有 anchored —— 没说视图往哪儿写")
+		return fmt.Errorf("loom.lm 里没有 anchored —— 没说视图往哪儿写")
 	}
 	tpls, err := Templates(c)
 	if err != nil {

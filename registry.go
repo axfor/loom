@@ -15,7 +15,7 @@ import (
 
 func mergeRegistry(c *Config, t *Template) (string, error) {
 	if c.RegGroup == "" || c.RegID == nil {
-		return "", fmt.Errorf("%s: type = \"json\" 需要 loom.hcl 里有一个 registry 块"+
+		return "", fmt.Errorf("%s: type = \"json\" 需要 loom.lm 里有一个 registry 块"+
 			"（group + id_pattern）—— 不知道拿什么当身份就没法去重", t.Path)
 	}
 	from := t.From

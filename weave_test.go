@@ -144,7 +144,7 @@ func TestErrorsAreLoud(t *testing.T) {
 // 锚点匹配到多处必须报错，不能取第一个。
 func TestAmbiguousAnchorRefuses(t *testing.T) {
 	dir := t.TempDir()
-	mustWrite(t, filepath.Join(dir, "loom.hcl"), `
+	mustWrite(t, filepath.Join(dir, "loom.lm"), `
 layer "up" {
   dir  = "up"
   role = "warp"
@@ -163,7 +163,7 @@ weave "a.md" {
   from = "up"
   after "heading" "Same" { insert = me.heading["Mine"] }
 }`)
-	c, err := loom.LoadConfig(filepath.Join(dir, "loom.hcl"))
+	c, err := loom.LoadConfig(filepath.Join(dir, "loom.lm"))
 	if err != nil {
 		t.Fatal(err)
 	}

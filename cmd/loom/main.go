@@ -24,7 +24,7 @@ const usage = `loom —— 把两层源织成一个产物
   loom anchors                列出每个锚点此刻解析到经线的哪一行
   loom view                   生成带锚点标注的派生视图
 
-设置读的是最近的 loom.hcl（从当前目录一路向上找）。
+设置读的是最近的 loom.lm（从当前目录一路向上找）。
 `
 
 func main() {
