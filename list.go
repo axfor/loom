@@ -11,6 +11,7 @@ package loom
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"path/filepath"
 )
@@ -118,6 +119,28 @@ func nz(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+// ListTSV 只出六列：产物路径 / 模板路径 / 类型 / 基底层 / 基底路径 / 补丁文件（空 = 不是补丁式）。
+//
+// 【为什么不是让调用方用 jq 从 JSON 里挑】最需要这份清单的是构建脚本本身，
+// 而构建是整条链上最底下的一环：它多一个依赖，全新 clone 就多一种装不起来的方式。
+// 六列纯文本 awk 就能读。
+func ListTSV(c *Config, w io.Writer) error {
+	tpls, err := Templates(c)
+	if err != nil {
+		return err
+	}
+	for _, p := range tpls {
+		i, err := Describe(c, p)
+		if err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", i.Target, i.Template, i.Type, i.From, i.Path, i.Patch); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // List 把全部模板的元信息写成 JSON。
