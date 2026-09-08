@@ -228,3 +228,36 @@ func TestDescribeMatchesWeave(t *testing.T) {
 		t.Errorf("内容来源该有 3 条，得到 %d: %+v", len(i.Inserts), i.Inserts)
 	}
 }
+
+// 一个产物两份模板 —— 谁生效取决于枚举顺序，织机必须当场拒绝。
+// 【为什么归这里管】只有织机读全部模板；让下游的门各自写正则去补，
+// 就会出现"那道门按产物路径做键、重复的早被合并掉"这种结构上不可能触发的检查。
+func TestDuplicateTargetRefused(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "loom.lm"), `
+layer "up" {
+  dir  = "up"
+  role = "warp"
+}
+templates = "t"
+`)
+	mustWrite(t, filepath.Join(dir, "up", "a.md"), "## A\n\nx\n")
+	one := `
+weave "a.md" {
+  type = "markdown"
+  from = "up"
+}`
+	mustWrite(t, filepath.Join(dir, "t", "a.lm"), one)
+	c, err := loom.LoadConfig(filepath.Join(dir, "loom.lm"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loom.Templates(c); err != nil {
+		t.Fatalf("只有一份时不该报错：%v", err)
+	}
+	mustWrite(t, filepath.Join(dir, "t", "copy-of-a.lm"), one)
+	_, err = loom.Templates(c)
+	if err == nil || !strings.Contains(err.Error(), "两份模板") {
+		t.Fatalf("重名 target 该被拒绝，得到：%v", err)
+	}
+}
