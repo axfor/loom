@@ -65,11 +65,13 @@ function findConfig(from) {
   for (;;) {
     const p = path.join(dir, 'loom.lm');
     if (isFile(p)) {
-      const cfg = { root: dir, base: null, self: null, templates: 'templates' };
+      const cfg = { root: dir, base: null, self: null, templates: null };
       for (const line of fs.readFileSync(p, 'utf8').split('\n')) {
         const m = /^\s*(base|self|templates)\s+"((?:[^"\\]|\\.)*)"/.exec(line);
         if (m) cfg[m[1]] = unquote(m[2]);
       }
+      // without a templates setting, templates live next to our files in the self layer
+      if (cfg.templates == null) cfg.templates = cfg.self != null ? cfg.self : 'templates';
       if (cfg.base) return cfg;
     }
     const parent = path.dirname(dir);

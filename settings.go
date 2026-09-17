@@ -161,7 +161,12 @@ func parseSettings(path string, src []byte) (*Config, error) {
 		}
 	}
 	if c.Templates == "" {
+		// Without a templates setting, templates live next to our files: skills/x/SKILL.md.lm beside
+		// skills/x/SKILL.md, so a file and the template that weaves it are found in one place.
 		c.Templates = "templates"
+		if self, ok := c.Layers["self"]; ok {
+			c.Templates = self.Dir
+		}
 	}
 	return c, nil
 }

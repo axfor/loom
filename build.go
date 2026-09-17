@@ -99,14 +99,27 @@ func PlanBuild(c *Config, writeAnchors bool) (*Plan, error) {
 		return nil, err
 	}
 	claimed := map[string]bool{} // product paths that have a template: if the template fails, our file there must not be reported again as shadowing upstream
+	// Templates and the patches they apply are sources, never product files. They usually live next
+	// to our files in the self layer, so the walk over that layer must skip them.
+	sourceOnly := map[string]bool{}
 	for _, p := range tpls {
 		if target, err := TargetOf(c, p); err == nil {
 			claimed[target] = true
+		}
+		if abs, err := filepath.Abs(p); err == nil {
+			sourceOnly[abs] = true
 		}
 		t, err := LoadTemplate(c, p)
 		if err != nil {
 			fail(err)
 			continue
+		}
+		for _, s := range t.Stmts {
+			if s.Op == "patch" {
+				if abs, err := filepath.Abs(filepath.Join(filepath.Dir(t.Path), s.Body)); err == nil {
+					sourceOnly[abs] = true
+				}
+			}
 		}
 		claimed[t.Target] = true
 		bases[t.BasePath] = true
@@ -145,6 +158,9 @@ func PlanBuild(c *Config, writeAnchors bool) (*Plan, error) {
 	if meRoot != "" {
 		err := walkLayer(meRoot, func(rel, abs string, info fs.FileInfo) error {
 			if _, woven := byRel[rel]; woven || claimed[rel] {
+				return nil
+			}
+			if a, err := filepath.Abs(abs); err == nil && sourceOnly[a] {
 				return nil
 			}
 			if upHas(rel) && !sameEntry(abs, filepath.Join(upRoot, filepath.FromSlash(rel))) {

@@ -1,6 +1,6 @@
 # Loom for VS Code
 
-Syntax highlighting and go to definition for the Loom language. For the syntax, see [`docs/language.md`](../../docs/language.md).
+Syntax highlighting and go to definition for the Loom language. For the syntax, see the [Loom README](../../README.md#reference).
 
 ## Highlighting
 

@@ -162,6 +162,25 @@ check(sh, shText, 1, 'boot', ['mine/run.sh', 0]);
   }
 }
 
+// templates beside our files (no templates setting): the template path still maps to its product
+{
+  const r2 = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-def2-'));
+  fs.writeFileSync(path.join(r2, 'loom.lm'), 'base "up"\nself "me"\n');
+  fs.mkdirSync(path.join(r2, 'up'), { recursive: true });
+  fs.mkdirSync(path.join(r2, 'me'), { recursive: true });
+  fs.writeFileSync(path.join(r2, 'up', 'a.md'), '# A\n\n## Install\n');
+  fs.writeFileSync(path.join(r2, 'me', 'a.md'), '## Ours\n');
+  const text = 'base.Install.after("Ours")';
+  const d1 = definition(path.join(r2, 'me', 'a.md.lm'), text, 0, text.indexOf('Install'));
+  const d2 = definition(path.join(r2, 'me', 'a.md.lm'), text, 0, text.indexOf('Ours'));
+  if (d1 && d1.file === path.join(r2, 'up', 'a.md') && d1.line === 2 && d2 && d2.file === path.join(r2, 'me', 'a.md') && d2.line === 0) pass++;
+  else {
+    fail++;
+    console.log('  ❌ template beside our file: got', d1, d2);
+  }
+  fs.rmSync(r2, { recursive: true, force: true });
+}
+
 fs.rmSync(root, { recursive: true, force: true });
 console.log(`loom definition: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

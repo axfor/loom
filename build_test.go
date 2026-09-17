@@ -359,3 +359,43 @@ func TestCheckFindsStaleOutput(t *testing.T) {
 		t.Errorf("an output directory that does not exist is not stale, got %v", problems)
 	}
 }
+
+// Without a templates setting, templates live next to our files. A template and the patch it
+// applies are sources: neither is ever copied into the product or counted as added.
+func TestTemplatesBesideOurFiles(t *testing.T) {
+	dir := t.TempDir()
+	up := "#!/bin/sh\necho up\n"
+	files := map[string]string{
+		"loom.lm":          "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n",
+		"up/doc.md":        "## Overview\n\nup\n",
+		"me/doc.md":        "## Ours\n\nme\n",
+		"me/doc.md.lm":     "base.Overview.after(\"Ours\")\n",
+		"up/run.sh":        up,
+		"me/run.sh":        "#!/bin/sh\necho me\n",
+		"me/run.sh.lm":     "base.patch(\"run.sh.diff\")\n",
+		"me/notes/free.md": "only ours\n",
+	}
+	for p, s := range files {
+		mustWrite(t, filepath.Join(dir, filepath.FromSlash(p)), s)
+	}
+	makePatch(t, filepath.Join(dir, "me"), "run.sh.diff", up, "#!/bin/sh\necho me\n")
+	c, err := loom.LoadConfig(filepath.Join(dir, "loom.lm"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(dir, "out")
+	plan, err := build(t, c, out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(listTree(t, out), " "); got != "doc.md notes/free.md run.sh" {
+		t.Errorf("templates and patches must not reach the product, got %s", got)
+	}
+	if got := strings.Join(plan.Report.Added, " "); got != "notes/free.md" {
+		t.Errorf("only real files of ours count as added, got %s", got)
+	}
+	doc, _ := os.ReadFile(filepath.Join(out, "doc.md"))
+	if !strings.Contains(string(doc), "## Ours") {
+		t.Errorf("the template beside doc.md was not woven:\n%s", doc)
+	}
+}
