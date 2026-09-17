@@ -151,6 +151,27 @@ func TestLiteralIsMarkedAsOurs(t *testing.T) {
 	}
 }
 
+// start inserts at the start of the body: in a file with frontmatter that is after the frontmatter,
+// which only counts on the first line. The frontmatter must still work afterwards (join reads it).
+func TestStartGoesAfterFrontmatter(t *testing.T) {
+	c, dir := objRepo(t, nil)
+	out, err := weaveObj(t, c, dir, "doc.md", "base.start(\"Appendix\", `> literal`)\nbase.frontmatter.join(\"description\")\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(out, "---\n") {
+		t.Fatalf("the frontmatter is no longer on the first line:\n%s", out)
+	}
+	fmEnd := strings.Index(out[4:], "---\n") + 4
+	if i, j := strings.Index(out, "## Appendix"), strings.Index(out, "> literal"); i < fmEnd || j < i || j > strings.Index(out, "## Overview") {
+		t.Errorf("start content must follow the frontmatter, in order, before the first section:\n%s", out)
+	}
+	up, _ := os.ReadFile(filepath.Join(dir, "upstream", "doc.md"))
+	if body(stripMarks(out, "<!-- MINE:BEGIN -->", "<!-- MINE:END -->")) != body(string(up)) {
+		t.Errorf("with marks stripped, the body differs from upstream:\n%s", out)
+	}
+}
+
 // Removing upstream content needs a reason; only then is it removed.
 func TestDropNeedsReason(t *testing.T) {
 	c, dir := objRepo(t, nil)
@@ -368,5 +389,29 @@ func TestMigrateKeepsOutput(t *testing.T) {
 		if want := golden(t, tm.Target); got != want {
 			t.Errorf("%s: the product changed after migration\n--- template ---\n%s\n--- got ---\n%s\n--- want ---\n%s", tm.Target, m.Text, got, want)
 		}
+	}
+}
+
+// list carries the reasons written in the template, so tools never parse templates themselves.
+func TestDescribeReportsReasons(t *testing.T) {
+	c, dir := objRepo(t, nil)
+	whole := filepath.Join(dir, "t", "doc.md"+loom.Ext)
+	mustWrite(t, whole, "base.replace(self, reason: \"ours is a rewrite\")\nbase.Process.drop(reason: \"described in ours\")\n")
+	i, err := loom.Describe(c, whole)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i.Reason != "ours is a rewrite" {
+		t.Errorf("whole-file reason: %q", i.Reason)
+	}
+	if len(i.Drops) != 1 || i.Drops[0].Anchor != "Process" || i.Drops[0].Reason != "described in ours" {
+		t.Errorf("drops: %+v", i.Drops)
+	}
+	mustWrite(t, whole, "base.Overview.replace(\"Where this fits\", reason: \"ours says it better\")\n")
+	if i, err = loom.Describe(c, whole); err != nil {
+		t.Fatal(err)
+	}
+	if len(i.Replaces) != 1 || i.Replaces[0].Anchor != "Overview" || i.Replaces[0].Reason != "ours says it better" || i.Reason != "" {
+		t.Errorf("replaces: %+v, reason %q", i.Replaces, i.Reason)
 	}
 }

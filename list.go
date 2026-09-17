@@ -34,6 +34,20 @@ type Info struct {
 	New      []string `json:"new"`
 	Anchors  []Use    `json:"anchors"` // anchor points on the upstream
 	Inserts  []Src    `json:"inserts"` // content taken from the layers
+
+	// Why upstream content is changed, as written with reason: in the template. Tools that account
+	// for upstream content read these instead of parsing templates themselves.
+	Reason   string     `json:"reason,omitempty"` // whole-file replace: base.replace(self, reason: "...")
+	Drops    []Reasoned `json:"drops"`            // base.X.drop(reason: "...")
+	Replaces []Reasoned `json:"replaces"`         // base.X.replace(..., reason: "...")
+}
+
+// Reasoned is an upstream node changed on purpose, with its reason.
+type Reasoned struct {
+	Kind   string `json:"kind"`
+	Anchor string `json:"anchor"` // the real name in upstream (identifier forms and section paths resolved)
+	Reason string `json:"reason"`
+	Where  string `json:"where"` // position in the template
 }
 
 // Use is an anchor point: which kind of upstream node, with which name.
@@ -71,6 +85,7 @@ func Describe(c *Config, path string) (*Info, error) {
 		Template: rel, Target: t.Target, Type: t.Type, From: from, Path: t.BasePath,
 		Covers: nz(t.Covers), Inherit: []string{}, Override: []string{}, New: []string{},
 		Anchors: []Use{}, Inserts: []Src{},
+		Reason: t.UseReason, Drops: []Reasoned{}, Replaces: []Reasoned{},
 	}
 	// Names in identifier form (base.Usage_Tips) are reported as their real names in the
 	// tree — gates reading list match them against headings, and reporting the spelling as
@@ -145,6 +160,12 @@ func Describe(c *Config, path string) (*Info, error) {
 				}
 				i.Anchors = append(i.Anchors, u)
 				i.Inserts = append(i.Inserts, srcs(s.Srcs, in)...)
+				switch s.Op {
+				case "drop":
+					i.Drops = append(i.Drops, Reasoned{u.Kind, u.Anchor, s.Reason, u.Where})
+				case "replace":
+					i.Replaces = append(i.Replaces, Reasoned{u.Kind, u.Anchor, s.Reason, u.Where})
+				}
 			case "append", "prepend":
 				i.Inserts = append(i.Inserts, srcs(s.Srcs, in)...)
 			case "frontmatter":

@@ -255,6 +255,15 @@ func apply(c *Config, t *Template, stmts []Stmt, tree ast.Tree, rel string, nest
 						repl = []string{body}
 					}
 					edits = append(edits, edit{n, n, repl, len(edits)})
+				} else if fm := tree.Find("frontmatter", ""); len(fm) > 0 {
+					// The start of a file with frontmatter is right after the frontmatter: frontmatter only
+					// counts on the first line, so inserting above it would silently turn it into body text.
+					at := fm[0][1]
+					repl := []string{"", body}
+					if marked {
+						repl = []string{body}
+					}
+					edits = append(edits, edit{at, at, repl, len(edits)})
 				} else {
 					repl := []string{body, ""}
 					if marked {
