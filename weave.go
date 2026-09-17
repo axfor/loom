@@ -67,33 +67,6 @@ func Weave(c *Config, t *Template) (string, error) {
 			t.Path, strings.Join(sh.Unclosed, ", "))
 	}
 
-	// set: scalar keys take their value from another layer
-	for _, s := range t.Stmts {
-		if s.Op != "setgroup" {
-			continue
-		}
-		for _, kv := range s.Kids {
-			setRel := weftRel(c, t, kv.SetRef.Layer, t.Target)
-			if kv.SetRef.File != "" {
-				setRel = kv.SetRef.File
-			}
-			other, ok, err := c.read(kv.SetRef.Layer, setRel)
-			if err != nil {
-				return "", fmt.Errorf("%s: %v", kv.Rng, err)
-			}
-			if !ok {
-				return "", fmt.Errorf("%s: layer %s has no %s", kv.Rng, kv.SetRef.Layer, t.Target)
-			}
-			val, ok := ast.New(t.Type, other).BodyOf(kv.SetRef.Kind)
-			if !ok {
-				return "", fmt.Errorf("%s: the %s copy of %s has no key `%s`", kv.Rng, kv.SetRef.Layer, t.Target, kv.SetRef.Kind)
-			}
-			if !tree.SetBody(kv.SetKey, strings.Trim(val, `"`)) {
-				return "", fmt.Errorf("%s: the base has no key `%s`", kv.Rng, kv.SetKey)
-			}
-		}
-	}
-
 	// in <key> as <type>: switch to a nested AST (the prompt in toml is markdown)
 	for _, s := range t.Stmts {
 		if s.Op != "in" {
@@ -114,17 +87,14 @@ func Weave(c *Config, t *Template) (string, error) {
 		return "", err
 	}
 
-	// This must run after apply: frontmatter = <layer> replaces the whole frontmatter block.
-	// Run it before, and the bilingual values just written are overwritten wholesale while the
-	// product still looks perfectly normal (only the other language is gone).
+	// Key values run after apply: set(self.frontmatter) replaces the whole frontmatter block there, and a
+	// value written before it would be overwritten while the product still looks normal.
 	for _, s := range t.Stmts {
-		if s.Op != "bilingual" {
+		if s.Op != "value" {
 			continue
 		}
-		for _, key := range s.Names {
-			if err := applyBilingual(c, t, key, tree, s); err != nil {
-				return "", err
-			}
+		if err := applyValue(c, t, tree, s); err != nil {
+			return "", err
 		}
 	}
 
@@ -587,71 +557,91 @@ func hasConflictMarkers(s string) bool {
 	return begin && end
 }
 
-// applyBilingual sets the key's value to the weft value followed by the warp value.
-//
-// Why one directive for every format: format differences are an implementation detail and must not
-// leak into the language. With one form for markdown and another for toml, a template reader would
-// have to know the file format before knowing which one to write. Both now write
-// `bilingual = ["description"]`, and this function lands it according to the tree type.
-//
-// Why the warp half is taken at build time instead of being copied into the weft by hand: a hand-made
-// second copy drifts silently once the warp changes, and nothing would tell us.
-func applyBilingual(c *Config, t *Template, key string, tree ast.Tree, s Stmt) error {
-	if c.Weft == "" {
-		return fmt.Errorf("%s: bilingual needs a layer that declares role = \"weft\"", s.Rng)
+// applyValue writes a key's value: ours (set), ours before upstream's (start) or after it (append).
+// Upstream's value is read from upstream's file, not from the product being built, so it is still
+// there after set(self.frontmatter) replaced the block. Joining is idempotent: a value that already
+// contains the other half is not doubled.
+func applyValue(c *Config, t *Template, tree ast.Tree, s Stmt) error {
+	typ := t.Type
+	if s.Kind == "fmkey" {
+		typ = "markdown"
 	}
-	xs, ok, err := c.read(c.Weft, weftRel(c, t, c.Weft, t.Target))
-	if err != nil {
-		return fmt.Errorf("%s: %v", s.Rng, err)
+	ours := s.SetRef.Literal
+	if !s.SetRef.IsLit {
+		rel := weftRel(c, t, s.SetRef.Layer, t.Target)
+		srcTyp := t.Type
+		if s.SetRef.File != "" {
+			rel, srcTyp = s.SetRef.File, TypeOf(s.SetRef.File)
+		}
+		if s.SetRef.Kind == "fmkey" {
+			srcTyp = "markdown"
+		}
+		src, ok, err := c.read(s.SetRef.Layer, rel)
+		if err != nil {
+			return fmt.Errorf("%s: %v", s.Rng, err)
+		}
+		if !ok {
+			return fmt.Errorf("%s: layer %s has no %s", s.Rng, s.SetRef.Layer, rel)
+		}
+		v, ok := keyValue(srcTyp, src, s.SetRef.Anchor)
+		if !ok {
+			return fmt.Errorf("%s: our %s has no key %q", s.Rng, rel, s.SetRef.Anchor)
+		}
+		ours = v
 	}
-	if !ok {
-		return fmt.Errorf("%s: layer %s has no %s", s.Rng, c.Weft, t.Target)
-	}
-	val, ok := keyValue(t.Type, xs, key)
-	if !ok {
-		return fmt.Errorf("%s: the %s copy has no key `%s`", s.Rng, c.Weft, key)
-	}
-	val = strings.Trim(strings.TrimSpace(val), `"`)
+	ours = strings.Trim(strings.TrimSpace(ours), `"`)
 
-	from := t.From
-	if from == "" {
-		from = c.Warp
-	}
-	if up, ok, _ := c.read(from, t.BasePath); ok {
-		if uv, ok := keyValue(t.Type, up, key); ok {
-			uv = strings.Trim(strings.TrimSpace(uv), `"`)
-			// Idempotent: building repeatedly is safe; once joined, don't join again
-			if uv != "" && !strings.Contains(val, uv) {
-				val = strings.TrimRight(val, " \t") + " " + uv
-			}
+	val := ours
+	if s.Mode != "set" {
+		from := t.From
+		if from == "" {
+			from = c.Warp
+		}
+		up, _, err := c.read(from, t.BasePath)
+		if err != nil {
+			return fmt.Errorf("%s: %v", s.Rng, err)
+		}
+		uv, ok := keyValue(typ, up, s.SetKey)
+		if !ok {
+			return fmt.Errorf("%s: upstream has no key %q to %s ours to — to add the key, use set", s.Rng, s.SetKey, s.Mode)
+		}
+		uv = strings.Trim(strings.TrimSpace(uv), `"`)
+		switch {
+		case uv == "" || strings.Contains(ours, uv):
+		case ours == "" || strings.Contains(uv, ours):
+			val = uv
+		case s.Mode == "start":
+			val = ours + " " + uv
+		default:
+			val = uv + " " + ours
 		}
 	}
 
-	if t.Type == "markdown" {
-		hits := tree.Find("frontmatter", "")
-		if len(hits) == 0 {
-			return fmt.Errorf("%s: the base has no frontmatter", s.Rng)
+	if s.Kind != "fmkey" {
+		if !tree.SetBody(s.SetKey, val) {
+			return fmt.Errorf("%s: upstream has no key %q", s.Rng, s.SetKey)
 		}
-		fm, _ := tree.BodyOf("frontmatter")
-		// markdown has no write-back-by-key interface — the frontmatter is a line range, so replace the range
-		lines := strings.Split(fm, "\n")
-		done := false
-		for i, l := range lines {
-			if strings.HasPrefix(l, key+":") {
-				lines[i] = key + ": " + val
-				done = true
-				break
-			}
-		}
-		if !done {
-			return fmt.Errorf("%s: the base frontmatter has no key `%s`", s.Rng, key)
-		}
-		tree.Splice(hits[0][0], hits[0][1], lines)
 		return nil
 	}
-	if !tree.SetBody(key, val) {
-		return fmt.Errorf("%s: the base has no key `%s`", s.Rng, key)
+	hits := tree.Find("frontmatter", "")
+	if len(hits) == 0 {
+		return fmt.Errorf("%s: upstream's file has no frontmatter", s.Rng)
 	}
+	fm, _ := tree.BodyOf("frontmatter")
+	lines := strings.Split(fm, "\n")
+	done := false
+	for i, l := range lines {
+		if strings.HasPrefix(l, s.SetKey+":") {
+			lines[i], done = s.SetKey+": "+val, true
+			break
+		}
+	}
+	if !done {
+		// set adds a key upstream does not have, just before the closing ---
+		last := len(lines) - 1
+		lines = append(lines[:last], s.SetKey+": "+val, lines[last])
+	}
+	tree.Splice(hits[0][0], hits[0][1], lines)
 	return nil
 }
 

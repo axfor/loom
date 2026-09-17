@@ -160,7 +160,7 @@ func TestDescribeMatchesWeave(t *testing.T) {
 	if len(i.Anchors) != 1 || i.Anchors[0].Kind != "heading" || i.Anchors[0].Anchor != "Overview" {
 		t.Errorf("anchors not all reported: %+v", i.Anchors)
 	}
-	// frontmatter.set + after + append
+	// frontmatter.description.start + after + append
 	if len(i.Inserts) != 3 {
 		t.Errorf("expected 3 content sources, got %d: %+v", len(i.Inserts), i.Inserts)
 	}

@@ -150,8 +150,7 @@ A template is a list of statements, one per line.
 // mine/skills/testing/SKILL.lm
 import ship "/.claude/commands/ship"
 
-base.frontmatter.set(self.frontmatter)
-base.frontmatter.join("description")
+base.frontmatter.description.start(self.frontmatter.description)
 base.Overview.after("Where this skill sits", "Customers are not users")
 base."How it compares".drop(reason: "compares upstream with other projects; does not apply here")
 base.append(ship.body)
@@ -209,7 +208,7 @@ A node is a part of a file. A bare name means the default node kind of the file 
 
 | Type | Default node | Other nodes |
 |---|---|---|
-| markdown | section: a heading down to the next heading | `section("...")`, `line("...")`, `frontmatter`, `body` (everything after the frontmatter) |
+| markdown | section: a heading down to the next heading | `section("...")`, `line("...")`, `frontmatter`, a frontmatter key `frontmatter.description` (quoted when it has a `-`: `frontmatter."argument-hint"`), `body` (everything after the frontmatter) |
 | shell | function | `function("...")`, `marker("...")` (a banner comment `# ── Name ──` down to the next banner, matched by prefix), `line("...")` |
 | toml | key | `key("...")` |
 | json | key (dotted path) | `key("a.b")` |
@@ -265,12 +264,14 @@ exactly one heading.
 | `after` | node | insert after the node | content, one or more |
 | `before` | node | insert before the node | content, one or more |
 | `start` | file / view | insert at the start | content, one or more |
+| `start` | key value | the value becomes ours followed by upstream's: `base.frontmatter.description.start(self.frontmatter.description)` | one value |
 | `append` | file / view | insert at the end | content, one or more |
+| `append` | key value | the value becomes upstream's followed by ours | one value |
 | `replace` | node | replace the node with content | one content, `reason:` |
 | `replace` | `base` | whole-file replace: `base.replace(self, reason: "...")` | a file object, `reason:` |
 | `drop` | node | leave the node out of the product on purpose | `reason:` |
-| `set` | `frontmatter` / key | take the value from another file: `set(self.frontmatter)`, `set(self.description)` | one content |
-| `join` | frontmatter (markdown) / file (toml, json) | value = ours followed by upstream's: `base.frontmatter.join("description")` | key names |
+| `set` | `frontmatter` | take our whole frontmatter: `base.frontmatter.set(self.frontmatter)` | `self.frontmatter` |
+| `set` | key value | the value becomes ours: `base.frontmatter."argument-hint".set(self.frontmatter."argument-hint")`, `base.description.set(self.description)`; adds a frontmatter key upstream does not have | one value |
 | `merge` | `base` | our file is upstream plus our edits: it is the product, and `lm sync` carries the edits onto each new upstream ([Following upstream](#following-upstream)) | `self` |
 | `as` | toml / json key | view the key's value as another type; methods follow | a type name |
 
@@ -281,6 +282,7 @@ exactly one heading.
 | `"Install XSDD"` | `self."Install XSDD"`: a node of our file, same type as where it goes |
 | `self.boot`, `cmd."Name"`, `self."A"."B"` | a node of a named object |
 | `cmd.body`, `self.frontmatter` | a part of a file |
+| `self.frontmatter.description`, `self.description` (toml / json) | a key's value, for `set` / `start` / `append` on a key |
 | `self`, `cmd` | a whole file |
 | `` `...` `` | literal content |
 | `reason: "..."` | named argument: why upstream content is changed |
@@ -381,7 +383,7 @@ our edits would be kept but upstream's change to those files would not come in.
    - **insert-only markdown templates**: with our marks stripped, the body must be byte-identical to
      upstream.
    - **our frontmatter**: every key of our file's frontmatter must be in the product — taken with
-     `set(self.frontmatter)` or put before upstream's value with `join` — or the build fails.
+     `set`, or put next to upstream's value with `start` / `append` — or the build fails.
 4. Copies our layer's files. A file of ours at the same path as an upstream file, with no template,
    is an error — it would silently replace upstream with no reason. An identical copy is fine.
 5. Copies upstream files listed in `take`, applies `mirror`, writes `manifest`.

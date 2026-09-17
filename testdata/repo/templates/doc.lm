@@ -1,4 +1,3 @@
-base.frontmatter.set(self.frontmatter)
-base.frontmatter.join("description")
+base.frontmatter.description.start(self.frontmatter.description)
 base.Overview.after("Where this fits")
 base.append("Appendix")

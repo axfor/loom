@@ -121,7 +121,7 @@ func TestLiteralIsMarkedAsOurs(t *testing.T) {
 // which only counts on the first line. The frontmatter must still work afterwards (join reads it).
 func TestStartGoesAfterFrontmatter(t *testing.T) {
 	c, dir := objRepo(t, nil)
-	out, err := weaveObj(t, c, dir, "doc.md", "base.start(\"Appendix\", `> literal`)\nbase.frontmatter.join(\"description\")\n")
+	out, err := weaveObj(t, c, dir, "doc.md", "base.start(\"Appendix\", `> literal`)\nbase.frontmatter.description.start(self.frontmatter.description)\n")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,12 +318,58 @@ func TestDescribeReportsReasons(t *testing.T) {
 	}
 }
 
-// join names keys, it takes no values: self.description is our content only, so the error says to
-// write the key's name instead.
-func TestJoinTakesKeyNames(t *testing.T) {
-	c, dir := objRepo(t, nil)
-	_, err := weaveObj(t, c, dir, "doc.md", "base.frontmatter.join(self.description)\n")
-	if err == nil || !strings.Contains(err.Error(), `join("description")`) || !strings.Contains(err.Error(), "ours followed by upstream's") {
-		t.Errorf("want an error pointing to join(\"description\"), got: %v", err)
+// A frontmatter key is a node: base.frontmatter.description. Its value takes ours with set, or ours
+// before (start) or after (append) upstream's.
+func TestFrontmatterKeyValues(t *testing.T) {
+	c, dir := objRepo(t, map[string]string{
+		"upstream/k.md": "---\nname: k\ndescription: Up.\n---\n\n## A\n\nup\n",
+		"mine/k.md":     "---\nname: k\ndescription: Ours.\nargument-hint: <file>\n---\n\n## B\n\nme\n",
+	})
+	fm := func(src string) (string, error) {
+		out, err := weaveObj(t, c, dir, "k.md", src)
+		if err != nil || len(out) < 3 {
+			return out, err
+		}
+		if i := strings.Index(out[3:], "---"); i > 0 {
+			return out[:i+3], nil
+		}
+		return out, nil
+	}
+	for src, want := range map[string]string{
+		"base.frontmatter.description.start(self.frontmatter.description)":           "description: Ours. Up.",
+		"base.frontmatter.description.append(self.frontmatter.description)":          "description: Up. Ours.",
+		"base.frontmatter.description.set(self.frontmatter.description)":             "description: Ours.\n",
+		"base.frontmatter.description.start(`Draft:`)":                               "description: Draft: Up.",
+		"base.frontmatter.\"argument-hint\".set(self.frontmatter.\"argument-hint\")": "argument-hint: <file>",
+		// set on the whole frontmatter first: upstream's half still comes from upstream's file
+		"base.frontmatter.set(self.frontmatter)\nbase.frontmatter.description.start(self.frontmatter.description)": "description: Ours. Up.",
+	} {
+		got, err := fm(src)
+		if err != nil || !strings.Contains(got, want) {
+			t.Errorf("%s\nwant %q in:\n%s (%v)", src, want, got, err)
+		}
+	}
+	for src, want := range map[string]string{
+		"base.frontmatter.nope.start(self.frontmatter.description)": `upstream has no key "nope"`,
+		"base.frontmatter.description.start(self.frontmatter.nope)": `no key "nope"`,
+		"base.frontmatter.description.start(self.description)":      "self.frontmatter.description",
+		"base.frontmatter.join(\"description\")":                    "base.frontmatter.description.start(self.frontmatter.description)",
+		"base.A.start(self.frontmatter.description)":                "whole file or to a key",
+	} {
+		if _, err := fm(src); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: want an error mentioning %q, got: %v", src, want, err)
+		}
+	}
+}
+
+// A toml key takes the same methods: base.description.start(self.description).
+func TestTomlKeyValues(t *testing.T) {
+	c, dir := objRepo(t, map[string]string{
+		"upstream/c.toml": "description = \"Up\"\nprompt = \"x\"\n",
+		"mine/c.toml":     "description = \"Ours\"\nprompt = \"y\"\n",
+	})
+	out, err := weaveObj(t, c, dir, "c.toml", "base.description.start(self.description)\nbase.prompt.set(self.prompt)\n")
+	if err != nil || !strings.Contains(out, `description = "Ours Up"`) || !strings.Contains(out, `prompt = "y"`) {
+		t.Errorf("got:\n%s (%v)", out, err)
 	}
 }

@@ -122,9 +122,9 @@ func TestOurFrontmatterReachesProduct(t *testing.T) {
 	tpl := filepath.Join(dir, "me", "a.lm")
 	for src, want := range map[string]string{
 		"base.A.after(\"B\")\n": `"description"`,
-		"base.frontmatter.join(\"description\")\nbase.A.after(\"B\")\n":                                         `"argument-hint"`,
-		"base.frontmatter.set(self.frontmatter)\nbase.frontmatter.join(\"description\")\nbase.A.after(\"B\")\n": "",
-		"base.frontmatter.set(self.frontmatter)\nbase.A.after(\"B\")\n":                                         "",
+		"base.frontmatter.description.start(self.frontmatter.description)\nbase.A.after(\"B\")\n":                                         `"argument-hint"`,
+		"base.frontmatter.set(self.frontmatter)\nbase.frontmatter.description.start(self.frontmatter.description)\nbase.A.after(\"B\")\n": "",
+		"base.frontmatter.set(self.frontmatter)\nbase.A.after(\"B\")\n":                                                                   "",
 	} {
 		mustWrite(t, tpl, src)
 		_, err := loom.PlanBuild(c, false)

@@ -149,10 +149,8 @@ func Describe(c *Config, path string) (*Info, error) {
 				i.Inserts = append(i.Inserts, srcs(s.Srcs, in)...)
 			case "frontmatter":
 				i.Inserts = append(i.Inserts, Src{Layer: s.Layer, Kind: "frontmatter", File: s.File})
-			case "setgroup":
-				for _, kv := range s.Kids {
-					i.Inserts = append(i.Inserts, Src{Layer: kv.SetRef.Layer, Kind: kv.SetRef.Kind, File: kv.SetRef.File})
-				}
+			case "value":
+				i.Inserts = append(i.Inserts, Src{Layer: s.SetRef.Layer, Kind: s.SetRef.Kind, Anchor: s.SetRef.Anchor, File: s.SetRef.File, Lit: s.SetRef.IsLit})
 			case "in":
 				walk(s.Kids, &s)
 			}

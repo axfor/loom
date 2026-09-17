@@ -31,7 +31,7 @@ func (r Ref) String() string {
 
 // Stmt is one statement. Op decides which fields are read.
 type Stmt struct {
-	Op     string // after / before / replace / drop / append / prepend / frontmatter / setgroup / bilingual / in / merge
+	Op     string // after / before / replace / drop / append / prepend / frontmatter / value / in / merge
 	Kind   string // position: node kind
 	Anchor string // position: node name
 	Ident  bool   // the name is in identifier form: _ matches a space or an underscore
@@ -40,14 +40,14 @@ type Stmt struct {
 
 	As   string // in: the type to view the key's value as
 	Key  string // in: which key
-	Kids []Stmt // in / setgroup: the statements inside
+	Kids []Stmt // in: the statements inside
 
-	Layer  string   // frontmatter: layer to take the whole block from
-	File   string   // frontmatter: file it comes from; empty = product path
-	SetKey string   // set: key to write
-	SetRef Ref      // set: where the value comes from
-	Names  []string // bilingual: key names
-	Reason string   // replace / drop: why the upstream content is changed
+	Layer  string // frontmatter: layer to take the whole block from
+	File   string // frontmatter: file it comes from; empty = product path
+	SetKey string // value: key to write
+	SetRef Ref    // value: where our value comes from (a key of ours, or a literal)
+	Mode   string // value: set / start / append
+	Reason string // replace / drop: why the upstream content is changed
 
 	Rng Pos
 }

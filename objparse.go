@@ -39,7 +39,7 @@ var kindCalls = map[string]map[string]string{
 }
 
 // editMethods are the methods that change base.
-var editMethods = []string{"after", "before", "start", "append", "replace", "drop", "set", "join", "merge"}
+var editMethods = []string{"after", "before", "start", "append", "replace", "drop", "set", "merge"}
 
 func typeWords() []string { return []string{"markdown", "toml", "json", "shell", "text"} }
 
@@ -458,9 +458,14 @@ func (in *interp) select_(r *receiver, st oStep) error {
 		return nil
 	}
 	if r.node {
+		// A frontmatter key is a node of its own: base.frontmatter.description
+		if r.kind == "frontmatter" && !st.call {
+			r.kind, r.anchor, r.ident, r.pos = "fmkey", st.name, false, st.pos
+			return nil
+		}
 		// Section path: base."Example 2"."Phase 1" — look for the child within the parent's whole section
 		if st.call || r.typ != "markdown" || r.kind != "heading" || (!st.str && (st.name == "frontmatter" || st.name == "body")) {
-			return fmt.Errorf("%s: below a node you can only select one more markdown section by name: base.\"Parent\".\"Child\"", st.pos)
+			return fmt.Errorf("%s: below a node you can only select a markdown section by name, base.\"Parent\".\"Child\", or a frontmatter key, base.frontmatter.description", st.pos)
 		}
 		r.within = append(r.within, Seg{r.anchor, r.ident})
 		r.anchor, r.ident, r.pos = st.name, !st.str, st.pos
@@ -489,6 +494,9 @@ func (in *interp) select_(r *receiver, st oStep) error {
 }
 
 func (in *interp) method(r receiver, st oStep) error {
+	if st.name == "join" {
+		return fmt.Errorf("%s: join is gone — say where our value goes: base.frontmatter.description.start(self.frontmatter.description) puts ours before upstream's, append after it; in toml or json, base.description.start(self.description)", st.pos)
+	}
 	if st.name == "patch" {
 		return fmt.Errorf("%s: there are no patch files any more — our file is upstream plus our edits, and lm sync carries the edits onto each new upstream: write base.merge(self) and delete the .diff", st.pos)
 	}
@@ -533,7 +541,15 @@ func (in *interp) method(r receiver, st oStep) error {
 		out = append(out, Stmt{Op: st.name, Kind: r.kind, Anchor: r.anchor, Ident: r.ident, Within: r.within, Srcs: srcs, Rng: at})
 	case "start", "append":
 		if r.node {
-			return fmt.Errorf("%s: %s applies to the whole file: base.%s(...)", at, st.name, st.name)
+			if !isValue(r) {
+				return fmt.Errorf("%s: %s applies to the whole file or to a key's value: base.%s(...), base.frontmatter.description.%s(self.frontmatter.description)", at, st.name, st.name, st.name)
+			}
+			v, err := in.valueArg(pos, r, st.name, at)
+			if err != nil {
+				return err
+			}
+			out = append(out, Stmt{Op: "value", Mode: st.name, Kind: r.kind, SetKey: r.anchor, SetRef: v, Rng: at})
+			break
 		}
 		srcs, err := in.contents(pos, r.typ, r.viewOf != "")
 		if err != nil {
@@ -602,38 +618,14 @@ func (in *interp) method(r receiver, st oStep) error {
 			out = append(out, Stmt{Op: "frontmatter", Layer: "self", File: ref.File, Rng: at})
 			break
 		}
-		if r.typ != "toml" && r.typ != "json" {
-			return fmt.Errorf("%s: set applies to frontmatter or a toml / json key", at)
+		if !isValue(r) {
+			return fmt.Errorf("%s: set applies to the frontmatter, a frontmatter key or a toml / json key", at)
 		}
-		if ref.IsLit || ref.Kind == "body" || ref.Kind == "all" {
-			return fmt.Errorf("%s: set takes its value from a key in another file: set(self.description)", pos[0].pos)
+		v, err := in.valueArg(pos, r, st.name, at)
+		if err != nil {
+			return err
 		}
-		out = append(out, Stmt{Op: "setgroup", Rng: at, Kids: []Stmt{{Op: "set", SetKey: r.anchor,
-			SetRef: Ref{Layer: "self", Kind: ref.Anchor, File: ref.File, Rng: pos[0].pos}, Rng: at}}})
-	case "join":
-		if r.typ == "markdown" && r.kind != "frontmatter" {
-			return fmt.Errorf("%s: in markdown, join applies to frontmatter keys: base.frontmatter.join(\"description\")", at)
-		}
-		if r.typ != "markdown" && r.node {
-			return fmt.Errorf("%s: join applies to the whole file: base.join(\"description\")", at)
-		}
-		var keys []string
-		for _, a := range pos {
-			if a.val.kind != vString {
-				// self.description names content of our file only; join reads the key from both files
-				if a.val.kind == vExpr && len(a.val.expr.steps) == 1 && !a.val.expr.steps[0].call {
-					k := a.val.expr.steps[0].name
-					return fmt.Errorf("%s: join takes key names, not values: join(%q) — join reads that key from our file and from upstream's and writes ours followed by upstream's, while %s.%s is our content only (in markdown, a section named %s)",
-						a.pos, k, a.val.expr.root, k, k)
-				}
-				return fmt.Errorf("%s: join takes quoted key names", a.pos)
-			}
-			keys = append(keys, a.val.str)
-		}
-		if len(keys) == 0 {
-			return fmt.Errorf("%s: join needs key names: join(\"description\")", at)
-		}
-		out = append(out, Stmt{Op: "bilingual", Names: keys, Rng: at})
+		out = append(out, Stmt{Op: "value", Mode: "set", Kind: r.kind, SetKey: r.anchor, SetRef: v, Rng: at})
 	case "merge":
 		if r.node || r.viewOf != "" {
 			return fmt.Errorf("%s: merge applies to the whole file: base.merge(self)", at)
@@ -687,6 +679,9 @@ func (in *interp) contents(args []oArg, typ string, inView bool) ([]Ref, error) 
 			switch {
 			case len(e.steps) == 0:
 				ref.Kind = "all"
+			case len(e.steps) == 2 && !e.steps[0].str && !e.steps[0].call && e.steps[0].name == "frontmatter" && !e.steps[1].call:
+				// a frontmatter key of ours: self.frontmatter.description
+				ref.Kind, ref.Anchor = "fmkey", e.steps[1].name
 			case len(e.steps) > 1:
 				// Section path: self."Example 2"."Phase 1"
 				kt := obj.typ
@@ -728,6 +723,32 @@ func (in *interp) contents(args []oArg, typ string, inView bool) ([]Ref, error) 
 		}
 	}
 	return out, nil
+}
+
+// isValue reports whether a receiver is a key whose value set / start / append can write: a frontmatter
+// key, or a toml / json key outside a view.
+func isValue(r receiver) bool {
+	return r.node && r.viewOf == "" && (r.kind == "fmkey" || ((r.typ == "toml" || r.typ == "json") && r.kind == defaultKind[r.typ]))
+}
+
+// valueArg reads the one value set / start / append takes: a key of our file or a literal.
+func (in *interp) valueArg(pos []oArg, r receiver, method string, at Pos) (Ref, error) {
+	example := "self.frontmatter.description"
+	if r.kind != "fmkey" {
+		example = "self.description"
+	}
+	if len(pos) != 1 {
+		return Ref{}, fmt.Errorf("%s: %s takes one value: %s(%s)", at, method, method, example)
+	}
+	srcs, err := in.contents(pos, r.typ, false)
+	if err != nil {
+		return Ref{}, err
+	}
+	v := srcs[0]
+	if !v.IsLit && v.Kind != "fmkey" && v.Kind != "key" && v.Kind != "path" {
+		return Ref{}, fmt.Errorf("%s: %s takes a value, a key of our file or a `literal`: %s(%s)", pos[0].pos, method, method, example)
+	}
+	return v, nil
 }
 
 // checkMergeAlone rejects weave statements alongside a merge: our file is the product, so other

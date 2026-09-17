@@ -68,14 +68,8 @@ func account(c *Config, t *Template, out string, r *Report) []error {
 				}
 			case "frontmatter":
 				inserted = append(inserted, "frontmatter")
-			case "setgroup":
-				for _, kv := range s.Kids {
-					inserted = append(inserted, kv.SetKey)
-				}
-			case "bilingual":
-				for _, k := range s.Names {
-					inserted = append(inserted, k+" (bilingual)")
-				}
+			case "value":
+				inserted = append(inserted, s.SetKey+" ("+s.Mode+")")
 			case "in":
 				walk(s.Kids)
 			}
@@ -91,8 +85,8 @@ func account(c *Config, t *Template, out string, r *Report) []error {
 				want, _ := keyValue("markdown", ours, k)
 				got, found := keyValue("markdown", out, k)
 				if !found || !strings.Contains(got, strings.Trim(strings.TrimSpace(want), `"`)) {
-					errs = append(errs, fmt.Errorf("%s: our frontmatter key %q is not in the product %s — base.frontmatter.set(self.frontmatter) takes our frontmatter, base.frontmatter.join(%q) puts ours before upstream's",
-						t.Path, k, t.Target, k))
+					errs = append(errs, fmt.Errorf("%s: our frontmatter key %q is not in the product %s — base.frontmatter.set(self.frontmatter) takes all of ours, base.frontmatter.%s.start(self.frontmatter.%s) puts ours before upstream's",
+						t.Path, k, t.Target, k, k))
 				}
 			}
 		}
