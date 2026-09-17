@@ -15,7 +15,7 @@ base.append("Troubleshooting")
 
 ```
 lm build    build the whole tree and print the build report
-lm check    the same checks, plus output files out of date; writes nothing
+lm check    the same checks, writing nothing; -o dir also reports out-of-date output
 ```
 
 ## What it solves
@@ -110,7 +110,7 @@ The full reference is [docs/language.md](docs/language.md).
 
 ```
 lm build [-e vars] [-o dir] [-report file]   build the whole tree into the output directory
-lm check [-e vars] [-o dir]                  every check of build, plus output files out of date; writes nothing
+lm check [-e vars] [-o dir]                  every check of build; with -o, also out-of-date output files
 lm weave [-e vars] <template.lm>             weave one template to stdout
 lm list [-tsv]                               template metadata for other tools
 lm anchors                                   where each anchor resolves upstream right now

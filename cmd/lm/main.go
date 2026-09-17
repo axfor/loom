@@ -23,8 +23,8 @@ Usage:
                             files listed in take, expand variables, check that no upstream content
                             was lost, write the output directory and print the build report
   lm check [-e vars-file] [-o output-dir]
-                            run the same checks as build without writing anything, and report
-                            output files that differ from what the sources build
+                            run the same checks as build without writing anything; with -o, also
+                            report files in output-dir that differ from what the sources build
   lm weave [-e vars-file] <template.lm>
                             weave one template and write the product to stdout
   lm list [-tsv]            print each template's metadata (for outer gates)
@@ -120,8 +120,10 @@ func run(cmd string, args []string) error {
 				return err
 			}
 		}
-		if cmd == "check" && outDir != "" {
-			// check also answers "would lm build change the output directory?"
+		if cmd == "check" && *outFlag != "" {
+			// With -o, check also answers "would lm build change this output directory?". Only on request:
+			// while sources are being edited the output is behind by design, and a check of the sources
+			// (a lint step before building, say) must not fail for that.
 			problems, err := loom.StaleOutputs(c, plan, outDir)
 			if err != nil {
 				return err
