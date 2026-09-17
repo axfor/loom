@@ -72,6 +72,17 @@ func TestShortTemplateNameConflicts(t *testing.T) {
 		t.Errorf("an ambiguous short name must name the candidates and the full name, got: %v", err)
 	}
 
+	// names that differ only in case are one file on macOS and Windows, so they are ambiguous too
+	c, _ = besideRepo(t, map[string]string{
+		"up/GUIDE.md": "## A\n",
+		"me/guide.sh": "echo\n",
+		"me/guide.lm": "base.append(`x`)\n",
+	})
+	_, err = loom.PlanBuild(c, false)
+	if err == nil || !strings.Contains(err.Error(), "GUIDE.md, guide.sh") {
+		t.Errorf("a short name matching files that differ in case must be ambiguous, got: %v", err)
+	}
+
 	c, _ = besideRepo(t, map[string]string{
 		"up/doc.md":    "## A\n\nup\n",
 		"me/doc.md":    "## B\n\nme\n",
@@ -81,5 +92,22 @@ func TestShortTemplateNameConflicts(t *testing.T) {
 	_, err = loom.PlanBuild(c, false)
 	if err == nil || !strings.Contains(err.Error(), "doc.lm") || !strings.Contains(err.Error(), "doc.md.lm") || !strings.Contains(err.Error(), "both build doc.md") {
 		t.Errorf("two templates for one product must be an error, got: %v", err)
+	}
+}
+
+// A template reached through a symbolic link builds the same product as through its real path.
+func TestTemplateThroughSymlink(t *testing.T) {
+	c, dir := besideRepo(t, map[string]string{
+		"up/a.md": "## A\n\nup\n",
+		"me/a.md": "## B\n\nme\n",
+		"me/a.lm": "base.A.after(\"B\")\n",
+	})
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(dir, link); err != nil {
+		t.Fatal(err)
+	}
+	got, err := loom.TargetOf(c, filepath.Join(link, "me", "a.lm"))
+	if err != nil || got != "a.md" {
+		t.Errorf("got %q, %v", got, err)
 	}
 }

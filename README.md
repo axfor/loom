@@ -492,7 +492,7 @@ fails when anything differs, so "the product is up to date with its sources" is 
 lm build [-e vars] [-o dir] [-report file]   build the whole tree
 lm check [-e vars] [-o dir]                  every check of build; with -o, also output files that differ; writes nothing
 lm sync <dir>                                take a new upstream release; merge it into merge templates' files
-lm weave [-e vars] <template.lm>             weave one template to stdout
+lm weave [-e vars] [-stdin] <template.lm>    weave one template to stdout; -stdin reads the template text from stdin
 lm list [-tsv]                               template metadata as JSON (or six TSV columns) for other tools
 lm anchors                                   where each anchor currently resolves upstream
 lm view                                      write upstream files annotated with their anchors
@@ -509,7 +509,7 @@ anchors with upstream headings directly.
 
 `editors/vscode` is a VS Code extension: syntax highlighting for templates, settings, variables
 files and `{{@name}}` placeholders; completion of nodes, methods, our sections and import paths;
-and go to definition from a template to the upstream or our file and section it names. `make vs`
+a live preview of the product a template builds; and go to definition from a template to the upstream or our file and section it names. `make vs`
 runs its tests and packages it.
 
 ## Install

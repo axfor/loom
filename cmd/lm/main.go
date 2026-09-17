@@ -9,6 +9,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -29,8 +30,9 @@ Usage:
                             replace the upstream layer with a new upstream release and carry our
                             edits onto it: every merge template's file gets a three-way merge, with
                             conflict markers where upstream changed the lines we changed
-  lm weave [-e vars-file] <template.lm>
-                            weave one template and write the product to stdout
+  lm weave [-e vars-file] [-stdin] <template.lm>
+                            weave one template and write the product to stdout; with -stdin the
+                            template text is read from stdin (an unsaved editor buffer)
   lm list [-tsv]            print each template's metadata (for outer gates)
   lm anchors                list the upstream line each anchor resolves to right now
   lm view                   generate a derived view annotated with anchors
@@ -72,16 +74,17 @@ func run(cmd string, args []string) error {
 	case "weave":
 		fs := flag.NewFlagSet("weave", flag.ContinueOnError)
 		envFlag := fs.String("e", "", "variables file (default: lm.e next to loom.lm)")
+		stdinFlag := fs.Bool("stdin", false, "read the template text from stdin; the path still names the product")
 		if err := fs.Parse(args); err != nil {
 			return err
 		}
 		if fs.NArg() != 1 {
-			return fmt.Errorf("usage: lm weave [-e vars-file] <template.lm>")
+			return fmt.Errorf("usage: lm weave [-e vars-file] [-stdin] <template.lm>")
 		}
 		if err := loadVars(c, *envFlag); err != nil {
 			return err
 		}
-		out, err := weaveFile(c, fs.Arg(0))
+		out, err := weaveFile(c, fs.Arg(0), *stdinFlag)
 		if err != nil {
 			return err
 		}
@@ -209,8 +212,18 @@ func loadVars(c *loom.Config, file string) error {
 	return nil
 }
 
-func weaveFile(c *loom.Config, path string) (string, error) {
-	t, err := loom.LoadTemplate(c, path)
+func weaveFile(c *loom.Config, path string, stdin bool) (string, error) {
+	var t *loom.Template
+	var err error
+	if stdin {
+		var src []byte
+		if src, err = io.ReadAll(os.Stdin); err != nil {
+			return "", err
+		}
+		t, err = loom.LoadTemplateSource(c, path, src)
+	} else {
+		t, err = loom.LoadTemplate(c, path)
+	}
 	if err != nil {
 		return "", err
 	}

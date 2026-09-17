@@ -23,6 +23,12 @@ func LoadTemplate(c *Config, path string) (*Template, error) {
 	if err != nil {
 		return nil, err
 	}
+	return LoadTemplateSource(c, path, src)
+}
+
+// LoadTemplateSource reads a template from src instead of the file at path — an editor buffer not
+// saved yet. The path still decides which product it builds and where its imports start.
+func LoadTemplateSource(c *Config, path string, src []byte) (*Template, error) {
 	target, err := TargetOf(c, path)
 	if err != nil {
 		return nil, err
@@ -71,8 +77,17 @@ func (c *Config) resolveImport(layer, spec, fromDir string) (string, error) {
 	return "", fmt.Errorf("%s layer: %q not found", layer, spec)
 }
 
+// realPath resolves symbolic links in p, or returns p when it can't.
+func realPath(p string) string {
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		return r
+	}
+	return p
+}
+
 // withExtension lists the files named rel plus one or more extensions (rel.md, rel.min.js) in a
-// layer root, templates left out, as slash paths relative to the root.
+// layer root, templates left out, as slash paths relative to the root. The name is compared without
+// regard to case: on macOS and Windows GUIDE.md and guide.sh would want templates that are one file.
 func withExtension(root, rel string) []string {
 	dir, base := filepath.Split(filepath.Join(root, filepath.FromSlash(rel)))
 	ents, err := os.ReadDir(dir)
@@ -82,7 +97,7 @@ func withExtension(root, rel string) []string {
 	var out []string
 	for _, e := range ents {
 		n := e.Name()
-		if e.IsDir() || !strings.HasPrefix(n, base+".") || strings.HasSuffix(n, Ext) {
+		if e.IsDir() || !strings.HasPrefix(strings.ToLower(n), strings.ToLower(base)+".") || strings.HasSuffix(n, Ext) {
 			continue
 		}
 		r, _ := filepath.Rel(root, filepath.Join(dir, n))
@@ -107,6 +122,9 @@ func TargetOf(c *Config, path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// The same directory can be reached through a symbolic link (on macOS /var is /private/var), so
+	// both sides are compared as real paths. A template that does not exist yet keeps its own path.
+	root, abs = realPath(root), filepath.Join(realPath(filepath.Dir(abs)), filepath.Base(abs))
 	rel, err := filepath.Rel(root, abs)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("%s is not in the template directory %s — the product path comes from the template's location in that directory", path, root)
@@ -135,10 +153,10 @@ func TargetOf(c *Config, path string) (string, error) {
 		}
 	}
 	sort.Strings(found)
-	switch len(found) {
-	case 0:
+	switch {
+	case len(found) == 0:
 		return name, nil
-	case 1:
+	case len(found) == 1 && strings.HasPrefix(filepath.Base(found[0]), filepath.Base(name)+"."):
 		return found[0], nil
 	}
 	var full []string
