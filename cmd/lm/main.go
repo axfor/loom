@@ -22,7 +22,9 @@ Usage:
                             build the whole tree: weave templates, copy our layer and the upstream
                             files listed in take, expand variables, check that no upstream content
                             was lost, write the output directory and print the build report
-  lm check [-e vars-file]   run the same checks as build without writing the product
+  lm check [-e vars-file] [-o output-dir]
+                            run the same checks as build without writing anything, and report
+                            output files that differ from what the sources build
   lm weave [-e vars-file] <template.lm>
                             weave one template and write the product to stdout
   lm list [-tsv]            print each template's metadata (for outer gates)
@@ -114,7 +116,26 @@ func run(cmd string, args []string) error {
 		}
 		plan.Report.Print(os.Stdout)
 		if *reportFlag != "" {
-			return os.WriteFile(*reportFlag, []byte(plan.Report.Markdown()), 0o644)
+			if err := os.WriteFile(*reportFlag, []byte(plan.Report.Markdown()), 0o644); err != nil {
+				return err
+			}
+		}
+		if cmd == "check" && outDir != "" {
+			// check also answers "would lm build change the output directory?"
+			problems, err := loom.StaleOutputs(c, plan, outDir)
+			if err != nil {
+				return err
+			}
+			if len(problems) > 0 {
+				for i, p := range problems {
+					if i == 20 {
+						fmt.Printf("... and %d more\n", len(problems)-20)
+						break
+					}
+					fmt.Println("⛔ " + p)
+				}
+				return fmt.Errorf("%d files in %s differ from what the sources build — run lm build", len(problems), outDir)
+			}
 		}
 		return nil
 

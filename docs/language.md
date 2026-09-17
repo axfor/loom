@@ -15,7 +15,7 @@ byte for byte.** `lm build` checks it on every build.
 
 ```
 lm build    build the whole tree into the output directory and print the build report
-lm check    run every check that build runs, write nothing
+lm check    run every check that build runs and report output files that are out of date; write nothing
 ```
 
 - [Layout](#layout)
@@ -399,13 +399,18 @@ variables            1         url
 
 `lm build -report report.md` also writes the complete report as markdown.
 
+`lm check` runs the same checks without writing, and then compares an existing output directory
+with what the build would write: files missing, files the sources no longer produce, content that
+differs (stale, or edited by hand), a lost or extra executable bit, a link pointing elsewhere. It
+fails when anything differs, so "the product is up to date with its sources" is one command.
+
 ---
 
 ## Commands
 
 ```
 lm build [-e vars] [-o dir] [-report file]   build the whole tree
-lm check [-e vars]                           every check of build; writes nothing
+lm check [-e vars] [-o dir]                  every check of build, plus output files that differ from the sources; writes nothing
 lm weave [-e vars] <template.lm>             weave one template to stdout
 lm list [-tsv]                               template metadata as JSON (or six TSV columns) for other tools
 lm anchors                                   where each anchor currently resolves upstream

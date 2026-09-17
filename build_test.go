@@ -300,3 +300,62 @@ func TestMirrorConflict(t *testing.T) {
 		t.Errorf("a mirror colliding with an existing file must be an error, got: %v", err)
 	}
 }
+
+// lm check also answers "would lm build change the output directory?": every way an output
+// directory drifts from its sources is reported, and a fresh build is clean.
+func TestCheckFindsStaleOutput(t *testing.T) {
+	c, dir := treeRepo(t, `manifest ".manifest"`, map[string]string{
+		"up/doc.md":   "## Overview\n\nup\n",
+		"me/doc.md":   "## Ours\n\nme\n",
+		"me/tool.sh":  "#!/bin/sh\necho tool\n",
+		"me/gone.md":  "x\n",
+		"t/doc.md.lm": `base.Overview.after("Ours")`,
+	})
+	if err := os.Symlink("doc.md", filepath.Join(dir, "me", "link")); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(dir, "out")
+	plan, err := build(t, c, out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if problems, err := loom.StaleOutputs(c, plan, out); err != nil || len(problems) != 0 {
+		t.Fatalf("a fresh build must be clean, got %v %v", problems, err)
+	}
+
+	mustWrite(t, filepath.Join(out, "doc.md"), "edited by hand\n")
+	os.Chmod(filepath.Join(out, "tool.sh"), 0o644)
+	os.Remove(filepath.Join(out, "gone.md"))
+	mustWrite(t, filepath.Join(out, "extra.md"), "x\n")
+	os.Remove(filepath.Join(out, "link"))
+	os.Symlink("tool.sh", filepath.Join(out, "link"))
+	mustWrite(t, filepath.Join(out, ".manifest"), "stale\n")
+
+	problems, err := loom.StaleOutputs(c, plan, out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	all := strings.Join(problems, "\n")
+	for _, want := range []string{
+		"doc.md: differs from what the sources build",
+		"tool.sh: lost its executable bit",
+		"gone.md: missing from the output directory",
+		"extra.md: not produced by the sources",
+		"link: should be a link to doc.md",
+		".manifest: differs",
+	} {
+		if !strings.Contains(all, want) {
+			t.Errorf("not reported: %q\ngot:\n%s", want, all)
+		}
+	}
+
+	if plan, err = build(t, c, out); err != nil {
+		t.Fatal(err)
+	}
+	if problems, _ := loom.StaleOutputs(c, plan, out); len(problems) != 0 {
+		t.Errorf("after lm build the output must be clean again, got %v", problems)
+	}
+	if problems, _ := loom.StaleOutputs(c, plan, filepath.Join(dir, "never-built")); len(problems) != 0 {
+		t.Errorf("an output directory that does not exist is not stale, got %v", problems)
+	}
+}
