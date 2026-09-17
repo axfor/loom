@@ -3,7 +3,7 @@
 import ship "/.claude/commands/ship"
 
 base.frontmatter.set(self.frontmatter)
-base.frontmatter.join("description")
+base.frontmatter.description.start(self.frontmatter.description)
 base.Overview.after("Position in the Pipeline", "Customer ≠ User")
 base.start("Read This First")
 base.append("Common Excuses")
@@ -20,5 +20,4 @@ base.Verification.before{
 }
 
 base.Usage_Tips.after(ship.body)
-base.marker("Test 3").after("Test 3b")
 base.Overview.aftr("a misspelled method is marked red")
