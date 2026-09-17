@@ -80,7 +80,7 @@ function expectNot(grammar, line, text, scope) {
   expect(lm, L1, 'after', 'entity.name.function.method.loom');
   expect(lm, L1, 'Install XSDD', 'string.quoted.double.loom');
   expect(lm, L1, '(', 'punctuation.section.parens.begin.loom');
-  for (const m of ['before', 'start', 'append', 'replace', 'drop', 'set', 'join', 'merge']) {
+  for (const m of ['before', 'start', 'append', 'replace', 'drop', 'set', 'merge']) {
     expect(lm, `base.${m}("x")`, m, 'entity.name.function.method.loom');
   }
   expect(lm, 'base.Usage_Tips.after("Usage tips")', 'Usage_Tips', 'variable.other.property.loom');

@@ -6,7 +6,8 @@
 //   base."Example 2".|            the subsections of that section, and the methods on it
 //   .after(|  .after("|           our sections (a repeated name comes with its parent path), self, imports
 //   .drop(|  .replace(x, |        reason:
-//   .join("|  .merge(|            our frontmatter keys / keys; self
+//   .description.start(|          our value for the key: self.frontmatter.description / self.description
+//   .merge(|                      self
 //   .section("|  .function("|     that kind of node in the file
 //   .as(|                         the types
 //   import "/|                    directories and files of the layer
@@ -23,12 +24,11 @@ const { markdownFor } = require('./docs');
 const METHOD_DOCS = {
   after: 'insert after the node',
   before: 'insert before the node',
-  start: 'insert at the start',
-  append: 'insert at the end',
+  start: 'insert at the start; on a key: ours before upstream\'s value',
+  append: 'insert at the end; on a key: ours after upstream\'s value',
   replace: 'replace with content; needs reason:',
   drop: 'leave out of the product on purpose; needs reason:',
-  set: 'take the value from another file',
-  join: "value = ours followed by upstream's",
+  set: 'take ours: the whole frontmatter, or a key\'s value',
   merge: 'our file is upstream plus our edits; lm sync merges each new upstream into it',
   as: "view the key's value as another type",
 };
@@ -41,7 +41,6 @@ const SNIPPETS = {
   replace: 'replace($1, reason: "$2")',
   drop: 'drop(reason: "$1")',
   set: 'set($1)',
-  join: 'join("$1")',
   merge: 'merge(self)',
   as: 'as($1)',
 };
@@ -114,16 +113,15 @@ function completions(docPath, text, line, character) {
   }
 
   // Nothing is being typed: what comes before the cursor decides.
-  let k = -1;
-  while (k + 1 < t.toks.length && t.toks[k + 1].t !== 'eof' && before(t.toks[k + 1], line, character)) k++;
+  const k = loom.lastBefore(t.toks, line, character);
   const prev = k >= 0 ? t.toks[k] : null;
   const empty = { line, s: character, e: character };
   if (!prev || prev.t === 'nl') {
-    const call = enclosingCall(t, k, line);
+    const call = loom.enclosingCall(t, k, line);
     return call ? argItems(cx, call, empty, false) : statementItems(empty);
   }
   if (prev.t === '(' || prev.t === ',' || prev.t === '{') {
-    const call = enclosingCall(t, k, line);
+    const call = loom.enclosingCall(t, k, line);
     return call ? argItems(cx, call, empty, false) : [];
   }
   if (prev.t !== '.' || k === 0) return [];
@@ -131,7 +129,7 @@ function completions(docPath, text, line, character) {
   if (owner.t === ')') {
     // only .as(type) is followed by more steps
     const open = matchingOpen(t.toks, k - 1);
-    const ref = open > 0 && stepRef(t, t.toks[open - 1]);
+    const ref = open > 0 && loom.stepRef(t, t.toks[open - 1]);
     return ref ? stepItems(cx, ref.chain, ref.index + 1, empty, false) : [];
   }
   const ref = t.refs.find((r) => r.tok === owner && (r.what === 'root' || r.what === 'step'));
@@ -139,18 +137,12 @@ function completions(docPath, text, line, character) {
   return stepItems(cx, ref.chain, ref.what === 'root' ? 0 : ref.index + 1, empty, false);
 }
 
-function before(tok, line, character) {
-  return tok.line < line || (tok.line === line && tok.e <= character);
-}
 
 function isFirstOnLine(toks, tok) {
   const k = toks.indexOf(tok);
   return k === 0 || toks[k - 1].t === 'nl';
 }
 
-function stepRef(t, tok) {
-  return t.refs.find((r) => r.what === 'step' && r.tok === tok);
-}
 
 // inCommentOrLiteral: nothing is completed after // or inside a `literal`.
 function inCommentOrLiteral(toks, text, line, character) {
@@ -176,30 +168,6 @@ function matchingOpen(toks, k) {
   return -1;
 }
 
-// enclosingCall finds the call whose arguments the cursor is among: an unclosed ( on the cursor's
-// line, or an unclosed { since the statement started.
-function enclosingCall(t, k, line) {
-  const toks = t.toks;
-  let depth = 0;
-  for (let i = k; i >= 0; i--) {
-    const c = toks[i];
-    if (c.t === ')' || c.t === '}') {
-      depth++;
-    } else if (c.t === '(' || c.t === '{') {
-      if (depth > 0) {
-        depth--;
-        continue;
-      }
-      if (c.t === '(' && c.line !== line) return null; // (...) stays on one line
-      const ref = i > 0 && stepRef(t, toks[i - 1]);
-      return ref ? { chain: ref.chain, index: ref.index } : null;
-    } else if (c.t === 'id' && (c.v === 'base' || c.v === 'import') && c.line !== line && (i === 0 || toks[i - 1].t === 'nl')) {
-      return null; // an earlier statement starts here and none of its blocks is open
-    }
-  }
-  return null;
-}
-
 // ── after a dot ─────────────────────────────────────────────────────────────
 
 function stepItems(cx, chain, index, range, quoted) {
@@ -217,6 +185,9 @@ function stepItems(cx, chain, index, range, quoted) {
       });
     if (!r.node) {
       out.push(...nodeItems(src, loom.DEFAULT_KIND[r.typ], null, write, range));
+    } else if (r.node.kind === 'frontmatter') {
+      // the keys of the frontmatter: base.frontmatter.description
+      out.push(...nodeItems(src, 'fmkey', null, write, range));
     } else if (r.node.kind === 'heading') {
       // below a section, only its subsections: base."Example 2"."Phase 1"
       const sel = loom.findNode(text, r.node, r.view);
@@ -249,17 +220,18 @@ function methodsFor(r) {
   if (!r.node) {
     const m = ['start', 'append'];
     if (!r.view) m.push('replace', 'merge');
-    if (!r.view && (r.typ === 'toml' || r.typ === 'json')) m.push('join');
     return m;
   }
   switch (r.node.kind) {
     case 'frontmatter':
-      return ['set', 'join'];
+      return ['set'];
+    case 'fmkey':
+      return ['set', 'start', 'append'];
     case 'body':
       return [];
     case 'key':
     case 'path':
-      return r.view ? ['after', 'before', 'replace', 'drop'] : ['after', 'before', 'replace', 'drop', 'set', 'as'];
+      return r.view ? ['after', 'before', 'replace', 'drop'] : ['after', 'before', 'replace', 'drop', 'set', 'start', 'append', 'as'];
     default:
       return ['after', 'before', 'replace', 'drop'];
   }
@@ -347,9 +319,19 @@ function argItems(cx, argOf, range, quoted) {
   if (st.name === 'merge') {
     return quoted ? [] : [item('self', 'object', { detail: 'our file at this path', range })];
   }
-  if (st.name === 'join') {
+  // a key's value: ours, from the same kind of key in our file
+  if (['set', 'start', 'append'].includes(st.name) && loom.isValue(r)) {
+    if (quoted) return [];
     const src = source(self.file, null);
-    return src ? nodeItems(src, r.typ === 'markdown' ? 'fmkey' : loom.DEFAULT_KIND[r.typ], null, asString, range) : [];
+    if (!src) return [];
+    const fm = r.node.kind === 'fmkey';
+    const keys = loom.nodesOf(src.lines.join('\n'), fm ? 'fmkey' : loom.DEFAULT_KIND[r.typ]);
+    return keys
+      .map((n, k) => {
+        const written = `self.${fm ? 'frontmatter.' : ''}${nodeText(n.name)}`;
+        return item(written, 'node', { detail: `${src.where}:${n.line + 1}`, insertText: written, range, sortText: `${n.name === r.node.name ? 0 : 1}${String(k).padStart(5, '0')}` });
+      })
+      .sort((a, b) => a.sortText.localeCompare(b.sortText));
   }
   if (!loom.CONTENT_METHODS.has(st.name) && st.name !== 'drop') return [];
   if (st.name === 'set' && r.node && r.node.kind === 'frontmatter') {

@@ -56,11 +56,12 @@ Suggestions open after `.`, `"`, `/` and `(`, or with Ctrl-Space:
 |---|---|
 | Start of a line | `base`, `import` (in `loom.lm`: the settings) |
 | `base.` / `self.` / an imported name followed by `.` | The file's sections (keys, functions), then `frontmatter` / `body`, node kinds such as `section("...")`, and on `base` the methods that apply to the whole file |
-| `base.Install.` | The methods that apply to a node: `after` / `before` / `replace` / `drop` (`set` / `join` on frontmatter, `set` / `as` on a key) |
+| `base.Install.` | The methods that apply to a node: `after` / `before` / `replace` / `drop` |
+| `base.frontmatter.` / `base.frontmatter.description.` | The frontmatter's keys and `set` / a key's `set` / `start` / `append` (on a toml key also `as`) |
 | `base."Example 2".` | The subsections of that section, then its methods |
 | `after(` / `after("` and the other content methods | Our sections, then `self` and imported names; `reason:` in `replace` |
 | `drop(` | `reason:` |
-| `join("` | Our frontmatter keys (or keys) |
+| `base.frontmatter.description.start(` | Our keys, the same key first: `self.frontmatter.description` (in toml, `self.description`) |
 | `section("` / `function("` / `marker("` / `key("` | That kind of node in the file being changed |
 | `as(` | The types |
 | `import "/` / `import "./` | Directories and files of our layer (`import base` lists upstream); the extension is left out when no other file has that name |
@@ -74,9 +75,15 @@ What a suggestion inserts is always something the compiler resolves to that node
 
 ## Hover
 
-Hover a keyword — `after`, `merge`, `drop`, `as`, `section`, `import`, `reason:` and the rest — for how it is written, what
-it does, its arguments and examples; completion shows the same next to each suggestion. Keywords do not jump anywhere.
-Hover `base`, `self` or an imported name to see which file it stands for.
+Hover a keyword — `after`, `merge`, `drop`, `as`, `section`, `import`, `reason:` and the rest — for its typed signature
+(`base.<key>.start(value: Value)`), what it does, what each parameter type accepts, and examples; completion shows the same
+next to each suggestion. Keywords do not jump anywhere. Hover `base`, `self` or an imported name to see which file it stands for.
+
+## Signature help
+
+Typing `(` after a method (or a new line in its `{ }` block) shows the signature for what it is called on — `start` on the
+file takes content, on a key it takes one value — with the argument being written marked, and what that parameter
+accepts. `reason:` is marked as soon as it is typed.
 
 ## Go to definition
 
@@ -90,7 +97,7 @@ In a template, Cmd-click a name (Ctrl-click on Windows / Linux), or press F12:
 | `"Phase 1"` in `base."Example 2"."Phase 1"` | That subsection under that parent |
 | `"Install XSDD"` inside a method | That section of our file |
 | `self.frontmatter`, `cmd.body` | Where that part starts |
-| The key in `join("description")` | That key in our file |
+| `description` in `base.frontmatter.description` / `self.frontmatter.description` | That frontmatter key upstream / in our file |
 | The name in `marker("...")`, `key("...")`, `function("...")` | The matching comment banner, key or function |
 
 Only objects and names lead to a file; keywords show their help on hover instead. Holding Cmd (Ctrl) over a name underlines the whole token, so a string with spaces is one link, and shows the first lines of
@@ -113,7 +120,7 @@ This runs the tests first and packages only if they pass, producing `editors/vsc
 Install it into VS Code in either of these ways:
 
 - In the Extensions view, open the `...` menu at the top right, choose **Install from VSIX...**, and pick the file above
-- From the command line: `code --install-extension editors/vscode/loom-lang-0.6.2.vsix`
+- From the command line: `code --install-extension editors/vscode/loom-lang-0.7.0.vsix`
 
 To skip packaging while developing, install the directory directly: run **Developer: Install Extension from Location...** from the Command Palette and choose `editors/vscode`.
 
@@ -128,6 +135,7 @@ npm test        # inside editors/vscode; make vs runs it first
 ```
 
 - `test/tokenize.js`: tokenizes the samples with VS Code's own tokenizer (vscode-textmate) and checks the scope each token lands in
+- `test/signature.js`: the signature picked for each receiver, and which argument is marked, in parentheses and blocks
 - `test/hover.js`: every keyword shows usage with examples, objects name their files, names show nothing
 - `test/definition.js`: builds a real repository on disk, puts the cursor on names in templates, and checks which file and line each jump lands on, and that a string with spaces is one link
 - `test/completion.js`: puts the cursor in templates over a real repository and checks what is offered and the range it replaces; every name it inserts must go to definition back to the node it was offered for
@@ -136,4 +144,4 @@ npm test        # inside editors/vscode; make vs runs it first
 - `test/nesting.js`: nesting is on and folded by default, with patterns for both template names, and the extension writes no settings
 
 The logic lives in `lib/` and does not depend on VS Code: `loom.js` reads templates and finds nodes with the compiler's rules,
-`definition.js`, `completion.js` and `preview.js` build on it. `extension.js` only wires them into the editor.
+`definition.js`, `completion.js`, `hover.js`, `signature.js` and `preview.js` build on it, with keyword help in `docs.js`. `extension.js` only wires them into the editor.

@@ -1,124 +1,126 @@
 'use strict';
 
-// What each Loom keyword does and how it is written, with examples: shown when hovering a keyword
-// and next to completion items. Keywords explain themselves instead of jumping somewhere; only the
-// objects (base, self, imported names) and the names of nodes lead to a file.
+// What each Loom keyword does and how it is written: typed signatures, parameters and examples. Shown
+// when hovering a keyword, next to completion items, and as signature help while typing arguments.
+// Keywords explain themselves instead of jumping somewhere; only objects and node names lead to a file.
 
+// The kinds of argument a method takes.
+const TYPES = {
+  Content: '`"Name"` a section of our file · `self."A"."B"` a section path · `self.body` / `cmd.body` a part of a file · `` `literal` ``',
+  Value: '`self.frontmatter.description` a frontmatter key of ours · `self.description` a toml / json key of ours · `` `literal` ``',
+  Frontmatter: '`self.frontmatter`',
+  File: '`self` or an imported name',
+  Reason: '`reason: "..."` — why upstream content is changed; shown in the build report',
+  Type: '`markdown` · `shell` · `toml` · `json` · `text`',
+  Name: 'a quoted name',
+};
+
+// A signature's `on` says which receiver it is for: a node, the file (or a view), a key's value, the
+// whole frontmatter. Signature help picks the one that fits; hover and completion show them all.
 const KEYWORDS = {
   after: {
-    usage: 'base.<node>.after(content, ...)',
-    what: 'Insert our content after an upstream node (a section, function, key...).',
-    args: 'Our sections by name (`"Name"`), a section path on self (`self."A"."B"`), a part of an imported file (`cmd.body`), or a `` `literal` ``. Several arguments go in order.',
-    examples: [
-      'base.Overview.after("Where this skill sits")',
-      'base."Example 2".after{\n    "Example 2 notes"\n    self."Example 2 notes"."Phase 1"\n}',
-    ],
+    what: 'Insert our content after an upstream node (a section, function, key...). Several arguments go in order.',
+    signatures: [{ on: 'node', label: 'base.<node>.after(...content: Content)', params: [['...content: Content', 'Content']] }],
+    examples: ['base.Overview.after("Where this skill sits")', 'base."Example 2".after{\n    "Example 2 notes"\n    self."Example 2 notes"."Phase 1"\n}'],
   },
   before: {
-    usage: 'base.<node>.before(content, ...)',
     what: 'Insert our content before an upstream node.',
-    args: 'Same as `after`.',
+    signatures: [{ on: 'node', label: 'base.<node>.before(...content: Content)', params: [['...content: Content', 'Content']] }],
     examples: ['base.Verification.before("Self-check list")', 'base.main.before(self.boot)'],
   },
   start: {
-    usage: 'base.start(content, ...)',
-    what: 'Insert our content at the start of the file (after its frontmatter), or of a view.',
-    args: 'Same as `after`.',
-    examples: ['base.start(`> Generated from mine/README.md — do not edit`)'],
+    what: 'On the file (or a view): insert our content at the start, after the frontmatter. On a key: the value becomes ours followed by upstream\'s — a bilingual description, say.',
+    signatures: [
+      { on: 'file', label: 'base.start(...content: Content)', params: [['...content: Content', 'Content']] },
+      { on: 'value', label: 'base.<key>.start(value: Value)', params: [['value: Value', 'Value']] },
+    ],
+    examples: ['base.start(`> Generated from mine/README.md — do not edit`)', 'base.frontmatter.description.start(self.frontmatter.description)'],
   },
   append: {
-    usage: 'base.append(content, ...)',
-    what: 'Insert our content at the end of the file, or of a view.',
-    args: 'Same as `after`.',
-    examples: ['base.append("Troubleshooting")', 'base.prompt.as(markdown).append(cmd.body)'],
+    what: 'On the file (or a view): insert our content at the end. On a key: the value becomes upstream\'s followed by ours.',
+    signatures: [
+      { on: 'file', label: 'base.append(...content: Content)', params: [['...content: Content', 'Content']] },
+      { on: 'value', label: 'base.<key>.append(value: Value)', params: [['value: Value', 'Value']] },
+    ],
+    examples: ['base.append("Troubleshooting")', 'base.prompt.as(markdown).append(cmd.body)', 'base.frontmatter.description.append(self.frontmatter.description)'],
   },
   replace: {
-    usage: 'base.<node>.replace(content, reason: "...")  ·  base.replace(self, reason: "...")',
     what: 'Replace an upstream node with our content, or the whole file with ours. Upstream content goes away, so a reason is required; a whole-file replace can only be combined with `drop`.',
-    args: 'One content argument (a whole-file replace takes a file: `self` or an imported name) and `reason:`.',
+    signatures: [
+      { on: 'node', label: 'base.<node>.replace(content: Content, reason: Reason)', params: [['content: Content', 'Content'], ['reason: Reason', 'Reason']] },
+      { on: 'file', label: 'base.replace(file: File, reason: Reason)', params: [['file: File', 'File'], ['reason: Reason', 'Reason']] },
+    ],
     examples: [
       'base.Install.replace("Install XSDD", reason: "our installer replaces the manual steps")',
       'base.replace(self, reason: "this file describes our repository, not upstream\'s")',
     ],
   },
   drop: {
-    usage: 'base.<node>.drop(reason: "...")',
     what: 'Leave an upstream node out of the product on purpose. The build checks it really is absent, and a section with subsections needs each subsection accounted for.',
-    args: 'Only `reason:`.',
+    signatures: [{ on: 'node', label: 'base.<node>.drop(reason: Reason)', params: [['reason: Reason', 'Reason']] }],
     examples: ['base."How it compares".drop(reason: "compares upstream with other projects; not ours")'],
   },
   set: {
-    usage: 'base.frontmatter.set(self.frontmatter)  ·  base.<key>.set(self.<key>)',
-    what: 'Take a value from our file: the whole frontmatter of a markdown file, or a toml / json key. With `join` on the same frontmatter, set only matters for the keys join does not name; the build fails when a key of our frontmatter reaches the product neither way.',
-    args: 'One value from our layer.',
-    examples: ['base.frontmatter.set(self.frontmatter)', 'base.description.set(self.description)'],
-  },
-  join: {
-    usage: 'base.frontmatter.join("key", ...)  ·  base.join("key", ...)',
-    what: 'The value becomes ours followed by upstream\'s — a bilingual description, say. In markdown on frontmatter keys; in toml / json on the file.',
-    args: 'Quoted key names — not `self.description`: join reads the named key from both files, while `self.description` is content of ours only (in markdown, a section named description).',
-    examples: ['base.frontmatter.join("description")', 'base.join("description")'],
+    what: 'Take ours: the whole frontmatter, or one key\'s value. On a frontmatter key upstream lacks, set adds it. The build fails when a key of our frontmatter reaches the product no way at all.',
+    signatures: [
+      { on: 'frontmatter', label: 'base.frontmatter.set(frontmatter: Frontmatter)', params: [['frontmatter: Frontmatter', 'Frontmatter']] },
+      { on: 'value', label: 'base.<key>.set(value: Value)', params: [['value: Value', 'Value']] },
+    ],
+    examples: ['base.frontmatter.set(self.frontmatter)', 'base.frontmatter."argument-hint".set(self.frontmatter."argument-hint")', 'base.description.set(self.description)'],
   },
   merge: {
-    usage: 'base.merge(self)',
     what: 'Our file is upstream plus our edits, and it is the product — for files that can\'t be woven by name, like a script changed inside its functions. Edit our file as any file; the build still fails when an upstream section or function is gone without a `drop`. `lm sync <new upstream>` merges each new upstream release into our file, leaving conflict markers where upstream changed the lines we changed. Can only be combined with `drop`.',
-    args: '`self`.',
+    signatures: [{ on: 'file', label: 'base.merge(file: self)', params: [['file: self', '`self` — our file at this path']] }],
     examples: ['base.merge(self)', 'base.merge(self)\nbase.help.drop(reason: "we print our own help")'],
   },
   as: {
-    usage: 'base.<key>.as(type)',
     what: 'View a toml / json key\'s value as another type, then use that type\'s nodes and methods on it. Inside the view, a bare string names a section of the same key in our file.',
-    args: 'A type: `markdown`, `shell`, `toml`, `json`, `text`.',
+    signatures: [{ on: 'value', label: 'base.<key>.as(type: Type)', params: [['type: Type', 'Type']] }],
     examples: ['base.prompt.as(markdown).append(cmd.body)', 'base.prompt.as(markdown).Steps.after("Our step")'],
   },
   section: {
-    usage: 'base.section("Heading")',
     what: 'A markdown section by its heading — the same as `base."Heading"`: from the heading to the next heading of any level.',
-    args: 'The heading text.',
+    signatures: [{ on: 'file', label: 'base.section(heading: Name)', params: [['heading: Name', 'the heading text']] }],
     examples: ['base.section("How it compares").drop(reason: "...")'],
   },
   line: {
-    usage: 'base.line("the whole line")',
     what: 'A line matched exactly, in markdown, shell or text files.',
-    args: 'The line\'s full text.',
+    signatures: [{ on: 'file', label: 'base.line(text: Name)', params: [['text: Name', 'the line\'s full text']] }],
     examples: ['base.line("set -e").after(`set -u`)'],
   },
   function: {
-    usage: 'base.function("name")',
     what: 'A shell function — the same as `base.name`.',
-    args: 'The function name.',
+    signatures: [{ on: 'file', label: 'base.function(name: Name)', params: [['name: Name', 'the function name']] }],
     examples: ['base.function("main").before(self.boot)'],
   },
   marker: {
-    usage: 'base.marker("# ── Name")',
     what: 'A shell banner comment down to the next banner, matched by the start of its line.',
-    args: 'The start of the banner line, `#` included.',
+    signatures: [{ on: 'file', label: 'base.marker(start: Name)', params: [['start: Name', 'the start of the banner line, `#` included']] }],
     examples: ['base.marker("# ── Test 3").after(self.marker("# ── Test 3b"))'],
   },
   key: {
-    usage: 'base.key("name")  ·  base.key("a.b")',
     what: 'A toml key, or a json key by dotted path — the same as `base.name`.',
-    args: 'The key, or the dotted path in json.',
+    signatures: [{ on: 'file', label: 'base.key(name: Name)', params: [['name: Name', 'the key, or the dotted path in json']] }],
     examples: ['base.key("description").set(self.description)'],
   },
   frontmatter: {
-    usage: 'base.frontmatter  ·  self.frontmatter',
-    what: 'The `---` block at the top of a markdown file.',
-    examples: ['base.frontmatter.set(self.frontmatter)', 'base.frontmatter.join("description")'],
+    what: 'The `---` block at the top of a markdown file. Its keys are nodes of their own: `base.frontmatter.description`, quoted when a key has a `-`.',
+    signatures: [{ on: 'node', label: 'base.frontmatter  ·  base.frontmatter.<key>  ·  self.frontmatter.<key>', params: [] }],
+    examples: ['base.frontmatter.description.start(self.frontmatter.description)', 'base.frontmatter.set(self.frontmatter)'],
   },
   body: {
-    usage: 'self.body  ·  cmd.body',
     what: 'Everything after the frontmatter of one of our files — content to insert.',
+    signatures: [{ on: 'node', label: 'self.body  ·  cmd.body', params: [] }],
     examples: ['base.prompt.as(markdown).append(cmd.body)'],
   },
   import: {
-    usage: 'import [name] "path"',
     what: 'Another file of our layer, to take content from. `./` and `../` are relative to the product\'s directory, `/` starts at the layer root; the extension may be left out when one file matches. Without a name, the file name is the name. `import base "path"` points base at a renamed upstream file.',
+    signatures: [{ on: 'file', label: 'import [name: Identifier] path: String', params: [] }],
     examples: ['import cmd "/.claude/commands/ship"\nbase.append(cmd.body)', 'import base "/.gemini/commands/planning"'],
   },
   reason: {
-    usage: 'reason: "..."',
     what: 'Why upstream content is changed. Required by `replace` and `drop`, not allowed elsewhere; shown in the build report.',
+    signatures: [{ on: 'node', label: 'reason: String', params: [] }],
     examples: ['base.Team.drop(reason: "credited in our README\'s License section")'],
   },
 };
@@ -128,14 +130,26 @@ const OBJECTS = {
   self: 'Our file at this path — a content source; methods are never called on it.',
 };
 
+// typeDoc explains a parameter's type: a name from TYPES, or the text itself.
+function typeDoc(t) {
+  return TYPES[t] || t;
+}
+
 // markdownFor renders a keyword's help as markdown; null for a word that is not a keyword.
 function markdownFor(word) {
   const k = KEYWORDS[word];
   if (!k) return null;
-  const parts = ['```loom', k.usage, '```', '', k.what];
-  if (k.args) parts.push('', `**Arguments:** ${k.args}`);
+  const parts = ['```loom', k.signatures.map((s) => s.label).join('\n'), '```', '', k.what];
+  const params = [];
+  for (const sig of k.signatures) {
+    for (const [label, type] of sig.params) {
+      const line = `- \`${label}\` — ${typeDoc(type)}`;
+      if (!params.includes(line)) params.push(line);
+    }
+  }
+  if (params.length) parts.push('', '**Parameters**', '', ...params);
   parts.push('', '**Examples**', '', '```loom', k.examples.join('\n\n'), '```');
   return parts.join('\n');
 }
 
-module.exports = { KEYWORDS, OBJECTS, markdownFor };
+module.exports = { KEYWORDS, OBJECTS, TYPES, typeDoc, markdownFor };

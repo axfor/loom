@@ -59,10 +59,16 @@ ok(c && c.markdown.includes('`me/cmd.md`'), 'an imported name names its file', c
 ok(at(2, 'main') === null, 'a node name has no keyword help');
 ok(at(3, 'markdown') === null, 'a type is not a keyword of its own');
 
-// every keyword's examples parse as Loom statements a template could hold
+// every keyword has a typed signature, a meaning and examples; methods explain each parameter's type
 for (const [word, k] of Object.entries(KEYWORDS)) {
-  ok(k.examples.length > 0 && k.usage && k.what, `${word}: usage, meaning and examples are written`);
+  ok(k.examples.length > 0 && k.signatures.length > 0 && k.what, `${word}: signature, meaning and examples are written`);
 }
+const after = at(4, 'after');
+ok(after.markdown.includes('after(...content: Content)') && after.markdown.includes('**Parameters**') && after.markdown.includes('a section of our file'),
+  'a method shows its typed signature and what each type accepts', after.markdown);
+const start = at(3, 'append');
+ok(start.markdown.includes('base.append(...content: Content)') && start.markdown.includes('base.<key>.append(value: Value)'),
+  'a method with two receivers shows both signatures', start.markdown);
 
 fs.rmSync(root, { recursive: true, force: true });
 console.log(`loom hover: ${pass} passed, ${fail} failed`);

@@ -8,6 +8,7 @@ const { definition } = require('./lib/definition');
 const { completions } = require('./lib/completion');
 const { findLm, productName, upstreamFile, weave } = require('./lib/preview');
 const { hover } = require('./lib/hover');
+const { signature } = require('./lib/signature');
 
 // The hover shown while Cmd/Ctrl is held previews the target range when it spans fewer than
 // 8 lines; a longer range falls back to one line of context.
@@ -133,6 +134,25 @@ function activate(context) {
         return new vscode.Hover(new vscode.MarkdownString(h.markdown), new vscode.Range(h.range.line, h.range.s, h.range.line, h.range.e));
       },
     }),
+    vscode.languages.registerSignatureHelpProvider(selector, {
+      provideSignatureHelp(document, position) {
+        const s = signature(document.uri.fsPath, document.getText(), position.line, position.character);
+        if (!s) return null;
+        const info = new vscode.SignatureInformation(s.label, new vscode.MarkdownString(s.doc));
+        // a parameter is marked by its offsets in the label, so a type named twice is still the right one
+        let from = 0;
+        info.parameters = s.params.map((p) => {
+          const at = s.label.indexOf(p.label, from);
+          from = at + p.label.length;
+          return new vscode.ParameterInformation([at, at + p.label.length], new vscode.MarkdownString(p.doc));
+        });
+        const help = new vscode.SignatureHelp();
+        help.signatures = [info];
+        help.activeSignature = 0;
+        help.activeParameter = s.active;
+        return help;
+      },
+    }, { triggerCharacters: ['(', '{'], retriggerCharacters: [',', '\n'] }),
     vscode.languages.registerCompletionItemProvider(selector, {
       provideCompletionItems(document, position) {
         return completions(document.uri.fsPath, document.getText(), position.line, position.character).map((it) => {

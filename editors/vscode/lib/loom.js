@@ -9,7 +9,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const METHODS = new Set(['after', 'before', 'start', 'append', 'replace', 'drop', 'set', 'join', 'merge']);
+const METHODS = new Set(['after', 'before', 'start', 'append', 'replace', 'drop', 'set', 'merge']);
 const CONTENT_METHODS = new Set(['after', 'before', 'start', 'append', 'replace', 'set']);
 const KIND_CALLS = {
   markdown: { section: 'heading', line: 'line' },
@@ -381,6 +381,11 @@ function walk(t, chain, upto) {
       continue;
     }
     if (r.node) {
+      // a frontmatter key: base.frontmatter.description
+      if (r.node.kind === 'frontmatter' && !st.call) {
+        r.node = { kind: 'fmkey', name: st.name, ident: false };
+        continue;
+      }
       // a section path: base."Example 2"."Phase 1"
       if (st.call || r.node.kind !== 'heading') {
         r.bad = true;
@@ -403,6 +408,48 @@ function walk(t, chain, upto) {
     }
   }
   return r;
+}
+
+// isValue: a key whose value set / start / append write — a frontmatter key, or a toml / json key
+// outside a view.
+function isValue(r) {
+  return Boolean(r && r.node && !r.view && (r.node.kind === 'fmkey' || ((r.typ === 'toml' || r.typ === 'json') && r.node.kind === DEFAULT_KIND[r.typ])));
+}
+
+// lastBefore: the index of the last token that ends before the cursor, or -1.
+function lastBefore(toks, line, character) {
+  let k = -1;
+  while (k + 1 < toks.length && toks[k + 1].t !== 'eof' &&
+    (toks[k + 1].line < line || (toks[k + 1].line === line && toks[k + 1].e <= character))) k++;
+  return k;
+}
+
+function stepRef(t, tok) {
+  return t.refs.find((r) => r.what === 'step' && r.tok === tok);
+}
+
+// enclosingCall finds the call whose arguments the token at k is among: an unclosed ( on the cursor's
+// line, or an unclosed { since the statement started. It returns the call's step and where it opens.
+function enclosingCall(t, k, line) {
+  const toks = t.toks;
+  let depth = 0;
+  for (let i = k; i >= 0; i--) {
+    const c = toks[i];
+    if (c.t === ')' || c.t === '}') {
+      depth++;
+    } else if (c.t === '(' || c.t === '{') {
+      if (depth > 0) {
+        depth--;
+        continue;
+      }
+      if (c.t === '(' && c.line !== line) return null; // (...) stays on one line
+      const ref = i > 0 && stepRef(t, toks[i - 1]);
+      return ref ? { chain: ref.chain, index: ref.index, open: i } : null;
+    } else if (c.t === 'id' && (c.v === 'base' || c.v === 'import') && c.line !== line && (i === 0 || toks[i - 1].t === 'nl')) {
+      return null; // an earlier statement starts here and none of its blocks is open
+    }
+  }
+  return null;
 }
 
 // ── nodes in a file ─────────────────────────────────────────────────────────
@@ -634,6 +681,10 @@ module.exports = {
   parse,
   open,
   walk,
+  isValue,
+  lastBefore,
+  stepRef,
+  enclosingCall,
   identMatch,
   headings,
   nodesOf,

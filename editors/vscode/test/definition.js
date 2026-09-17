@@ -42,7 +42,7 @@ const docText = [
   '',                                                               // 2
   'base.Old_Overview.after("Überblick", notes.Café_Notes)',          // 3
   'base.frontmatter.set(self.frontmatter)',                         // 4
-  'base.frontmatter.join("description")',                           // 5
+  'base.frontmatter.description.start(self.frontmatter.description)', // 5
   'base.Old_Overview.before{',                                      // 6
   '    "Customer ≠ User"',                                           // 7
   '    `',                                                          // 8
@@ -66,7 +66,7 @@ const cmd = path.join(root, 't/cmd.toml.lm');
 const cmdText = [
   'import ship "/.claude/commands/ship"',        // 0
   'base.description.set(self.description)',      // 1
-  'base.join("description")',                     // 2
+  'base.description.start(self.description)',    // 2
   'base.prompt.as(markdown).append(ship.body)',   // 3
   'base.prompt.as(markdown).after("Naïve Approach")', // 4
   'base.prompt.as(markdown).Steps.after(self.Naïve_Approach)', // 5
@@ -121,10 +121,11 @@ check(doc, docText, 7, 'Customer', [M, 9]);
 check(doc, docText, 12, 'Überblick', null); // a reason is not a name
 check(doc, docText, 9, 'Overview', null); // inside a literal
 
-// frontmatter, join, merge, whole-file replace
+// frontmatter and its keys, merge, whole-file replace
 check(doc, docText, 4, 'self', [M, 0]);
 check(doc, docText, 4, 'frontmatter', [M, 0], 2);
-check(doc, docText, 5, 'description', [M, 2]);
+check(doc, docText, 5, 'description', ['upstream/old/guide.md', 0]); // base points at a file with no frontmatter
+check(doc, docText, 5, 'description', [M, 2], 2);
 check(doc, docText, 13, 'merge', null);
 check(doc, docText, 13, 'self', [M, 0]);
 check(doc, docText, 14, 'self', [M, 0]);
@@ -138,7 +139,8 @@ check(plain, plainText, 2, 'Nope', ['upstream/skills/testing/other.md', 0]);
 check(cmd, cmdText, 0, 'ship', ['mine/.claude/commands/ship.md', 0]);
 check(cmd, cmdText, 1, 'description', ['upstream/cmd.toml', 0]);
 check(cmd, cmdText, 1, 'description', ['mine/cmd.toml', 0], 2);
-check(cmd, cmdText, 2, 'description', ['mine/cmd.toml', 0]);
+check(cmd, cmdText, 2, 'description', ['upstream/cmd.toml', 0]);
+check(cmd, cmdText, 2, 'description', ['mine/cmd.toml', 0], 2);
 check(cmd, cmdText, 3, 'prompt', ['upstream/cmd.toml', 1]);
 check(cmd, cmdText, 3, 'body', ['mine/.claude/commands/ship.md', 4]);
 check(cmd, cmdText, 4, 'Naïve Approach', ['mine/cmd.toml', 2]);

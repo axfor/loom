@@ -71,9 +71,6 @@ function resolve(t, ref) {
         const sel = loom.walk(t, chain, index + 1);
         return locate(sel.obj.file, sel.node, sel.view);
       }
-      if (st.name === 'join') {
-        return locate(t.objects.self.file, { kind: r.typ === 'markdown' ? 'fmkey' : loom.DEFAULT_KIND[r.typ], name: ref.tok.v, ident: false });
-      }
       if (loom.CONTENT_METHODS.has(st.name)) {
         return locate(t.objects.self.file, { kind: loom.DEFAULT_KIND[r.typ], name: ref.tok.v, ident: false }, r.view);
       }
