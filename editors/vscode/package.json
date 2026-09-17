@@ -1,8 +1,8 @@
 {
   "name": "loom-lang",
   "displayName": "Loom",
-  "description": "Loom for VS Code: syntax highlighting for .lm templates and settings, .e variable files and {{@name}} placeholders; go to definition from a template to the upstream or our file and node it names.",
-  "version": "0.2.0",
+  "description": "Loom for VS Code: syntax highlighting for .lm templates and settings, .e variable files and {{@name}} placeholders; completion of nodes, methods, our sections and import paths; go to definition from a template to the upstream or our file and node it names.",
+  "version": "0.3.0",
   "publisher": "axfor",
   "license": "Apache-2.0",
   "repository": {
@@ -79,7 +79,7 @@
     ]
   },
   "scripts": {
-    "test": "node test/tokenize.js && node test/definition.js",
+    "test": "node test/tokenize.js && node test/definition.js && node test/completion.js && node test/wordpattern.js",
     "package": "vsce package"
   },
   "devDependencies": {

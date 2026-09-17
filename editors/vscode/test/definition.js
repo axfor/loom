@@ -76,7 +76,7 @@ const cmdText = [
 const sh = path.join(root, 't/run.sh.lm');
 const shText = [
   'base.main.before(self.boot)',        // 0
-  'base.marker("main").after("boot")',  // 1
+  'base.marker("# ── main").after("boot")',  // 1
 ].join('\n');
 
 let pass = 0;
@@ -151,11 +151,42 @@ check(sh, shText, 0, 'boot', ['mine/run.sh', 0]);
 check(sh, shText, 1, 'marker', ['upstream/run.sh', 1]);
 check(sh, shText, 1, 'boot', ['mine/run.sh', 0]);
 
+// a string with spaces is one link: wherever the cursor is inside it, the origin is the whole
+// string, and the jump selects the name on the target line
+{
+  write('upstream/guide.md', '## Install\n\nx\n\n## Example 1\n\n### Phase 1\n\na\n\n## Example 2\n\n### Phase 1\n\nb\n');
+  write('mine/guide.md', '## 离线环境 fallback（无网络 / 内网部署）\n\nc\n\n## 例 2\n\n### Phase 1\n\nd\n');
+  const g = path.join(root, 't/guide.md.lm');
+  const gText = [
+    'base.append("离线环境 fallback（无网络 / 内网部署）")',   // 0
+    'base."Example 2"."Phase 1".after(self."例 2"."Phase 1")', // 1
+    'base."Phase 1".after("x")',                             // 2
+  ].join('\n');
+  const str = '"离线环境 fallback（无网络 / 内网部署）"';
+  const at = gText.split('\n')[0].indexOf(str);
+  for (const word of ['离线', 'fallback', ' / ', '部署）']) {
+    const d = definition(g, gText, 0, gText.split('\n')[0].indexOf(word));
+    const ok = d && d.file === path.join(root, 'mine/guide.md') && d.line === 0 &&
+      d.origin.s === at && d.origin.e === at + str.length && d.s === 3 && d.e === 3 + str.length - 2;
+    if (ok) pass++;
+    else {
+      fail++;
+      console.log(`  ❌ cursor on "${word}" inside a string with spaces: got`, d);
+    }
+  }
+  // section paths pick the subsection under the named parent, in upstream and in ours
+  check(g, gText, 1, 'Phase 1', ['upstream/guide.md', 12]);
+  check(g, gText, 1, 'after', ['upstream/guide.md', 12]);
+  check(g, gText, 1, 'Phase 1', ['mine/guide.md', 6], 2);
+  // a name that matches several sections is not guessed: the jump lands on the file
+  check(g, gText, 2, 'Phase 1', ['upstream/guide.md', 0]);
+}
+
 // headings inside a fenced code block are not headings
 {
-  const { findNode } = require('../lib/definition');
+  const { findNode } = require('../lib/loom');
   const text = fs.readFileSync(path.join(root, U), 'utf8');
-  if (findNode(text, { kind: 'heading', name: 'Not a heading', ident: false }) === -1) pass++;
+  if (findNode(text, { kind: 'heading', name: 'Not a heading', ident: false }) === null) pass++;
   else {
     fail++;
     console.log('  ❌ a heading inside a code fence was matched');

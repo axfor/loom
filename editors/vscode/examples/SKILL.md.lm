@@ -1,4 +1,4 @@
-// src/templates/skills/testing/SKILL.md.lm
+// mine/skills/testing/SKILL.md.lm
 // Cmd-click a name (Ctrl on Windows): base.X jumps to that upstream section, "..." to our section, an import path to its file
 import ship "/.claude/commands/ship"
 

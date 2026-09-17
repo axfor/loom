@@ -466,8 +466,9 @@ anchors with upstream headings directly.
 ## Editor
 
 `editors/vscode` is a VS Code extension: syntax highlighting for templates, settings, variables
-files and `{{@name}}` placeholders, and go to definition from a template to the upstream or our
-file and section it names. `make vs` runs its tests and packages it.
+files and `{{@name}}` placeholders; completion of nodes, methods, our sections and import paths;
+and go to definition from a template to the upstream or our file and section it names. `make vs`
+runs its tests and packages it.
 
 ## Install
 
