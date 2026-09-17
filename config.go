@@ -1,10 +1,11 @@
 package loom
 
-// loom.lm —— 织机怎么认这个仓库。
+// loom.lm — how the loom understands this repository.
 //
-// 【为什么配置也是 HCL】模板是 HCL，配置再换一种格式，读的人就得记两套规则。
-// 一门语言只该有一种写法 —— 这条在模板里也反复出现（bilingual 曾经 markdown 一种写法、
-// toml 另一种写法，读模板的人得先知道文件是什么格式才知道该写哪一句）。
+// Why the settings file is HCL too: templates are HCL, and a different format for settings would make
+// readers learn two sets of rules. A language should have one way to write things — a point that keeps
+// coming up in templates as well (bilingual once had one form for markdown and another for toml, so a
+// template reader had to know the file format before knowing which one to write).
 
 import (
 	"fmt"
@@ -18,29 +19,31 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
-// ConfigName 是织机的设置文件。
+// ConfigName is the loom's settings file.
 //
-// 【为什么不叫 loom.hcl】HCL 是这门语言**借来的语法**，不是它的身份 ——
-// 文件名该说"这是给织机看的"，而不是"这是用某个第三方格式写的"。
-// 语法哪天换了，叫 .hcl 的文件就成了一句谎话。
+// Why not loom.hcl: HCL is **syntax this language borrows**, not its identity —
+// the file name should say "this is for the loom", not "this is written in some third-party format".
+// If the syntax ever changes, a file named .hcl becomes a lie.
 const ConfigName = "loom.lm"
 
-// Marks 是一对包裹标记。纬线内容进产物时包上，于是「经线 100% 保留」可以机械验证：
-// 剥掉标记块，剩下的必须与经线那份逐字节相同。
+// Marks is a pair of wrapping marks. Weft content is wrapped in them on its way into the product, so
+// "100% of the warp preserved" can be checked mechanically: strip the marked blocks, and what remains
+// must be byte-identical to the warp copy.
 type Marks struct{ Begin, End string }
 
-// Layer 是一层源。经线（warp）是底、逐字节保留；纬线（weft）是穿进去的那一层。
+// Layer is one source layer. The warp is the base and is preserved byte for byte; the weft is the layer threaded into it.
 type Layer struct {
 	Name  string
 	Dir   string
 	Role  string           // "warp" | "weft" | ""
-	Marks map[string]Marks // 资源类型 → 标记；没配的类型不包标记
+	Marks map[string]Marks // resource type -> marks; types without an entry are not wrapped
 }
 
-// Config 是一个仓库的织机设置。
+// Config is the loom settings for one repository.
 //
-// 【为什么不给默认值】默认值只在含义唯一时才安全。层名叫什么、哪一层是经线、
-// 标记长什么样 —— 每一条猜错都是**静默换了基底**：产物仍然合法，只是经线那半没了。
+// Why no defaults: a default is only safe when its meaning is unambiguous. What the layers are called,
+// which layer is the warp, what the marks look like — guessing any of these wrong **silently swaps the
+// base**: the product is still valid, only the warp half is gone.
 type Config struct {
 	Root      string
 	Layers    map[string]*Layer
@@ -48,15 +51,27 @@ type Config struct {
 	Warp      string
 	Weft      string
 	Templates string
+	Output    string // output directory (default output of lm build)
 	Anchored  string
 
-	// registry：json 产物的合并策略 —— 节点 = 容器数组里的一条，身份由正则从条目里提取。
-	// 朴素并集会让同一条注册两次，而重复注册的注册表往往直接失效。
+	// registry: the merge strategy for json products — a node is one element of the container array, and
+	// its identity is extracted from the element by a regexp. A naive union registers the same entry twice,
+	// and a registry with duplicate registrations often just breaks.
 	RegGroup string
 	RegID    *regexp.Regexp
+
+	// How the whole tree builds (lm build): which upstream files go into the product as they are, which
+	// directories are mirrored whole, and where the product manifest is written
+	Take     []string
+	Mirrors  [][2]string
+	Manifest string
+
+	// Vars holds the variables for this build; nil = no substitution (for callers that weave a single
+	// file and don't care about variables)
+	Vars *Vars
 }
 
-// FindConfig 从 start 起向上找 loom.lm。
+// FindConfig searches upward from start for loom.lm.
 func FindConfig(start string) (string, error) {
 	d, err := filepath.Abs(start)
 	if err != nil {
@@ -69,7 +84,7 @@ func FindConfig(start string) (string, error) {
 		}
 		parent := filepath.Dir(d)
 		if parent == d {
-			return "", fmt.Errorf("从 %s 一路向上都没找到 %s —— 织机不知道哪一层是经线，不猜", start, ConfigName)
+			return "", fmt.Errorf("searched upward from %s and found no %s — the loom does not know which layer is the warp, and will not guess", start, ConfigName)
 		}
 		d = parent
 	}
@@ -98,12 +113,10 @@ var regSchema = &hcl.BodySchema{
 	Attributes: []hcl.AttributeSchema{{Name: "group", Required: true}, {Name: "id_pattern", Required: true}},
 }
 
-// LoadConfig 读 loom.lm。
-func LoadConfig(path string) (*Config, error) {
-	src, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
+// LoadConfig reads loom.lm.
+// loadLegacyConfig reads the legacy syntax (HCL). For the new syntax see settings.go.
+func loadLegacyConfig(path string, src []byte) (*Config, error) {
+	var err error
 	f, diags := hclsyntax.ParseConfig(src, path, hcl.InitialPos)
 	if diags.HasErrors() {
 		return nil, diags
@@ -131,26 +144,26 @@ func LoadConfig(path string) (*Config, error) {
 				return nil, err
 			}
 			if _, dup := c.Layers[l.Name]; dup {
-				return nil, fmt.Errorf("%s: 层 `%s` 声明了两次", b.DefRange, l.Name)
+				return nil, fmt.Errorf("%s: layer `%s` is declared twice", b.DefRange, l.Name)
 			}
 			c.Layers[l.Name] = l
 			c.Order = append(c.Order, l.Name)
 			switch l.Role {
 			case "warp":
 				if c.Warp != "" {
-					return nil, fmt.Errorf("%s: 经线只能有一层，`%s` 和 `%s` 都声明了 role = \"warp\"",
+					return nil, fmt.Errorf("%s: there can be only one warp layer, but both `%s` and `%s` declare role = \"warp\"",
 						b.DefRange, c.Warp, l.Name)
 				}
 				c.Warp = l.Name
 			case "weft":
 				if c.Weft != "" {
-					return nil, fmt.Errorf("%s: 纬线只能有一层，`%s` 和 `%s` 都声明了 role = \"weft\"",
+					return nil, fmt.Errorf("%s: there can be only one weft layer, but both `%s` and `%s` declare role = \"weft\"",
 						b.DefRange, c.Weft, l.Name)
 				}
 				c.Weft = l.Name
 			case "":
 			default:
-				return nil, fmt.Errorf("%s: role 只能是 \"warp\"（经线）或 \"weft\"（纬线），收到 `%s`", b.DefRange, l.Role)
+				return nil, fmt.Errorf("%s: role must be \"warp\" or \"weft\", got `%s`", b.DefRange, l.Role)
 			}
 		case "registry":
 			rc, diags := b.Body.Content(regSchema)
@@ -165,12 +178,12 @@ func LoadConfig(path string) (*Config, error) {
 				return nil, err
 			}
 			if c.RegID, err = regexp.Compile(pat); err != nil {
-				return nil, fmt.Errorf("%s: id_pattern 不是合法正则：%v", b.DefRange, err)
+				return nil, fmt.Errorf("%s: id_pattern is not a valid regexp: %v", b.DefRange, err)
 			}
 		}
 	}
 	if c.Warp == "" {
-		return nil, fmt.Errorf("%s: 没有哪一层声明 role = \"warp\" —— 织机不知道拿哪一层当经线", path)
+		return nil, fmt.Errorf("%s: no layer declares role = \"warp\" — the loom does not know which layer to use as the warp", path)
 	}
 	if c.Templates == "" {
 		c.Templates = "templates"
@@ -220,34 +233,59 @@ func strAttr(a *hcl.Attribute) (string, error) {
 		return "", diags
 	}
 	if v.Type() != cty.String {
-		return "", fmt.Errorf("%s: 这里要一个字符串", a.Range)
+		return "", fmt.Errorf("%s: a string is required here", a.Range)
 	}
 	return v.AsString(), nil
 }
 
 func (c *Config) layerNames() string { return strings.Join(c.Order, " / ") }
 
-// read 取某一层里的一个文件。文件不存在返回 (\"\", false)；**层名不认识是错误**。
+// read reads one file from a layer. A missing file returns (\"\", false); **an unknown layer name is an error**.
 //
-// 【为什么未知层名必须报错】此前是「不是经线就当纬线」—— 于是把行尾注释吃进 from 的值
-// 之后，基底静默变成了纬线那份，经线整个消失而产物看起来完全合法。
-func (c *Config) read(layer, rel string) (string, bool, error) {
-	l, ok := c.Layers[layer]
-	if !ok {
-		return "", false, fmt.Errorf("未知层名 `%s`（只有 %s）", layer, c.layerNames())
+// Why an unknown layer name must be an error: it used to be "not the warp, so treat it as the weft" —
+// so once a trailing comment got swallowed into the value of from, the base silently became the weft
+// copy, and the warp vanished entirely while the product looked perfectly valid.
+// layer looks up a layer by name. `up` / `me` are fixed layer names in the language, meaning the warp
+// layer and the weft layer — they still resolve when the settings give the layers other names (legacy
+// settings call them upstream / xsdd).
+func (c *Config) layer(name string) (*Layer, bool) {
+	if l, ok := c.Layers[name]; ok {
+		return l, true
 	}
-	b, err := os.ReadFile(filepath.Join(c.Root, l.Dir, rel))
+	switch name {
+	case "up":
+		l, ok := c.Layers[c.Warp]
+		return l, ok
+	case "me":
+		l, ok := c.Layers[c.Weft]
+		return l, ok
+	}
+	return nil, false
+}
+
+func (c *Config) read(layer, rel string) (string, bool, error) {
+	l, ok := c.layer(layer)
+	if !ok {
+		return "", false, fmt.Errorf("unknown layer name `%s` (known layers: %s)", layer, c.layerNames())
+	}
+	p := filepath.Join(c.Root, l.Dir, rel)
+	b, err := os.ReadFile(p)
 	if err != nil {
 		return "", false, nil
+	}
+	if c.Vars != nil && l.Role == "weft" {
+		if b, err = c.Vars.Expand(b, p, 1, 1); err != nil {
+			return "", false, err
+		}
 	}
 	return string(b), true, nil
 }
 
-// marksFor 返回某层在某资源类型下的包裹标记。没配就是不包。
+// marksFor returns a layer's wrapping marks for a resource type. No entry means no wrapping.
 //
-// 【为什么按类型配】HTML 注释在 shell / toml / json 里不是注释，是垃圾或语法错误。
+// Why per type: an HTML comment is not a comment in shell / toml / json — it is garbage or a syntax error.
 func (c *Config) marksFor(layer, typ string) (Marks, bool) {
-	l, ok := c.Layers[layer]
+	l, ok := c.layer(layer)
 	if !ok {
 		return Marks{}, false
 	}

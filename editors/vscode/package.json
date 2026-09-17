@@ -1,0 +1,90 @@
+{
+  "name": "loom-lang",
+  "displayName": "Loom",
+  "description": "Loom for VS Code: syntax highlighting for .lm templates and settings, .e variable files and {{@name}} placeholders; go to definition from a template to the upstream or our file and node it names.",
+  "version": "0.2.0",
+  "publisher": "axfor",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/axfor/loom"
+  },
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:loom"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "loom",
+        "aliases": [
+          "Loom",
+          "lm"
+        ],
+        "extensions": [
+          ".lm"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "loom-env",
+        "aliases": [
+          "Loom Variables"
+        ],
+        "extensions": [
+          ".e"
+        ],
+        "configuration": "./env-language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "loom",
+        "scopeName": "source.loom",
+        "path": "./syntaxes/loom.tmLanguage.json"
+      },
+      {
+        "language": "loom-env",
+        "scopeName": "source.loom-env",
+        "path": "./syntaxes/loom-env.tmLanguage.json"
+      },
+      {
+        "scopeName": "loom.placeholder.injection",
+        "path": "./syntaxes/loom-placeholder.injection.json",
+        "injectTo": [
+          "text.html.markdown",
+          "source.shell",
+          "source.json",
+          "source.json.comments",
+          "source.toml",
+          "source.yaml",
+          "text.plain",
+          "source.js",
+          "source.ts",
+          "source.python",
+          "source.go",
+          "text.html.basic",
+          "source.css",
+          "source.ini",
+          "source.makefile",
+          "source.dockerfile"
+        ]
+      }
+    ]
+  },
+  "scripts": {
+    "test": "node test/tokenize.js && node test/definition.js",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^4.0.0",
+    "vscode-oniguruma": "^2.0.1",
+    "vscode-textmate": "^9.2.0"
+  }
+}

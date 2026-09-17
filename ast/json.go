@@ -1,24 +1,26 @@
 package ast
 
-// JSON 是一棵**保序**的 JSON 树。
+// JSON is an **order-preserving** JSON tree.
 //
-// 【为什么不用 encoding/json 的 map】map 的键无序，序列化时按字典序排 ——
-// 而注册表这类文件的键顺序是人排的、有含义的，重排一次就再也对不回去了。
-// 保序还带来一条更硬的性质：**没改到的地方逐字节不变**，于是 diff 只显示真的改动。
+// [Why not encoding/json's map] Map keys are unordered and get sorted on
+// serialization — but in files like registries the key order is chosen by a person
+// and carries meaning; reorder it once and it can never be matched back.
+// Preserving order also gives a stronger property: **untouched parts stay
+// byte-for-byte identical**, so a diff shows only the real changes.
 
 import (
 	"fmt"
 	"strings"
 )
 
-// Value 是一个 JSON 值。对象记住键的插入顺序。
+// Value is a JSON value. Objects remember key insertion order.
 type Value struct {
 	Kind  Kind
-	Keys  []string          // Object：键的顺序
+	Keys  []string          // Object: key order
 	Props map[string]*Value // Object
 	Elems []*Value          // Array
 	Str   string            // String
-	Num   string            // Number：保留原字面量，1 不会变成 1.0
+	Num   string            // Number: keeps the original literal, so 1 never becomes 1.0
 	Bool  bool
 }
 
@@ -33,7 +35,7 @@ const (
 	Object
 )
 
-// Get 取对象的一个字段。
+// Get returns a field of an object.
 func (v *Value) Get(k string) (*Value, bool) {
 	if v == nil || v.Kind != Object {
 		return nil, false
@@ -42,7 +44,8 @@ func (v *Value) Get(k string) (*Value, bool) {
 	return c, ok
 }
 
-// Set 写一个字段；新键追加到末尾，已有键就地替换（顺序不变）。
+// Set writes a field; a new key is appended at the end, an existing key is
+// replaced in place (order unchanged).
 func (v *Value) Set(k string, val *Value) {
 	if v.Props == nil {
 		v.Props = map[string]*Value{}
@@ -53,13 +56,13 @@ func (v *Value) Set(k string, val *Value) {
 	v.Props[k] = val
 }
 
-// NewObject 造一个空对象。
+// NewObject makes an empty object.
 func NewObject() *Value { return &Value{Kind: Object, Props: map[string]*Value{}} }
 
-// NewArray 造一个空数组。
+// NewArray makes an empty array.
 func NewArray() *Value { return &Value{Kind: Array} }
 
-// Clone 深拷贝。
+// Clone makes a deep copy.
 func (v *Value) Clone() *Value {
 	if v == nil {
 		return nil
@@ -78,7 +81,7 @@ func (v *Value) Clone() *Value {
 	return c
 }
 
-// Marshal 按两空格缩进输出，非 ASCII 原样保留。
+// Marshal outputs with two-space indentation, keeping non-ASCII as is.
 func (v *Value) Marshal() string {
 	var b strings.Builder
 	v.write(&b, 0)
@@ -134,8 +137,8 @@ func (v *Value) write(b *strings.Builder, depth int) {
 	}
 }
 
-// writeString 只转义必须转义的：引号、反斜杠、控制字符。
-// 非 ASCII **不转成 \u** —— 中文该在产物里读得出来。
+// writeString escapes only what must be escaped: quotes, backslashes, control characters.
+// Non-ASCII is **not turned into \u** — non-English text should stay readable in the output.
 func writeString(b *strings.Builder, s string) {
 	b.WriteByte('"')
 	for _, r := range s {
@@ -165,8 +168,8 @@ func writeString(b *strings.Builder, s string) {
 	b.WriteByte('"')
 }
 
-// JSONTree 让 json 也满足 Tree 接口。按行编辑对 json 没有意义 ——
-// json 走的是结构化合并，不是插行。
+// JSONTree makes json satisfy the Tree interface too. Line-based editing makes no
+// sense for json — json goes through structural merging, not line insertion.
 type JSONTree struct {
 	Root  *Value
 	lines []string
@@ -189,7 +192,8 @@ func (j *JSONTree) Splice(s, e int, repl []string) {
 func (j *JSONTree) BodyOf(string) (string, bool) { return "", false }
 func (j *JSONTree) SetBody(string, string) bool  { return false }
 
-// Find 按点分路径找一个字段。存在就返回一个空区间 —— 存在性是它唯一能回答的问题。
+// Find looks up a field by dotted path. If it exists, it returns an empty range —
+// existence is the only question it can answer.
 func (j *JSONTree) Find(kind, anchor string) [][2]int {
 	cur := j.Root
 	for _, part := range strings.Split(anchor, ".") {

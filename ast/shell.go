@@ -21,8 +21,9 @@ type Shell struct {
 var reBanner = regexp.MustCompile(`^` + ws + `*#` + ws + `*[─=—-]{2,}`)
 var reFunc = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)` + ws + `*\(\)` + ws + `*\{`)
 
-// NewShell：节点 = 函数定义，**以及标记段（marker）**。
-// 上游的 shell 大量是平铺的顶层流程 —— 顶层其实有天然的名字：`# ── Test 3: … ───` 这类横幅。
+// NewShell: nodes are function definitions, **and banner comments (markers)**.
+// Much upstream shell is flat top-level flow — and the top level does have natural
+// names: banners like `# ── Test 3: ... ───`.
 func NewShell(text string) *Shell {
 	s := &Shell{lines: strings.Split(text, "\n")}
 	var b []int

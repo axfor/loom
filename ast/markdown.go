@@ -19,7 +19,7 @@ type Markdown struct {
 
 var reHeading = regexp.MustCompile(`^(#{2,6})` + ws + `+(.*)$`)
 
-// NewMarkdown：节点 = 标题（## / ### …）。代码围栏内的 # 不算标题。
+// NewMarkdown: nodes are headings (## / ### ...). A # inside a code fence is not a heading.
 func NewMarkdown(text string) *Markdown {
 	m := &Markdown{lines: strings.Split(text, "\n")}
 	fence := false
@@ -52,7 +52,8 @@ func (m *Markdown) Lines() []string                { return m.lines }
 func (m *Markdown) Text() string                   { return strings.Join(m.lines, "\n") }
 func (m *Markdown) Splice(s, e int, repl []string) { m.lines = splice(m.lines, s, e, repl) }
 
-// fmSpan：frontmatter = 文件开头的 --- … --- 块。没有就返回 (0,0)（可插入的空位）。
+// fmSpan: frontmatter is the --- ... --- block at the top of the file. If there is
+// none it returns (0,0), an empty slot to insert into.
 func (m *Markdown) fmSpan() (int, int) {
 	if len(m.lines) == 0 || strings.TrimSpace(m.lines[0]) != "---" {
 		return 0, 0
@@ -74,7 +75,7 @@ func (m *Markdown) BodyOf(key string) (string, bool) {
 		}
 		return strings.Join(m.lines[s:e], "\n"), true
 	case "body", "content":
-		// 不 lstrip：frontmatter 之后那个空行是正文的一部分。
+		// No lstrip: the blank line after the frontmatter is part of the body.
 		_, e := m.fmSpan()
 		return strings.Join(m.lines[e:], "\n"), true
 	}

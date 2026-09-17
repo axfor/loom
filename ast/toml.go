@@ -19,7 +19,8 @@ type Toml struct {
 
 var reTomlKey = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_-]*)` + ws + `*=` + ws + `*(.*)$`)
 
-// NewToml：节点 = 顶层键。prompt 这种三引号块可以再换成 markdown（@in … as markdown）。
+// NewToml: nodes are top-level keys. A triple-quoted block such as prompt can be
+// re-parsed as markdown (@in ... as markdown).
 func NewToml(text string) *Toml {
 	t := &Toml{lines: strings.Split(text, "\n")}
 	t.reparse()

@@ -1,0 +1,8 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "scopeName": "loom.placeholder.injection",
+  "injectionSelector": "L:text.html.markdown, L:source.shell, L:source.json, L:source.json.comments, L:source.toml, L:source.yaml, L:text.plain, L:source.js, L:source.ts, L:source.python, L:source.go, L:text.html.basic, L:source.css, L:source.ini, L:source.makefile, L:source.dockerfile",
+  "patterns": [
+    { "include": "source.loom#placeholder" }
+  ]
+}

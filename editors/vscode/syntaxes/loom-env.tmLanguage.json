@@ -1,0 +1,29 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Loom Variables",
+  "scopeName": "source.loom-env",
+  "fileTypes": ["e"],
+  "patterns": [
+    {
+      "comment": "`#` is a comment only at the start of a line: values are often URLs, and `https://x/#a` is not a comment.",
+      "match": "^\\s*(#).*$",
+      "name": "comment.line.number-sign.loom-env",
+      "captures": {
+        "1": { "name": "punctuation.definition.comment.loom-env" }
+      }
+    },
+    {
+      "match": "^\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(=)\\s*(.*?)\\s*$",
+      "captures": {
+        "1": { "name": "variable.other.readwrite.loom-env" },
+        "2": { "name": "keyword.operator.assignment.loom-env" },
+        "3": { "name": "string.unquoted.value.loom-env" }
+      }
+    },
+    {
+      "comment": "Anything else that is not blank is not a valid line.",
+      "match": "^\\s*\\S.*$",
+      "name": "invalid.illegal.line.loom-env"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 ---
 name: doc
-description: 我这半的说明。 The upstream description.
+description: Our half of the description. The upstream description.
 ---
 
 ## Overview
@@ -8,16 +8,16 @@ description: 我这半的说明。 The upstream description.
 Upstream overview text.
 
 <!-- MINE:BEGIN -->
-## 调度层关系
+## Where this fits
 
-我加的一节。
+A section we added.
 <!-- MINE:END -->
 ## Process
 
 Upstream process text.
 
 <!-- MINE:BEGIN -->
-## 附录
+## Appendix
 
-追加到末尾的一节。
+A section appended at the end.
 <!-- MINE:END -->

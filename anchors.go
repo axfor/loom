@@ -1,10 +1,11 @@
 package loom
 
-// 锚点的三件工具：复核、列出、生成派生视图。
+// Three anchor tools: check, list, and generate the derived view.
 //
-// 按名字锚定买到的是「经线旁边改了也照样落对位置」，代价是**看经线文件时看不见锚点**。
-// 这三件工具把那个可见性还回来，而且比把锚点写进经线更准 ——
-// 它们显示的是此刻真实解析到的位置，不是上次注入时的位置。
+// Anchoring by name buys "lands in the right place even when the warp changes nearby", at the cost of
+// **not seeing the anchors when reading a warp file**. These three tools give that visibility back, and
+// more accurately than writing anchors into the warp would — they show where anchors resolve right now,
+// not where they were when last injected.
 
 import (
 	"fmt"
@@ -12,109 +13,44 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/axfor/loom/ast"
 )
 
 type anchorUse struct {
-	tpl, kind, anchor string
-	named             string // 具名锚点的名字；内联的为空
-	rng               string
+	kind, anchor string
+	within       []Seg
+	ident        bool
+	named        string // name of a named anchor (legacy syntax); empty for inline ones
+	rng          Pos
 }
 
-// anchorUses 收集一份模板里所有**可寻址**的锚点使用。
+// anchorUses collects every anchor a template places something on, in upstream.
 //
-// 【内联的也要收】`after "heading" "X"` 这种不进 anchor 块声明。
-// 只查具名声明的话，这道门会报「0 个全部有效」—— 而那句话读起来和全绿一模一样。
-// *一个门报"检查了 0 项"时，它说的是"我没在工作"，不是"没问题"。*
+// Inline anchors count too, not only named ones. A tool that checks only named declarations reports
+// "all 0 valid", which reads exactly like all green: a check that covered 0 items is not working.
 func anchorUses(t *Template) []anchorUse {
 	var out []anchorUse
-	var walk func([]Stmt)
-	walk = func(ss []Stmt) {
-		for _, s := range ss {
-			switch s.Op {
-			case "after", "before", "replace":
-				if s.Kind == "anchor" {
-					if d, ok := t.Anchors[s.Anchor]; ok {
-						out = append(out, anchorUse{t.Path, d.Kind, d.Anchor, s.Anchor, d.Rng.String()})
-					}
-					continue
+	for _, s := range t.Stmts {
+		switch s.Op {
+		case "after", "before", "replace", "drop":
+			if s.Kind == "anchor" {
+				if d, ok := t.Anchors[s.Anchor]; ok {
+					out = append(out, anchorUse{kind: d.Kind, anchor: d.Anchor, named: s.Anchor, rng: d.Rng})
 				}
-				out = append(out, anchorUse{t.Path, s.Kind, s.Anchor, "", s.Rng.String()})
-			case "in":
-				// 嵌套块里的锚点指的是嵌套体，单独一套坐标，这里不查
+				continue
 			}
+			out = append(out, anchorUse{kind: s.Kind, anchor: s.Anchor, within: s.Within, ident: s.Ident, rng: s.Rng})
+		case "in":
+			// anchors inside a view refer to the key's value, with coordinates of their own; not listed here
 		}
 	}
-	walk(t.Stmts)
 	return out
 }
 
-// CheckAnchors 逐个复核所有模板里的锚点在**当前经线**里还找不找得到、唯不唯一。
-// 这就是「同步后补充不丢失」的机械形式：经线挪走了那块，这里当场点名，
-// 而不是等到某天产物少了一段才发现。
-func CheckAnchors(c *Config, w io.Writer) error {
-	tpls, err := Templates(c)
-	if err != nil {
-		return err
-	}
-	var bad []string
-	n := 0
-	for _, p := range tpls {
-		t, err := LoadTemplate(p)
-		if err != nil {
-			bad = append(bad, err.Error())
-			continue
-		}
-		uses := anchorUses(t)
-		if len(uses) == 0 {
-			continue
-		}
-		from := t.From
-		if from == "" {
-			from = c.Warp
-		}
-		src, ok, err := c.read(from, t.BasePath)
-		if err != nil {
-			bad = append(bad, fmt.Sprintf("%s: %v", p, err))
-			continue
-		}
-		if !ok {
-			bad = append(bad, fmt.Sprintf("%s: 基底文件不存在（%s 层的 %s）", p, from, t.BasePath))
-			continue
-		}
-		tree := ast.New(t.Type, src)
-		for _, u := range uses {
-			n++
-			hits := tree.Find(u.kind, u.anchor)
-			name := fmt.Sprintf("%s %q", u.kind, u.anchor)
-			if u.named != "" {
-				name = fmt.Sprintf("`%s`（%s %q）", u.named, u.kind, u.anchor)
-			}
-			switch {
-			case len(hits) == 0:
-				bad = append(bad, fmt.Sprintf("%s: 锚点 %s 在当前经线里找不到了 —— "+
-					"经线多半改了那个标题/函数名，纬线那段会静默落不到位", u.rng, name))
-			case len(hits) > 1:
-				bad = append(bad, fmt.Sprintf("%s: 锚点 %s 在当前经线里匹配到 %d 处 —— "+
-					"取第一个会把内容插到错的地方，而产物看起来完全正常", u.rng, name, len(hits)))
-			}
-		}
-	}
-	if len(bad) > 0 {
-		fmt.Fprintf(w, "⛔ %d 个锚点在这次经线同步后失效：\n", len(bad))
-		for _, b := range bad {
-			fmt.Fprintf(w, "  · %s\n", b)
-		}
-		return fmt.Errorf("%d 个锚点失效", len(bad))
-	}
-	fmt.Fprintf(w, "✅ 锚点全部仍然有效（%d 个）\n", n)
-	return nil
-}
-
-// ListAnchors 把每个锚点当前解析到经线的哪一行列出来。
+// ListAnchors lists the upstream line each anchor currently resolves to. It resolves names the same
+// way weaving does (identifier form, section paths), so what it shows is what the build will use.
 func ListAnchors(c *Config, w io.Writer) error {
 	tpls, err := Templates(c)
 	if err != nil {
@@ -122,7 +58,7 @@ func ListAnchors(c *Config, w io.Writer) error {
 	}
 	n := 0
 	for _, p := range tpls {
-		t, err := LoadTemplate(p)
+		t, err := LoadTemplate(c, p)
 		if err != nil {
 			return err
 		}
@@ -130,22 +66,26 @@ func ListAnchors(c *Config, w io.Writer) error {
 		if len(uses) == 0 {
 			continue
 		}
-		from := t.From
-		if from == "" {
-			from = c.Warp
-		}
-		src, _, _ := c.read(from, t.BasePath)
+		src, _, _ := c.read(c.Warp, t.BasePath)
 		tree := ast.New(t.Type, src)
 		fmt.Fprintln(w, t.Target)
 		for _, u := range uses {
-			hits := tree.Find(u.kind, u.anchor)
-			where := "★找不到"
-			if len(hits) == 1 {
-				where = fmt.Sprintf("经线第 %d 行", hits[0][0]+1)
-			} else if len(hits) > 1 {
-				where = fmt.Sprintf("★匹配 %d 处", len(hits))
-			}
 			label := u.anchor
+			var where string
+			if span, name, err := locate(tree, u.kind, u.within, u.anchor, u.ident, Stmt{Rng: u.rng}); err == nil {
+				label, where = name, fmt.Sprintf("upstream line %d", span[0]+1)
+			} else if hits := len(tree.Find(u.kind, u.anchor)); hits > 1 {
+				where = fmt.Sprintf("★ %d matches", hits)
+			} else {
+				where = "★ not found"
+			}
+			if len(u.within) > 0 {
+				var q []string
+				for _, seg := range u.within {
+					q = append(q, seg.Name)
+				}
+				label = strings.Join(append(q, label), " › ")
+			}
 			if u.named != "" {
 				label = u.named
 			}
@@ -153,7 +93,7 @@ func ListAnchors(c *Config, w io.Writer) error {
 			n++
 		}
 	}
-	fmt.Fprintf(w, "共 %d 个锚点\n", n)
+	fmt.Fprintf(w, "%d anchors total\n", n)
 	return nil
 }
 
@@ -162,7 +102,7 @@ func trunc(s string, n int) string {
 	if len(r) <= n {
 		return s
 	}
-	return string(r[:n-1]) + "…"
+	return string(r[:n-3]) + "..."
 }
 
 var extType = map[string]string{".md": "markdown", ".toml": "toml", ".sh": "shell", ".json": "json"}
@@ -173,26 +113,28 @@ var commentOf = map[string][2]string{
 	"text":     {"# ", ""},
 }
 
-// AnchoredView 生成派生视图 —— 经线那份 + 每个**可寻址锚点**的标注。
+// AnchoredView generates the derived view — the warp copy plus a note at each **addressable anchor**.
 //
-// 【它是什么，不是什么】它是派生视图，不是源也不是产物：不参与编织、不进产物、不提交。
-// 经线那一层因此仍然逐字节等于上游，「抽掉纬线逐字节比」仍是一行 diff。
+// What it is and is not: a derived view, neither source nor product — it takes no part in weaving, does
+// not go into the product, and is not committed. So the warp layer stays byte-identical to upstream, and
+// "strip the weft and compare byte for byte" is still a one-line diff.
 //
-// 【为什么标全部而不只标用过的】写模板时真正想知道的是「这个文件我能锚到哪些点」。
-// 只标用过的，等于只显示已经用过的；而没用过的那些才是你要找的。
+// Why mark every anchor, not just the used ones: when writing a template, what you really want to know
+// is "which points in this file can I anchor to". Marking only the used ones shows only what is already
+// used — and the unused ones are what you are looking for.
 func AnchoredView(c *Config, w io.Writer) error {
 	if c.Anchored == "" {
-		return fmt.Errorf("loom.lm 里没有 anchored —— 没说视图往哪儿写")
+		return fmt.Errorf("loom.lm has no anchored setting — it does not say where to write the view")
 	}
 	tpls, err := Templates(c)
 	if err != nil {
 		return err
 	}
-	// 只给「真的在织」的文件出视图 —— 经线几百个文件里绝大多数没有模板，
-	// 全出一遍只会把真正要看的那几十个淹掉。
+	// Only generate views for files that are actually woven — most of the hundreds of warp files have no
+	// template, and generating them all would bury the few dozen that matter.
 	want := map[string]bool{}
 	for _, p := range tpls {
-		t, err := LoadTemplate(p)
+		t, err := LoadTemplate(c, p)
 		if err != nil {
 			return err
 		}
@@ -217,7 +159,7 @@ func AnchoredView(c *Config, w io.Writer) error {
 			typ = "text"
 		}
 		if typ == "json" {
-			return nil // JSON 没有注释语法，标不进去
+			return nil // JSON has no comment syntax, so nothing can be marked
 		}
 		b, err := os.ReadFile(p)
 		if err != nil {
@@ -228,7 +170,7 @@ func AnchoredView(c *Config, w io.Writer) error {
 		at := map[int][]string{}
 		for _, kind := range tree.Kinds() {
 			if kind == "line" {
-				continue // 每行都是 line 锚点，标出来只是噪声
+				continue // every line is a line anchor; marking them would just be noise
 			}
 			for _, nd := range ast.Addressable(tree, kind) {
 				at[nd.Line] = append(at[nd.Line], fmt.Sprintf("%s %q", kind, nd.Name))
@@ -237,9 +179,9 @@ func AnchoredView(c *Config, w io.Writer) error {
 		cm := commentOf[typ]
 		lines := strings.Split(text, "\n")
 		res := []string{
-			fmt.Sprintf("%s这是**派生视图**，别改也别引用：源是 %s/%s，标注由 loom view 生成%s",
+			fmt.Sprintf("%sThis is a **derived view**; do not edit or reference it. Source: %s/%s; notes generated by lm view%s",
 				cm[0], c.Layers[c.Warp].Dir, rel, cm[1]),
-			fmt.Sprintf("%s下面每个 ⚓ 标的是可寻址锚点，模板里可直接写 after \"<种类>\" \"<名字>\"%s", cm[0], cm[1]),
+			fmt.Sprintf("%sEach ⚓ below marks an addressable anchor; a template can use it directly, e.g. base.\"<name>\".after(\"...\")%s", cm[0], cm[1]),
 			"",
 		}
 		for i, l := range lines {
@@ -259,9 +201,7 @@ func AnchoredView(c *Config, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(w, "✓ 派生视图：%d 个文件、%d 个可寻址锚点 → %s（不提交，随时可重生成）\n",
+	fmt.Fprintf(w, "✓ derived view: %d files, %d addressable anchors -> %s (not committed; regenerate any time)\n",
 		files, marks, c.Anchored)
 	return nil
 }
-
-var _ = sort.Strings

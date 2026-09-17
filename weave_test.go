@@ -15,25 +15,25 @@ func load(t *testing.T) *loom.Config {
 	t.Helper()
 	c, err := loom.LoadConfig(filepath.Join(fixture, loom.ConfigName))
 	if err != nil {
-		t.Fatalf("读配置: %v", err)
+		t.Fatalf("load settings: %v", err)
 	}
 	return c
 }
 
 func weave(t *testing.T, c *loom.Config, tpl string) string {
 	t.Helper()
-	tm, err := loom.LoadTemplate(filepath.Join(fixture, "templates", tpl))
+	tm, err := loom.LoadTemplate(c, filepath.Join(fixture, "templates", tpl))
 	if err != nil {
-		t.Fatalf("%s 解析失败: %v", tpl, err)
+		t.Fatalf("%s: parse failed: %v", tpl, err)
 	}
 	out, err := loom.Weave(c, tm)
 	if err != nil {
-		t.Fatalf("%s 编织失败: %v", tpl, err)
+		t.Fatalf("%s: weave failed: %v", tpl, err)
 	}
 	return out
 }
 
-// 产物必须与金样逐字节相同 —— 编织是确定的，同样的源永远织出同一匹布。
+// The product must match the golden file byte for byte: weaving is deterministic, the same sources always weave the same cloth.
 func TestWeaveGolden(t *testing.T) {
 	c := load(t)
 	for _, cse := range []struct{ tpl, golden string }{
@@ -46,13 +46,13 @@ func TestWeaveGolden(t *testing.T) {
 			t.Fatal(err)
 		}
 		if got != string(want) {
-			t.Errorf("%s 与金样不同\n--- 得到 ---\n%s\n--- 期望 ---\n%s", cse.tpl, got, want)
+			t.Errorf("%s differs from golden\n--- got ---\n%s\n--- want ---\n%s", cse.tpl, got, want)
 		}
 	}
 }
 
-// 这门语言存在的理由：**抽掉纬线，经线原样还在**。
-// 这条不是文档里的一句话，是可以机械验证的性质。
+// Why the language exists: **pull the weft out and the warp is still there**.
+// This is not a sentence in the docs; it is a property that can be checked mechanically.
 func TestWarpSurvivesStrip(t *testing.T) {
 	c := load(t)
 	got := weave(t, c, "doc.lm")
@@ -62,9 +62,9 @@ func TestWarpSurvivesStrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// frontmatter 是显式整块换掉的（frontmatter = mine），不在标记内，单独比正文
+	// the frontmatter is replaced whole on purpose (frontmatter = mine) and is not inside marks, so compare the body only
 	if body(stripped) != body(string(up)) {
-		t.Errorf("剥掉纬线之后正文与经线不同\n--- 剥完 ---\n%q\n--- 经线 ---\n%q",
+		t.Errorf("with the weft stripped, the body differs from the warp\n--- stripped ---\n%q\n--- warp ---\n%q",
 			body(stripped), body(string(up)))
 	}
 }
@@ -98,32 +98,32 @@ func body(s string) string {
 	return s
 }
 
-// 错误必须响，而且要说清是哪一种 —— 静默穿错位置的产物看起来完全正常。
+// Errors must be loud and say which kind they are: a product woven in the wrong place looks perfectly normal.
 func TestErrorsAreLoud(t *testing.T) {
 	c := load(t)
 	cases := []struct {
 		name, tpl, want string
 	}{
-		{"锚点找不到", `weave "doc.md" {
+		{"anchor not found", `weave "doc.md" {
   type = "markdown"
-  after "heading" "No Such Section" { insert = mine.heading["附录"] }
-}`, "锚点找不到"},
-		{"节点种类用错", `weave "doc.md" {
+  after "heading" "No Such Section" { insert = mine.heading["Appendix"] }
+}`, "anchor not found"},
+		{"wrong node kind", `weave "doc.md" {
   type = "markdown"
-  after "key" "Overview" { insert = mine.heading["附录"] }
-}`, "这个类型没有"},
-		{"未知层名", `weave "doc.md" {
+  after "key" "Overview" { insert = mine.heading["Appendix"] }
+}`, "this type has no"},
+		{"unknown layer", `weave "doc.md" {
   type = "markdown"
   append = nosuch.body
-}`, "未知层名"},
-		{"引用缺锚点", `weave "doc.md" {
+}`, "unknown layer name"},
+		{"reference without anchor", `weave "doc.md" {
   type = "markdown"
   append = mine.heading
-}`, "需要一个锚点"},
-		{"基底不存在", `weave "nope.md" {
+}`, "needs an anchor"},
+		{"missing base", `weave "nope.md" {
   type = "markdown"
   append = mine.body
-}`, "层里没有"},
+}`, "has no nope.md"},
 	}
 	for _, cse := range cases {
 		t.Run(cse.name, func(t *testing.T) {
@@ -132,16 +132,16 @@ func TestErrorsAreLoud(t *testing.T) {
 				_, err = loom.Weave(c, tm)
 			}
 			if err == nil {
-				t.Fatal("本该报错，却编织成功了 —— 这正是这门语言要根除的失败形状")
+				t.Fatal("expected an error, but weaving succeeded — exactly the failure this language exists to prevent")
 			}
 			if !strings.Contains(err.Error(), cse.want) {
-				t.Errorf("报错内容对不上\n得到: %v\n期望含: %s", err, cse.want)
+				t.Errorf("wrong error\ngot: %v\nwant it to contain: %s", err, cse.want)
 			}
 		})
 	}
 }
 
-// 锚点匹配到多处必须报错，不能取第一个。
+// An anchor matching several places is an error; never take the first.
 func TestAmbiguousAnchorRefuses(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, filepath.Join(dir, "loom.lm"), `
@@ -167,12 +167,12 @@ weave "a.md" {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tm, err := loom.LoadTemplate(filepath.Join(dir, "t", "a.lm"))
+	tm, err := loom.LoadTemplate(c, filepath.Join(dir, "t", "a.lm"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := loom.Weave(c, tm); err == nil || !strings.Contains(err.Error(), "匹配到 2 处") {
-		t.Fatalf("重名锚点该拒绝，得到: %v", err)
+	if _, err := loom.Weave(c, tm); err == nil || !strings.Contains(err.Error(), "matches 2 places") {
+		t.Fatalf("a duplicate anchor must be refused, got: %v", err)
 	}
 }
 
@@ -186,12 +186,12 @@ func mustWrite(t *testing.T, p, s string) {
 	}
 }
 
-// 语句顺序有意义：同一个锚点上的两条插入，写在前的就在前。
+// Statement order matters: of two insertions at the same anchor, the one written first comes first.
 func TestStatementOrderIsSourceOrder(t *testing.T) {
 	c := load(t)
 	tm, err := loom.ParseTemplate("t.lm", []byte(`weave "doc.md" {
   type = "markdown"
-  append = [mine.heading["调度层关系"], mine.heading["附录"]]
+  append = [mine.heading["Where this fits"], mine.heading["Appendix"]]
 }`))
 	if err != nil {
 		t.Fatal(err)
@@ -200,14 +200,14 @@ func TestStatementOrderIsSourceOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	i, j := strings.Index(out, "## 调度层关系"), strings.Index(out, "## 附录")
+	i, j := strings.Index(out, "## Where this fits"), strings.Index(out, "## Appendix")
 	if i < 0 || j < 0 || i > j {
-		t.Errorf("追加顺序没有跟着模板走：调度层关系@%d 附录@%d", i, j)
+		t.Errorf("append order does not follow the template: Where this fits@%d Appendix@%d", i, j)
 	}
 }
 
-// list 的元信息必须和真正编织时用的是同一份解析 —— 外层的门靠它，
-// 而「每道门自己再解析一遍」正是这条命令要消灭的东西。
+// list must report metadata from the same parse that weaving uses: outside tools rely on it, and
+// "every tool parses templates again on its own" is exactly what this command exists to remove.
 func TestDescribeMatchesWeave(t *testing.T) {
 	c := load(t)
 	i, err := loom.Describe(c, filepath.Join(fixture, "templates", "doc.lm"))
@@ -215,23 +215,23 @@ func TestDescribeMatchesWeave(t *testing.T) {
 		t.Fatal(err)
 	}
 	if i.Target != "doc.md" || i.Type != "markdown" || i.From != "upstream" {
-		t.Errorf("元信息不对: %+v", i)
+		t.Errorf("wrong metadata: %+v", i)
 	}
 	if i.Path != "doc.md" {
-		t.Errorf("基底路径默认该等于产物路径，得到 %q", i.Path)
+		t.Errorf("the base path should default to the product path, got %q", i.Path)
 	}
 	if len(i.Anchors) != 1 || i.Anchors[0].Kind != "heading" || i.Anchors[0].Anchor != "Overview" {
-		t.Errorf("锚点没报全: %+v", i.Anchors)
+		t.Errorf("anchors not all reported: %+v", i.Anchors)
 	}
-	// frontmatter + after 的 insert + append 的 insert
+	// frontmatter + the insert of after + the insert of append
 	if len(i.Inserts) != 3 {
-		t.Errorf("内容来源该有 3 条，得到 %d: %+v", len(i.Inserts), i.Inserts)
+		t.Errorf("expected 3 content sources, got %d: %+v", len(i.Inserts), i.Inserts)
 	}
 }
 
-// 一个产物两份模板 —— 谁生效取决于枚举顺序，织机必须当场拒绝。
-// 【为什么归这里管】只有织机读全部模板；让下游的门各自写正则去补，
-// 就会出现"那道门按产物路径做键、重复的早被合并掉"这种结构上不可能触发的检查。
+// Two templates for one product: which one wins would depend on enumeration order, so the loom refuses on the spot.
+// Why here: only the loom reads every template. Leaving it to downstream tools with their own regexes produces
+// checks that can never fire, such as a tool keyed by product path where duplicates were already merged away.
 func TestDuplicateTargetRefused(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, filepath.Join(dir, "loom.lm"), `
@@ -253,11 +253,11 @@ weave "a.md" {
 		t.Fatal(err)
 	}
 	if _, err := loom.Templates(c); err != nil {
-		t.Fatalf("只有一份时不该报错：%v", err)
+		t.Fatalf("a single template must not be an error: %v", err)
 	}
 	mustWrite(t, filepath.Join(dir, "t", "copy-of-a.lm"), one)
 	_, err = loom.Templates(c)
-	if err == nil || !strings.Contains(err.Error(), "两份模板") {
-		t.Fatalf("重名 target 该被拒绝，得到：%v", err)
+	if err == nil || !strings.Contains(err.Error(), "has two templates") {
+		t.Fatalf("a duplicate target must be refused, got: %v", err)
 	}
 }

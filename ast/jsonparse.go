@@ -1,6 +1,7 @@
 package ast
 
-// JSON 的解析。写自己的而不是用 encoding/json，只为一件事：**记住键的顺序**。
+// JSON parsing. We write our own instead of using encoding/json for one reason
+// only: **remembering key order**.
 
 import (
 	"fmt"
@@ -9,7 +10,7 @@ import (
 	"unicode/utf16"
 )
 
-// Parse 读一段 JSON 文本。
+// Parse reads a piece of JSON text.
 func Parse(text string) (*Value, error) {
 	p := &jparser{s: text}
 	p.ws()
@@ -22,7 +23,7 @@ func Parse(text string) (*Value, error) {
 	}
 	p.ws()
 	if p.i != len(p.s) {
-		return nil, fmt.Errorf("第 %d 字节之后还有多余内容", p.i)
+		return nil, fmt.Errorf("unexpected trailing content after byte %d", p.i)
 	}
 	return v, nil
 }
@@ -46,7 +47,7 @@ func (p *jparser) ws() {
 func (p *jparser) value() (*Value, error) {
 	p.ws()
 	if p.i >= len(p.s) {
-		return nil, fmt.Errorf("内容提前结束")
+		return nil, fmt.Errorf("unexpected end of input")
 	}
 	switch c := p.s[p.i]; {
 	case c == '{':
@@ -86,7 +87,7 @@ func (p *jparser) object() (*Value, error) {
 		}
 		p.ws()
 		if p.i >= len(p.s) || p.s[p.i] != ':' {
-			return nil, fmt.Errorf("第 %d 字节：键后面要跟 :", p.i)
+			return nil, fmt.Errorf("byte %d: expected : after key", p.i)
 		}
 		p.i++
 		val, err := p.value()
@@ -96,7 +97,7 @@ func (p *jparser) object() (*Value, error) {
 		v.Set(k, val)
 		p.ws()
 		if p.i >= len(p.s) {
-			return nil, fmt.Errorf("对象没有收尾的 }")
+			return nil, fmt.Errorf("object is missing its closing }")
 		}
 		if p.s[p.i] == ',' {
 			p.i++
@@ -106,7 +107,7 @@ func (p *jparser) object() (*Value, error) {
 			p.i++
 			return v, nil
 		}
-		return nil, fmt.Errorf("第 %d 字节：对象里要么是 , 要么是 }", p.i)
+		return nil, fmt.Errorf("byte %d: expected , or } in object", p.i)
 	}
 }
 
@@ -126,7 +127,7 @@ func (p *jparser) array() (*Value, error) {
 		v.Elems = append(v.Elems, e)
 		p.ws()
 		if p.i >= len(p.s) {
-			return nil, fmt.Errorf("数组没有收尾的 ]")
+			return nil, fmt.Errorf("array is missing its closing ]")
 		}
 		if p.s[p.i] == ',' {
 			p.i++
@@ -136,13 +137,13 @@ func (p *jparser) array() (*Value, error) {
 			p.i++
 			return v, nil
 		}
-		return nil, fmt.Errorf("第 %d 字节：数组里要么是 , 要么是 ]", p.i)
+		return nil, fmt.Errorf("byte %d: expected , or ] in array", p.i)
 	}
 }
 
 func (p *jparser) str() (string, error) {
 	if p.i >= len(p.s) || p.s[p.i] != '"' {
-		return "", fmt.Errorf("第 %d 字节：这里要一个字符串", p.i)
+		return "", fmt.Errorf("byte %d: expected a string", p.i)
 	}
 	p.i++
 	var b strings.Builder
@@ -176,7 +177,7 @@ func (p *jparser) str() (string, error) {
 			b.WriteByte('\f')
 		case 'u':
 			if p.i+4 >= len(p.s) {
-				return "", fmt.Errorf("第 %d 字节：\\u 后面不足四位", p.i)
+				return "", fmt.Errorf("byte %d: fewer than four hex digits after \\u", p.i)
 			}
 			n, err := strconv.ParseUint(p.s[p.i+1:p.i+5], 16, 32)
 			if err != nil {
@@ -184,7 +185,8 @@ func (p *jparser) str() (string, error) {
 			}
 			p.i += 4
 			r := rune(n)
-			// 代理对：😀 是一个字符，分开写会得到两个废码点
+			// Surrogate pair: an emoji such as U+1F600 is one character; decoding the
+			// halves separately would yield two garbage code points.
 			if utf16.IsSurrogate(r) && p.i+6 < len(p.s) && p.s[p.i+1] == '\\' && p.s[p.i+2] == 'u' {
 				if n2, err := strconv.ParseUint(p.s[p.i+3:p.i+7], 16, 32); err == nil {
 					if dec := utf16.DecodeRune(r, rune(n2)); dec != 0xFFFD {
@@ -195,11 +197,11 @@ func (p *jparser) str() (string, error) {
 			}
 			b.WriteRune(r)
 		default:
-			return "", fmt.Errorf("第 %d 字节：认不出的转义 \\%c", p.i, p.s[p.i])
+			return "", fmt.Errorf("byte %d: unrecognized escape \\%c", p.i, p.s[p.i])
 		}
 		p.i++
 	}
-	return "", fmt.Errorf("字符串没有收尾的引号")
+	return "", fmt.Errorf("string is missing its closing quote")
 }
 
 func (p *jparser) number() (*Value, error) {
@@ -208,11 +210,11 @@ func (p *jparser) number() (*Value, error) {
 		p.i++
 	}
 	if st == p.i {
-		return nil, fmt.Errorf("第 %d 字节：认不出的值", p.i)
+		return nil, fmt.Errorf("byte %d: unrecognized value", p.i)
 	}
 	lit := p.s[st:p.i]
 	if _, err := strconv.ParseFloat(lit, 64); err != nil {
-		return nil, fmt.Errorf("第 %d 字节：`%s` 不是合法数字", st, lit)
+		return nil, fmt.Errorf("byte %d: `%s` is not a valid number", st, lit)
 	}
 	return &Value{Kind: Number, Num: lit}, nil
 }

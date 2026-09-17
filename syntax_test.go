@@ -1,0 +1,372 @@
+package loom_test
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/axfor/loom"
+)
+
+const objConfig = `
+up        "upstream"
+me        "mine"
+templates "t"
+mark      markdown "<!-- MINE:BEGIN -->" "<!-- MINE:END -->"
+`
+
+// objRepo creates a repository with new-style settings: upstream and our doc.md / run.sh come from
+// the golden repository, and files are written in by relative path.
+func objRepo(t *testing.T, files map[string]string) (*loom.Config, string) {
+	t.Helper()
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "loom.lm"), objConfig)
+	for _, layer := range []string{"upstream", "mine"} {
+		for _, name := range []string{"doc.md", "run.sh"} {
+			b, err := os.ReadFile(filepath.Join(fixture, layer, name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			mustWrite(t, filepath.Join(dir, layer, name), string(b))
+		}
+	}
+	for p, s := range files {
+		mustWrite(t, filepath.Join(dir, filepath.FromSlash(p)), s)
+	}
+	c, err := loom.LoadConfig(filepath.Join(dir, "loom.lm"))
+	if err != nil {
+		t.Fatalf("load settings: %v", err)
+	}
+	return c, dir
+}
+
+// weaveObj writes src as the template of product target, loads it and weaves it.
+func weaveObj(t *testing.T, c *loom.Config, dir, target, src string) (string, error) {
+	t.Helper()
+	p := filepath.Join(dir, "t", filepath.FromSlash(target)+loom.Ext)
+	mustWrite(t, p, src)
+	tm, err := loom.LoadTemplate(c, p)
+	if err != nil {
+		return "", err
+	}
+	return loom.Weave(c, tm)
+}
+
+func golden(t *testing.T, name string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(fixture, "golden", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// Object syntax and the legacy syntax weave the same cloth: same meaning, different spelling, byte-identical product.
+func TestObjectSyntaxGolden(t *testing.T) {
+	c, dir := objRepo(t, nil)
+	for _, cse := range []struct{ target, src string }{
+		{"doc.md", `
+// headings written as identifiers, content as strings
+base.frontmatter.set(self.frontmatter)
+base.frontmatter.join("description")
+base.Overview.after("Where this fits")
+base.append("Appendix")
+`},
+		{"run.sh", `
+base.main.before(self.boot)
+`},
+	} {
+		got, err := weaveObj(t, c, dir, cse.target, cse.src)
+		if err != nil {
+			t.Fatalf("%s: %v", cse.target, err)
+		}
+		if want := golden(t, cse.target); got != want {
+			t.Errorf("%s differs from golden\n--- got ---\n%s\n--- want ---\n%s", cse.target, got, want)
+		}
+	}
+}
+
+// (...) on one line and { ... } over several lines are two layouts of the same statement.
+func TestParenAndBlockAreEquivalent(t *testing.T) {
+	c, dir := objRepo(t, nil)
+	paren, err := weaveObj(t, c, dir, "doc.md", `base.Overview.after("Where this fits", "Appendix")`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	block, err := weaveObj(t, c, dir, "doc.md", `
+base.Overview.after{
+    "Where this fits"
+    "Appendix"
+}
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if paren != block {
+		t.Errorf("the two layouts weave differently\n--- (...) ---\n%s\n--- { ... } ---\n%s", paren, block)
+	}
+}
+
+// _ in an identifier matches a space or an underscore; when both exist, no guessing: the string form is required.
+func TestIdentifierNames(t *testing.T) {
+	c, dir := objRepo(t, map[string]string{
+		"upstream/a.md": "## Usage Tips\n\nx\n\n## Setup\n\ny\n",
+		"upstream/b.md": "## A B\n\nx\n\n## A_B\n\ny\n",
+		"mine/a.md":     "## Usage notes\n\nz\n",
+		"mine/b.md":     "## Usage notes\n\nz\n",
+	})
+	out, err := weaveObj(t, c, dir, "a.md", `base.Usage_Tips.after("Usage notes")`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i, j := strings.Index(out, "## Usage notes"), strings.Index(out, "## Setup"); i < 0 || i > j {
+		t.Errorf("not inserted after Usage Tips:\n%s", out)
+	}
+	if _, err := weaveObj(t, c, dir, "b.md", `base.A_B.after("Usage notes")`); err == nil || !strings.Contains(err.Error(), "use the string form") {
+		t.Errorf("A_B matches two headings and must be refused, got: %v", err)
+	}
+	if _, err := weaveObj(t, c, dir, "b.md", `base."A B".after("Usage notes")`); err != nil {
+		t.Errorf("the string form names one heading exactly and must not be ambiguous: %v", err)
+	}
+	if _, err := weaveObj(t, c, dir, "a.md", `base.Usage_Tip.after("Usage notes")`); err == nil || !strings.Contains(err.Error(), `closest is "Usage Tips"`) {
+		t.Errorf("a misspelled name must suggest the closest one, got: %v", err)
+	}
+}
+
+// A backtick literal is our content: it is wrapped in marks, and stripping them leaves upstream intact.
+func TestLiteralIsMarkedAsOurs(t *testing.T) {
+	c, dir := objRepo(t, nil)
+	out, err := weaveObj(t, c, dir, "doc.md", "base.append(`\n    ## Written in place\n\n    A paragraph.\n    `)\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "<!-- MINE:BEGIN -->\n## Written in place\n\nA paragraph.\n<!-- MINE:END -->"
+	if !strings.Contains(out, want) {
+		t.Errorf("the literal was not dedented, or not wrapped in marks:\n%s", out)
+	}
+	up, _ := os.ReadFile(filepath.Join(dir, "upstream", "doc.md"))
+	if strings.TrimRight(stripMarks(out, "<!-- MINE:BEGIN -->", "<!-- MINE:END -->"), "\n") != strings.TrimRight(string(up), "\n") {
+		t.Errorf("with marks stripped, the product differs from upstream:\n%s", out)
+	}
+}
+
+// Removing upstream content needs a reason; only then is it removed.
+func TestDropNeedsReason(t *testing.T) {
+	c, dir := objRepo(t, nil)
+	if _, err := weaveObj(t, c, dir, "doc.md", `base.Process.drop()`); err == nil || !strings.Contains(err.Error(), "needs a reason") {
+		t.Errorf("a drop without a reason must be refused, got: %v", err)
+	}
+	out, err := weaveObj(t, c, dir, "doc.md", `base.Process.drop(reason: "we describe our own process")`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "## Process") || !strings.Contains(out, "## Overview") {
+		t.Errorf("only the Process section should be removed:\n%s", out)
+	}
+}
+
+// Replace the whole file with ours: base.replace(self, reason: ...).
+func TestWholeFileReplace(t *testing.T) {
+	c, dir := objRepo(t, nil)
+	out, err := weaveObj(t, c, dir, "doc.md", `base.replace(self, reason: "rewritten whole")`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mine, _ := os.ReadFile(filepath.Join(dir, "mine", "doc.md"))
+	if out != string(mine) {
+		t.Errorf("a whole-file replace must equal our file:\n%s", out)
+	}
+}
+
+// import: the extension may be left out, but several matching files is an error; base can point at another upstream file.
+func TestImports(t *testing.T) {
+	c, dir := objRepo(t, map[string]string{
+		"mine/shared/notes.md":   "## Überblick\n\nShared content.\n",
+		"mine/shared/twice.md":   "## x\n",
+		"mine/shared/twice.txt":  "x\n",
+		"upstream/old/guide.md":  "## Old Overview\n\nUpstream under its old name.\n",
+		"mine/cmd.md":            "---\ndescription: ours\n---\n\n## Our section\n\nContent.\n",
+		"mine/cmd.toml":          "description = \"our description\"\n",
+		"upstream/cmd.toml":      "description = \"Upstream\"\nprompt = \"\"\"\n## Steps\n\ndo it\n\"\"\"\n",
+		"upstream/sub/page.md":   "## Page\n\np\n",
+		"mine/sub/page-extra.md": "## Extra\n\nq\n",
+	})
+	out, err := weaveObj(t, c, dir, "doc.md", `
+import notes "/shared/notes"
+base.append(notes.Überblick)
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "Shared content.") {
+		t.Errorf("imported content is missing:\n%s", out)
+	}
+
+	if _, err := weaveObj(t, c, dir, "doc.md", `import twice "/shared/twice"`+"\nbase.append(twice.body)\n"); err == nil || !strings.Contains(err.Error(), "add the extension") {
+		t.Errorf("without an extension two files match; must be refused, got: %v", err)
+	}
+	if _, err := weaveObj(t, c, dir, "doc.md", `import x "shared/notes"`+"\nbase.append(x.body)\n"); err == nil || !strings.Contains(err.Error(), "must start with ./, ../ or /") {
+		t.Errorf("a path not starting with ./ ../ / must be refused, got: %v", err)
+	}
+	if _, err := weaveObj(t, c, dir, "doc.md", `import x "../../etc/passwd"`+"\nbase.append(x.body)\n"); err == nil || !strings.Contains(err.Error(), "escapes the") {
+		t.Errorf("a path escaping the layer must be refused, got: %v", err)
+	}
+
+	// a relative path starts at the product's directory
+	out, err = weaveObj(t, c, dir, "sub/page.md", `
+import extra "./page-extra"
+base.Page.after(extra.Extra)
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "## Extra") {
+		t.Errorf("relative path not resolved:\n%s", out)
+	}
+
+	// base points at another upstream file (a file renamed upstream)
+	out, err = weaveObj(t, c, dir, "doc.md", `
+import base "/old/guide"
+base.Old_Overview.after("Appendix")
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "Upstream under its old name.") || !strings.Contains(out, "## Appendix") {
+		t.Errorf("base does not point at old/guide.md:\n%s", out)
+	}
+
+	// a toml key viewed as markdown, with content from another file
+	out, err = weaveObj(t, c, dir, "cmd.toml", `
+import cmdmd "/cmd.md"
+base.description.set(self.description)
+base.prompt.as(markdown).append(cmdmd.body)
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"our description", "## Steps", "## Our section"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("toml is missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// An error says where, what is wrong and how to write it, with file:line:col.
+func TestObjectSyntaxErrors(t *testing.T) {
+	c, dir := objRepo(t, nil)
+	for _, cse := range []struct{ name, src, want string }{
+		{"misspelled object", "bsae.Overview.after(\"Appendix\")", "did you mean base"},
+		{"misspelled method", "base.Overview.aftr(\"Appendix\")", "did you mean after"},
+		{"changing something other than base", "self.Overview.after(\"Appendix\")", "is only a content source"},
+		{"no method call", "base.Overview", "does nothing"},
+		{"two statements on one line", "base.Overview.after(\"Appendix\") base.append(\"Appendix\")", "one statement per line"},
+		{"reason where none is allowed", "base.Overview.after(\"Appendix\", reason: \"x\")", "reason: is only for replace / drop"},
+		{"unterminated string", "base.Overview.after(\"Appendix)", "unterminated string"},
+		{"block without newline", "base.Overview.after{ \"Appendix\" }", "expected a newline after `{`"},
+		{"commas in a block", "base.Overview.after{\n  \"Appendix\",\n  \"Where this fits\"\n}", "without commas"},
+		{"append on a node", "base.Overview.append(\"Appendix\")", "applies to the whole file"},
+		{"content from upstream", "base.Overview.after(base.Process)", "must come from our layer"},
+		{"duplicate import", "import a \"/doc.md\"\nimport a \"/doc.md\"", "imported twice"},
+		{"anchor not found", "base.\"No Such\".after(\"Appendix\")", "anchor not found"},
+	} {
+		t.Run(cse.name, func(t *testing.T) {
+			_, err := weaveObj(t, c, dir, "doc.md", cse.src)
+			if err == nil {
+				t.Fatal("expected an error, but weaving succeeded")
+			}
+			if !strings.Contains(err.Error(), cse.want) {
+				t.Errorf("wrong error\ngot: %v\nwant it to contain: %s", err, cse.want)
+			}
+		})
+	}
+	_, err := weaveObj(t, c, dir, "doc.md", "// the first line is a comment\nbase.Overview.aftr(\"Appendix\")")
+	if err == nil || !strings.Contains(err.Error(), "doc.md.lm:2:15") {
+		t.Errorf("the error must point at file:line:col (aftr at line 2, column 15), got: %v", err)
+	}
+}
+
+// list reports real headings, not the identifier form: tools reading list compare them with upstream headings.
+func TestDescribeResolvesIdentifiers(t *testing.T) {
+	c, dir := objRepo(t, map[string]string{
+		"upstream/a.md": "## Usage Tips\n\nx\n",
+		"mine/a.md":     "## Café Notes\n\nz\n",
+	})
+	p := filepath.Join(dir, "t", "a.md"+loom.Ext)
+	mustWrite(t, p, "base.Usage_Tips.after(self.Café_Notes)\n")
+	i, err := loom.Describe(c, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(i.Anchors) != 1 || i.Anchors[0].Anchor != "Usage Tips" {
+		t.Errorf("the anchor must be reported as the real heading Usage Tips: %+v", i.Anchors)
+	}
+	if len(i.Inserts) != 1 || i.Inserts[0].Anchor != "Café Notes" {
+		t.Errorf("the content source must be reported as the real heading Café Notes: %+v", i.Inserts)
+	}
+}
+
+// Migration: after legacy templates and settings are rewritten, the product is byte-identical to golden.
+func TestMigrateKeepsOutput(t *testing.T) {
+	dir := t.TempDir()
+	for _, sub := range []string{"upstream", "mine", "templates"} {
+		entries, err := os.ReadDir(filepath.Join(fixture, sub))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, e := range entries {
+			b, err := os.ReadFile(filepath.Join(fixture, sub, e.Name()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			mustWrite(t, filepath.Join(dir, sub, e.Name()), string(b))
+		}
+	}
+	cfgOld, err := os.ReadFile(filepath.Join(fixture, loom.ConfigName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(dir, loom.ConfigName)
+	mustWrite(t, cfgPath, string(cfgOld))
+	c, err := loom.LoadConfig(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var migrated []*loom.Migrated
+	for _, name := range []string{"doc.lm", "run.sh.lm"} {
+		m, err := loom.MigrateTemplate(c, filepath.Join(dir, "templates", name))
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		migrated = append(migrated, m)
+	}
+	newCfg, err := loom.MigrateConfig(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range migrated {
+		if err := os.Remove(m.From); err != nil {
+			t.Fatal(err)
+		}
+		mustWrite(t, m.To, m.Text)
+	}
+	mustWrite(t, cfgPath, newCfg)
+	c, err = loom.LoadConfig(cfgPath)
+	if err != nil {
+		t.Fatalf("migrated settings cannot be loaded: %v\n%s", err, newCfg)
+	}
+	for _, m := range migrated {
+		tm, err := loom.LoadTemplate(c, m.To)
+		if err != nil {
+			t.Fatalf("migrated template cannot be loaded: %v\n%s", err, m.Text)
+		}
+		got, err := loom.Weave(c, tm)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := golden(t, tm.Target); got != want {
+			t.Errorf("%s: the product changed after migration\n--- template ---\n%s\n--- got ---\n%s\n--- want ---\n%s", tm.Target, m.Text, got, want)
+		}
+	}
+}

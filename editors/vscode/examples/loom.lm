@@ -1,0 +1,10 @@
+// loom.lm: which layer is upstream, which layer is ours, and where the product is written
+up        "upstream"
+me        "xsdd"
+templates "templates"
+output    "../plugins/XSDD"
+
+// Our content is wrapped in this pair of markers when it goes into a markdown product
+mark      markdown "<!-- XSDD:BEGIN -->" "<!-- XSDD:END -->"
+
+registry  "hooks" "hooks/([A-Za-z0-9._-]+\.(?:sh|js|py))"

@@ -1,12 +1,12 @@
 ---
 name: doc
-description: 我这半的说明。
+description: Our half of the description.
 ---
 
-## 调度层关系
+## Where this fits
 
-我加的一节。
+A section we added.
 
-## 附录
+## Appendix
 
-追加到末尾的一节。
+A section appended at the end.

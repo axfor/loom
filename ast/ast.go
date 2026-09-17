@@ -2,14 +2,16 @@ package ast
 
 import "strings"
 
-// ast —— 每类资源自己的结构。
+// ast — each resource type's own structure.
 //
-// 【为什么不做通用 AST】通用模型要么表达不了（markdown 的节级操作套不到 shell 上），
-// 要么表达了但不安全（把 shell 拼成一个谁也没跑过的程序）。
-// 结构必须从每个类型自己的形状长出来 —— 所以一种类型一个文件，各长各的。
+// [Why no generic AST] A generic model either cannot express things (markdown's
+// section-level operations do not map onto shell), or expresses them unsafely
+// (stitching shell into a program nobody has ever run).
+// Structure has to grow out of each type's own shape — hence one file per type,
+// each growing its own way.
 
-// Tree 是一棵解析好的资源树。统一接口只有四件事：
-// 找节点、取/写一个键、按行区间改、出文本。
+// Tree is a parsed resource tree. The shared interface does only four things:
+// find a node, get/set a key, edit a line range, emit text.
 type Tree interface {
 	Kinds() []string
 	Find(kind, anchor string) [][2]int
@@ -20,11 +22,11 @@ type Tree interface {
 	Text() string
 }
 
-// Types 保持一个固定顺序 —— 求值时按这个顺序挑第一个认识某种节点的类型，
-// 顺序换了就会挑到另一棵树。
+// Types keeps a fixed order — evaluation picks the first type in this order that
+// knows a given node kind, so reordering it would pick a different tree.
 var Types = []string{"markdown", "toml", "json", "shell", "text"}
 
-// New 按类型建树。
+// New builds a tree for the given type.
 func New(typ, text string) Tree {
 	switch typ {
 	case "markdown":
@@ -41,7 +43,7 @@ func New(typ, text string) Tree {
 	return nil
 }
 
-// Kinds 说某个类型能锚到哪些节点。
+// Kinds reports which node kinds a type can anchor to.
 func Kinds(typ string) []string {
 	switch typ {
 	case "markdown":
@@ -58,7 +60,7 @@ func Kinds(typ string) []string {
 	return nil
 }
 
-// Has 说某个类型认不认识某种节点。
+// Has reports whether a type knows a given node kind.
 func Has(kinds []string, k string) bool {
 	for _, x := range kinds {
 		if x == k {
@@ -68,7 +70,7 @@ func Has(kinds []string, k string) bool {
 	return false
 }
 
-// splice 是所有按行树共用的替换。
+// splice is the replacement shared by all line-based trees.
 func splice(lines []string, s, e int, repl []string) []string {
 	out := make([]string, 0, len(lines)-(e-s)+len(repl))
 	out = append(out, lines[:s]...)
@@ -77,14 +79,15 @@ func splice(lines []string, s, e int, repl []string) []string {
 	return out
 }
 
-// Named 是一个可寻址的节点：名字 + 它在第几行。
+// Named is an addressable node: its name plus the line it is on.
 type Named struct {
-	Name string
-	Line int
+	Name  string
+	Line  int
+	Level int // level of a markdown heading (## is 2); 0 for other nodes
 }
 
-// Addressable 列出一棵树在某种节点下所有可寻址的名字 ——
-// 写模板时真正想知道的是「这个文件我能锚到哪些点」。
+// Addressable lists every addressable name a tree has for a node kind —
+// what a template author really wants to know is "which points in this file can I anchor to".
 func Addressable(t Tree, kind string) []Named {
 	switch v := t.(type) {
 	case *Markdown:
@@ -93,7 +96,7 @@ func Addressable(t Tree, kind string) []Named {
 		}
 		var out []Named
 		for _, n := range v.nodes {
-			out = append(out, Named{n.title, n.start})
+			out = append(out, Named{n.title, n.start, n.level})
 		}
 		return out
 	case *Toml:
@@ -102,19 +105,19 @@ func Addressable(t Tree, kind string) []Named {
 		}
 		var out []Named
 		for _, n := range v.nodes {
-			out = append(out, Named{n.key, n.start})
+			out = append(out, Named{Name: n.key, Line: n.start})
 		}
 		return out
 	case *Shell:
 		var out []Named
 		if kind == "function" {
 			for _, n := range v.nodes {
-				out = append(out, Named{n.name, n.start})
+				out = append(out, Named{Name: n.name, Line: n.start})
 			}
 		}
 		if kind == "marker" {
 			for _, n := range v.markers {
-				out = append(out, Named{strings.TrimSpace(n.name), n.start})
+				out = append(out, Named{Name: strings.TrimSpace(n.name), Line: n.start})
 			}
 		}
 		return out

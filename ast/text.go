@@ -2,8 +2,9 @@ package ast
 
 import "strings"
 
-// Text：无结构。锚点是一行的**精确文本** —— 不做模糊匹配：
-// 匹配到多处一律报错，宁可让人写得更准，也不要静默插到第一个碰上的地方。
+// Text: no structure. An anchor is the **exact text** of a line — no fuzzy matching:
+// multiple matches are always an error; better to make people write a more precise
+// anchor than to silently insert at the first match.
 type Text struct{ lines []string }
 
 func NewText(t string) *Text                 { return &Text{lines: strings.Split(t, "\n")} }

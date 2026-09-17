@@ -1,15 +1,16 @@
 package loom
 
-// 模板的语法层：把一份 .lm（HCL）读成一串语句。
+// Template syntax layer (legacy syntax): reads a .lm file (HCL) into a list of statements.
 //
-// 【为什么用 HCL 而不是自造语法】自造的每一条规则都得自己实现、自己报错、自己教。
-// HCL 是 Terraform 那一套，认知成本已经付过了：块 + 属性 + 表达式，
-// 报错带 文件:行:列，编辑器高亮现成。这门语言真正独有的东西是**怎么织**，
-// 不是括号长什么样 —— 括号上省下的力气该花在织法上。
+// Why HCL rather than a home-grown syntax: every home-grown rule has to be implemented,
+// error-reported and taught from scratch. HCL is Terraform's syntax, a learning cost people
+// have already paid: blocks + attributes + expressions, errors with file:line:col, editor
+// highlighting for free. What is truly unique to this language is how to weave, not what
+// the brackets look like — effort saved on brackets belongs to the weaving.
 //
-// 语句在模板里的**先后顺序是有意义的**（同一个锚点上的两条插入谁在前），
-// 而 HCL 的属性在 Body 里是一张 map。所以每条语句都记住自己的字节偏移，
-// 解析完按偏移排回模板顺序。
+// Statement order in a template matters (which of two inserts on the same anchor comes
+// first), but HCL keeps a body's attributes in a map. So each statement remembers its byte
+// offset and is sorted back into template order after parsing.
 
 import (
 	"fmt"
@@ -21,19 +22,22 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
-// Ref 是一条内容来源：某一层里的某个节点，或一段字面量。
+// Ref is one content source: a node in some layer, or a literal.
 type Ref struct {
-	Layer   string // 层名
+	Layer   string // layer name
 	Kind    string // heading / line / frontmatter / key / function / marker / body / all
-	Anchor  string // body / all 没有锚点
-	Literal string // 字面量内容（字符串或 heredoc）
+	Anchor  string // body / all have no anchor
+	Literal string // literal content (string or heredoc)
 	IsLit   bool
-	Rng     hcl.Range
+	File    string // file the content comes from (path in the layer); empty = product path
+	Ident   bool   // name is in identifier form: _ matches a space or an underscore
+	Within  []Seg  // section path: look under these headings (self."Parent"."Name")
+	Rng     Pos
 }
 
 func (r Ref) String() string {
 	if r.IsLit {
-		return "<字面量>"
+		return "<literal>"
 	}
 	if r.Anchor == "" {
 		return r.Layer + "." + r.Kind
@@ -41,39 +45,46 @@ func (r Ref) String() string {
 	return fmt.Sprintf("%s.%s[%q]", r.Layer, r.Kind, r.Anchor)
 }
 
-// Stmt 是一条语句。Op 决定读哪些字段。
+// Stmt is one statement. Op decides which fields are read.
 type Stmt struct {
 	Op     string // after/before/replace/append/prepend/frontmatter/set/bilingual/in/anchor/patch/inherit/override/new
-	Kind   string // 位置：节点种类
-	Anchor string // 位置：锚点
-	Srcs   []Ref  // 要插什么
+	Kind   string // position: node kind
+	Anchor string // position: anchor
+	Srcs   []Ref  // what to insert
 
-	As    string // in：里面按什么类型解析
-	Reuse string // in：这一块的纬线内容改从哪个文件取
-	Kids  []Stmt // in：块内语句
+	As    string // in: the type to parse the contents as
+	Reuse string // in: file to take our layer's content from for this block
+	Kids  []Stmt // in: statements inside the block
 
-	Layer  string   // frontmatter：整块取哪一层
-	SetKey string   // set：写哪个键
-	SetRef Ref      // set：值取自哪里
-	Key    string   // bilingual：哪个键
-	Name   string   // anchor：锚点名
-	Body   string   // patch：unified diff
-	Names  []string // inherit/override/new：函数名
+	Layer  string   // frontmatter: layer to take the whole block from
+	SetKey string   // set: key to write
+	SetRef Ref      // set: where the value comes from
+	Key    string   // bilingual: which key
+	Name   string   // anchor: anchor name
+	Body   string   // patch: unified diff
+	Names  []string // inherit/override/new: function names
 
-	Byte int // 模板里的字节偏移 —— 语句顺序靠它还原
-	Rng  hcl.Range
+	Reason string // replace / drop: why the upstream content is changed
+	Ident  bool   // anchor is in identifier form: _ matches a space or an underscore
+	Within []Seg  // section path: look under these headings (base."Parent"."Name")
+	File   string // frontmatter: file it comes from; empty = product path
+
+	Byte int // byte offset in the template — used to restore statement order
+	Rng  Pos
 }
 
-// Template 是一份模板：织什么、按什么结构织、以哪一层为底、怎么织。
+// Template is one template: what to weave, by which structure, on which base layer, and how.
 type Template struct {
-	Path     string
-	Target   string
-	Type     string
-	From     string // 经线层名
-	BasePath string // 经线里的路径（改名的资产用；默认 = Target）
-	Covers   []string
-	Stmts    []Stmt
-	Anchors  map[string]Stmt
+	Path      string
+	Target    string
+	Type      string
+	From      string // upstream (warp) layer name
+	BasePath  string // path in the upstream (for renamed assets; default = Target)
+	Source    string // file to take our layer's content from instead (default = Target)
+	UseReason string // use me: reason for dropping the whole upstream file
+	Covers    []string
+	Stmts     []Stmt
+	Anchors   map[string]Stmt
 }
 
 var weaveSchema = &hcl.BodySchema{
@@ -98,7 +109,7 @@ var bodyBlocks = []hcl.BlockHeaderSchema{
 
 var stmtSchema = &hcl.BodySchema{Attributes: bodyAttrs, Blocks: bodyBlocks}
 
-// ParseTemplate 读一份 .lm。
+// ParseTemplate reads a .lm file.
 func ParseTemplate(path string, src []byte) (*Template, error) {
 	f, diags := hclsyntax.ParseConfig(src, path, hcl.InitialPos)
 	if diags.HasErrors() {
@@ -109,7 +120,7 @@ func ParseTemplate(path string, src []byte) (*Template, error) {
 		return nil, diags
 	}
 	if len(top.Blocks) != 1 {
-		return nil, fmt.Errorf("%s: 一份模板要有且只有一个 weave 块，收到 %d 个", path, len(top.Blocks))
+		return nil, fmt.Errorf("%s: a template must have exactly one weave block, got %d", path, len(top.Blocks))
 	}
 	b := top.Blocks[0]
 	t := &Template{Path: path, Target: b.Labels[0], Anchors: map[string]Stmt{}}
@@ -123,10 +134,10 @@ func ParseTemplate(path string, src []byte) (*Template, error) {
 	t.Covers = hdr.covers
 	t.Stmts = stmts
 	if t.Type == "" {
-		return nil, fmt.Errorf("%s: weave 块缺 `type`（有 %v）", path, ast.Types)
+		return nil, fmt.Errorf("%s: weave block is missing `type` (one of %v)", path, ast.Types)
 	}
 	if ast.Kinds(t.Type) == nil {
-		return nil, fmt.Errorf("%s: 未知资源类型 `%s`（有 %v）", path, t.Type, ast.Types)
+		return nil, fmt.Errorf("%s: unknown resource type `%s` (one of %v)", path, t.Type, ast.Types)
 	}
 	if t.BasePath == "" {
 		t.BasePath = t.Target
@@ -136,7 +147,7 @@ func ParseTemplate(path string, src []byte) (*Template, error) {
 			continue
 		}
 		if _, dup := t.Anchors[s.Name]; dup {
-			return nil, fmt.Errorf("%s: 锚点 `%s` 重复定义", s.Rng, s.Name)
+			return nil, fmt.Errorf("%s: anchor `%s` defined twice", s.Rng, s.Name)
 		}
 		t.Anchors[s.Name] = s
 	}
@@ -159,7 +170,7 @@ func parseBody(body hcl.Body, top bool) ([]Stmt, header, error) {
 		switch name {
 		case "type", "from", "path", "as", "reuse":
 			if !top && (name == "type" || name == "from" || name == "path") {
-				return nil, hdr, fmt.Errorf("%s: `%s` 只能写在 weave 块上", a.Range, name)
+				return nil, hdr, fmt.Errorf("%s: `%s` is only allowed on the weave block", a.Range, name)
 			}
 			v, err := strAttr(a)
 			if err != nil {
@@ -173,7 +184,7 @@ func parseBody(body hcl.Body, top bool) ([]Stmt, header, error) {
 			case "path":
 				hdr.path = v
 			}
-			continue // as / reuse 由父块读
+			continue // as / reuse are read by the parent block
 		case "covers":
 			v, err := strListAttr(a)
 			if err != nil {
@@ -195,13 +206,13 @@ func parseBody(body hcl.Body, top bool) ([]Stmt, header, error) {
 		}
 		out = append(out, s)
 	}
-	// 还原模板顺序 —— HCL 的属性是 map，顺序在语义里是有意义的
+	// Restore template order — HCL attributes are a map, but order carries meaning
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Byte < out[j].Byte })
 	return out, hdr, nil
 }
 
 func attrStmt(name string, a *hcl.Attribute) (Stmt, error) {
-	s := Stmt{Op: name, Byte: a.Range.Start.Byte, Rng: a.Range}
+	s := Stmt{Op: name, Byte: a.Range.Start.Byte, Rng: posOf(a.Range)}
 	switch name {
 	case "append", "prepend":
 		refs, err := parseRefs(a.Expr)
@@ -221,7 +232,7 @@ func attrStmt(name string, a *hcl.Attribute) (Stmt, error) {
 			return s, err
 		}
 		if len(keys) == 0 {
-			return s, fmt.Errorf("%s: bilingual 要给至少一个键", a.Range)
+			return s, fmt.Errorf("%s: bilingual needs at least one key", a.Range)
 		}
 		s.Names = keys
 	case "inherit", "override", "new":
@@ -231,10 +242,10 @@ func attrStmt(name string, a *hcl.Attribute) (Stmt, error) {
 		}
 		s.Names = names
 	case "patch":
-		// 【为什么补丁不写在模板里】HCL 的 heredoc 会做 ${…} 插值，而 diff 里
-		// 天然带 ${VAR} —— 内联就得转义，转义之后模板里那段**不再是一份 diff**：
-		// 编辑器不认、patch(1) 不认、复制出来直接用会失败。
-		// 放进独立的 .diff 文件，它就还是一份 diff。
+		// Why the patch is not inline in the template: HCL heredocs interpolate ${...}, and
+		// diffs naturally contain ${VAR}. Inlining means escaping, and once escaped the text in
+		// the template is no longer a diff: editors don't recognize it, patch(1) rejects it,
+		// and copying it out to use directly fails. In a separate .diff file it stays a diff.
 		v, err := strAttr(a)
 		if err != nil {
 			return s, err
@@ -243,7 +254,7 @@ func attrStmt(name string, a *hcl.Attribute) (Stmt, error) {
 	case "set":
 		obj, ok := a.Expr.(*hclsyntax.ObjectConsExpr)
 		if !ok {
-			return s, fmt.Errorf("%s: set 要写成 `set = { <键> = <层>.<键> }`", a.Range)
+			return s, fmt.Errorf("%s: set must be written as `set = { <key> = <layer>.<key> }`", a.Range)
 		}
 		var kids []Stmt
 		for _, it := range obj.Items {
@@ -256,24 +267,24 @@ func attrStmt(name string, a *hcl.Attribute) (Stmt, error) {
 				return s, err
 			}
 			kids = append(kids, Stmt{Op: "set", SetKey: k, SetRef: r,
-				Byte: it.KeyExpr.Range().Start.Byte, Rng: it.KeyExpr.Range()})
+				Byte: it.KeyExpr.Range().Start.Byte, Rng: posOf(it.KeyExpr.Range())})
 		}
 		s.Op = "setgroup"
 		s.Kids = kids
 	case "insert", "with":
-		return s, fmt.Errorf("%s: `%s` 只能写在 after / before / replace 块里", a.Range, name)
+		return s, fmt.Errorf("%s: `%s` is only allowed inside after / before / replace blocks", a.Range, name)
 	default:
-		return s, fmt.Errorf("%s: 未知属性 `%s`", a.Range, name)
+		return s, fmt.Errorf("%s: unknown attribute `%s`", a.Range, name)
 	}
 	return s, nil
 }
 
 func blockStmt(b *hcl.Block) (Stmt, error) {
-	s := Stmt{Op: b.Type, Byte: b.DefRange.Start.Byte, Rng: b.DefRange}
+	s := Stmt{Op: b.Type, Byte: b.DefRange.Start.Byte, Rng: posOf(b.DefRange)}
 	switch b.Type {
 	case "after", "before", "replace":
-		// 位置块里只认一条 insert / with —— 别的语句该写在外层，
-		// 嵌套一层位置块只会让"这条到底作用在谁身上"变得要猜。
+		// A position block accepts exactly one insert / with — other statements belong outside;
+		// nesting them in a position block only turns "what does this apply to" into a guess.
 		s.Kind, s.Anchor = b.Labels[0], b.Labels[1]
 		want := "insert"
 		if b.Type == "replace" {
@@ -308,10 +319,10 @@ func blockStmt(b *hcl.Block) (Stmt, error) {
 			}
 		}
 		if s.As == "" {
-			return s, fmt.Errorf("%s: in 块要写 `as = \"<类型>\"`", b.DefRange)
+			return s, fmt.Errorf("%s: in block needs `as = \"<type>\"`", b.DefRange)
 		}
 		if ast.Kinds(s.As) == nil {
-			return s, fmt.Errorf("%s: 未知嵌套类型 `%s`", b.DefRange, s.As)
+			return s, fmt.Errorf("%s: unknown nested type `%s`", b.DefRange, s.As)
 		}
 		kids, _, err := parseBody(b.Body, false)
 		if err != nil {
@@ -325,7 +336,7 @@ func blockStmt(b *hcl.Block) (Stmt, error) {
 			return s, diags
 		}
 		if len(content.Attributes) != 1 {
-			return s, fmt.Errorf("%s: anchor 块里要有且只有一条 `<节点种类> = \"<定位式>\"`", b.DefRange)
+			return s, fmt.Errorf("%s: anchor block must contain exactly one `<node kind> = \"<locator>\"`", b.DefRange)
 		}
 		for k, a := range content.Attributes {
 			v, err := strAttr(a)
@@ -338,7 +349,7 @@ func blockStmt(b *hcl.Block) (Stmt, error) {
 	return s, nil
 }
 
-// parseRefs 认单条引用，也认一个列表。
+// parseRefs accepts a single reference or a list of them.
 func parseRefs(e hcl.Expression) ([]Ref, error) {
 	if tup, ok := e.(*hclsyntax.TupleConsExpr); ok {
 		var out []Ref
@@ -358,31 +369,31 @@ func parseRefs(e hcl.Expression) ([]Ref, error) {
 	return []Ref{r}, nil
 }
 
-// parseRef 认三种写法：
+// parseRef accepts three forms:
 //
-//	xsdd.body               整份正文
-//	xsdd.heading["X"]       某一节
-//	"字面量" / <<EOT … EOT   直接写在模板里的内容
+//	xsdd.body                  the whole body
+//	xsdd.heading["X"]          one section
+//	"literal" / <<EOT ... EOT  content written directly in the template
 func parseRef(e hcl.Expression) (Ref, error) {
 	rng := e.Range()
 	if tr, ok := e.(*hclsyntax.ScopeTraversalExpr); ok {
 		t := tr.Traversal
 		if len(t) < 2 || len(t) > 3 {
-			return Ref{}, fmt.Errorf("%s: 引用要写成 `<层>.<节点种类>` 或 `<层>.<节点种类>[\"<锚点>\"]`", rng)
+			return Ref{}, fmt.Errorf("%s: a reference must be `<layer>.<node kind>` or `<layer>.<node kind>[\"<anchor>\"]`", rng)
 		}
-		r := Ref{Layer: t.RootName(), Rng: rng}
+		r := Ref{Layer: t.RootName(), Rng: posOf(rng)}
 		attr, ok := t[1].(hcl.TraverseAttr)
 		if !ok {
-			return Ref{}, fmt.Errorf("%s: `%s` 后面要跟节点种类", rng, r.Layer)
+			return Ref{}, fmt.Errorf("%s: `%s` must be followed by a node kind", rng, r.Layer)
 		}
 		r.Kind = attr.Name
 		if len(t) == 3 {
 			idx, ok := t[2].(hcl.TraverseIndex)
 			if !ok {
-				return Ref{}, fmt.Errorf("%s: 锚点要写成 [\"…\"]", rng)
+				return Ref{}, fmt.Errorf("%s: an anchor must be written as [\"...\"]", rng)
 			}
 			if idx.Key.Type() != cty.String {
-				return Ref{}, fmt.Errorf("%s: 锚点要是字符串", rng)
+				return Ref{}, fmt.Errorf("%s: an anchor must be a string", rng)
 			}
 			r.Anchor = idx.Key.AsString()
 		}
@@ -393,9 +404,9 @@ func parseRef(e hcl.Expression) (Ref, error) {
 		return Ref{}, diags
 	}
 	if v.Type() != cty.String {
-		return Ref{}, fmt.Errorf("%s: 这里要一段引用或一段字面量", rng)
+		return Ref{}, fmt.Errorf("%s: expected a reference or a literal", rng)
 	}
-	return Ref{IsLit: true, Literal: v.AsString(), Rng: rng}, nil
+	return Ref{IsLit: true, Literal: v.AsString(), Rng: posOf(rng)}, nil
 }
 
 func layerName(e hcl.Expression) (string, error) {
@@ -407,7 +418,7 @@ func layerName(e hcl.Expression) (string, error) {
 		return "", diags
 	}
 	if v.Type() != cty.String {
-		return "", fmt.Errorf("%s: 这里要一个层名", e.Range())
+		return "", fmt.Errorf("%s: expected a layer name", e.Range())
 	}
 	return v.AsString(), nil
 }
@@ -423,7 +434,7 @@ func objKey(e hcl.Expression) (string, error) {
 		return "", diags
 	}
 	if v.Type() != cty.String {
-		return "", fmt.Errorf("%s: 键要是标识符或字符串", e.Range())
+		return "", fmt.Errorf("%s: a key must be an identifier or a string", e.Range())
 	}
 	return v.AsString(), nil
 }
@@ -437,15 +448,21 @@ func strListAttr(a *hcl.Attribute) ([]string, error) {
 		return []string{v.AsString()}, nil
 	}
 	if !v.Type().IsTupleType() && !v.Type().IsListType() {
-		return nil, fmt.Errorf("%s: 这里要一个字符串或字符串列表", a.Range)
+		return nil, fmt.Errorf("%s: expected a string or a list of strings", a.Range)
 	}
 	var out []string
 	for it := v.ElementIterator(); it.Next(); {
 		_, ev := it.Element()
 		if ev.Type() != cty.String {
-			return nil, fmt.Errorf("%s: 列表里要全是字符串", a.Range)
+			return nil, fmt.Errorf("%s: every list element must be a string", a.Range)
 		}
 		out = append(out, ev.AsString())
 	}
 	return out, nil
+}
+
+// Seg is one segment of a section path: a name, and whether it is in identifier form.
+type Seg struct {
+	Name  string
+	Ident bool
 }

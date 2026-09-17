@@ -1,11 +1,12 @@
 package loom
 
-// 注册表合并：产物是一张「事件 → 处理器」的表，节点是**一条注册项**，
-// 身份由配置里的正则从条目里提取（通常是被调用的脚本名）。
+// Registry merge: the product is an "event -> handler" table, and a node is **one registration entry**,
+// whose identity is extracted from the entry by a regexp in the settings (usually the name of the script called).
 //
-// 经线那条原样进、纬线按身份取代同名的那条、纬线独有的追加。
-// 【为什么不能朴素并集】同一个处理器会被注册两次 —— 而重复注册的注册表往往直接失效，
-// 且失效得很安静：文件仍是合法 JSON，只是行为翻倍。
+// Warp entries go in as they are, a weft entry replaces the warp entry with the same identity, and
+// weft-only entries are appended.
+// Why not a naive union: the same handler would be registered twice — and a registry with duplicate
+// registrations often just breaks, quietly: the file is still valid JSON, only the behavior doubles.
 
 import (
 	"fmt"
@@ -15,8 +16,8 @@ import (
 
 func mergeRegistry(c *Config, t *Template) (string, error) {
 	if c.RegGroup == "" || c.RegID == nil {
-		return "", fmt.Errorf("%s: type = \"json\" 需要 loom.lm 里有一个 registry 块"+
-			"（group + id_pattern）—— 不知道拿什么当身份就没法去重", t.Path)
+		return "", fmt.Errorf("%s: type = \"json\" needs a registry block in loom.lm"+
+			" (group + id_pattern) — without knowing what the identity is, duplicates cannot be removed", t.Path)
 	}
 	from := t.From
 	if from == "" {
@@ -32,14 +33,14 @@ func mergeRegistry(c *Config, t *Template) (string, error) {
 	}
 	up, err := ast.Parse(upSrc)
 	if err != nil {
-		return "", fmt.Errorf("%s：%v", t.BasePath, err)
+		return "", fmt.Errorf("%s: %v", t.BasePath, err)
 	}
 	wf, err := ast.Parse(wfSrc)
 	if err != nil {
-		return "", fmt.Errorf("%s：%v", t.Target, err)
+		return "", fmt.Errorf("%s: %v", t.Target, err)
 	}
 
-	// 纬线已经注册了的 (事件, 身份)
+	// (event, identity) pairs the weft already registers
 	taken := map[[2]string]bool{}
 	forEachEntry(c, wf, func(ev, id string, _ *ast.Value) {
 		taken[[2]string{ev, id}] = true
@@ -82,10 +83,10 @@ func mergeRegistry(c *Config, t *Template) (string, error) {
 		}
 	}
 
-	// 【为什么要数】合并出错时产物仍是合法 JSON，只是少了几条或多了几条 ——
-	// 而少注册一个门与门没生效是同一件事，且两者都不会报错。
+	// Why count: when the merge goes wrong the product is still valid JSON, just a few entries short or over —
+	// and a gate that is not registered is the same as a gate that does not work, and neither raises an error.
 	if got, want := countEntries(merged, c), countEntries(wf, c)+kept; got != want {
-		return "", fmt.Errorf("%s: 合并后条数对不上（纬线 %d + 经线保留 %d ≠ %d）",
+		return "", fmt.Errorf("%s: entry count after merge does not add up (ours %d + upstream kept %d != %d)",
 			t.Path, countEntries(wf, c), kept, got)
 	}
 	return merged.Marshal() + "\n", nil

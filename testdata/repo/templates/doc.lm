@@ -5,8 +5,8 @@ weave "doc.md" {
   bilingual   = ["description"]
 
   after "heading" "Overview" {
-    insert = mine.heading["调度层关系"]
+    insert = mine.heading["Where this fits"]
   }
 
-  append = mine.heading["附录"]
+  append = mine.heading["Appendix"]
 }

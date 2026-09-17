@@ -1,0 +1,24 @@
+// src/templates/skills/testing/SKILL.md.lm
+// Cmd-click a name (Ctrl on Windows): base.X jumps to that upstream section, "..." to our section, an import path to its file
+import ship "/.claude/commands/ship"
+
+base.frontmatter.set(self.frontmatter)
+base.frontmatter.join("description")
+base.Overview.after("Position in the Pipeline", "Customer ≠ User")
+base.start("Read This First")
+base.append("Common Excuses")
+
+base."How it compares".drop(reason: "upstream compares itself with other projects; that does not apply to XSDD")
+
+base.Verification.before{
+    "Self-Check List"
+    `
+    ## Counterexamples
+
+    This part is written right in the template and still gets wrapped in markers.
+    `
+}
+
+base.Usage_Tips.after(ship.body)
+base.marker("Test 3").after("Test 3b")
+base.Overview.aftr("a misspelled method is marked red")
