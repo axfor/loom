@@ -78,7 +78,7 @@ func account(c *Config, t *Template, out string, r *Report) []error {
 	walk(t.Stmts)
 
 	// Our frontmatter must reach the product too: a key only in our file, left out because the template
-	// neither sets nor joins the frontmatter, would disappear with nothing to say so.
+	// neither sets nor starts / appends a frontmatter key, would disappear with nothing to say so.
 	if t.Type == "markdown" && !whole && !merged && c.Weft != "" {
 		if ours, ok, _ := c.read(c.Weft, weftRel(c, t, c.Weft, t.Target)); ok {
 			for _, k := range frontmatterKeys(ours) {
@@ -148,7 +148,7 @@ func account(c *Config, t *Template, out string, r *Report) []error {
 		// This is why the language exists: for an insert-only template, the body with marks stripped
 		// must be byte-identical to upstream. It is checked on every build instead of by a separate
 		// outside gate: an engine one byte off on a blank line still yields a normal-looking product.
-		// The frontmatter may be replaced by set / join, so only the body is compared.
+		// The frontmatter may be changed by set / start / append, so only the body is compared.
 		if t.Type == "markdown" && !whole && !merged && len(drops)+len(replaces) == 0 {
 			body := func(s string) string {
 				b, _ := ast.NewMarkdown(s).BodyOf("body")

@@ -118,7 +118,7 @@ func TestLiteralIsMarkedAsOurs(t *testing.T) {
 }
 
 // start inserts at the start of the body: in a file with frontmatter that is after the frontmatter,
-// which only counts on the first line. The frontmatter must still work afterwards (join reads it).
+// which only counts on the first line. The frontmatter must still work afterwards (a key value reads it).
 func TestStartGoesAfterFrontmatter(t *testing.T) {
 	c, dir := objRepo(t, nil)
 	out, err := weaveObj(t, c, dir, "doc.md", "base.start(\"Appendix\", `> literal`)\nbase.frontmatter.description.start(self.frontmatter.description)\n")

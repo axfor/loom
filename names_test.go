@@ -113,7 +113,7 @@ func TestTemplateThroughSymlink(t *testing.T) {
 }
 
 // A frontmatter key of ours that does not reach the product is an error, like a section of ours no
-// statement places: without set or join it would disappear with nothing to say so.
+// statement places: without set, start or append it would disappear with nothing to say so.
 func TestOurFrontmatterReachesProduct(t *testing.T) {
 	c, dir := besideRepo(t, map[string]string{
 		"up/a.md": "---\nname: a\ndescription: Up.\n---\n\n## A\n\nup\n",
