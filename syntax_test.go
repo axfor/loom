@@ -53,40 +53,6 @@ func weaveObj(t *testing.T, c *loom.Config, dir, target, src string) (string, er
 	return loom.Weave(c, tm)
 }
 
-func golden(t *testing.T, name string) string {
-	t.Helper()
-	b, err := os.ReadFile(filepath.Join(fixture, "golden", name))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(b)
-}
-
-// Object syntax and the legacy syntax weave the same cloth: same meaning, different spelling, byte-identical product.
-func TestObjectSyntaxGolden(t *testing.T) {
-	c, dir := objRepo(t, nil)
-	for _, cse := range []struct{ target, src string }{
-		{"doc.md", `
-// headings written as identifiers, content as strings
-base.frontmatter.set(self.frontmatter)
-base.frontmatter.join("description")
-base.Overview.after("Where this fits")
-base.append("Appendix")
-`},
-		{"run.sh", `
-base.main.before(self.boot)
-`},
-	} {
-		got, err := weaveObj(t, c, dir, cse.target, cse.src)
-		if err != nil {
-			t.Fatalf("%s: %v", cse.target, err)
-		}
-		if want := golden(t, cse.target); got != want {
-			t.Errorf("%s differs from golden\n--- got ---\n%s\n--- want ---\n%s", cse.target, got, want)
-		}
-	}
-}
-
 // (...) on one line and { ... } over several lines are two layouts of the same statement.
 func TestParenAndBlockAreEquivalent(t *testing.T) {
 	c, dir := objRepo(t, nil)
@@ -325,70 +291,6 @@ func TestDescribeResolvesIdentifiers(t *testing.T) {
 	}
 	if len(i.Inserts) != 1 || i.Inserts[0].Anchor != "Café Notes" {
 		t.Errorf("the content source must be reported as the real heading Café Notes: %+v", i.Inserts)
-	}
-}
-
-// Migration: after legacy templates and settings are rewritten, the product is byte-identical to golden.
-func TestMigrateKeepsOutput(t *testing.T) {
-	dir := t.TempDir()
-	for _, sub := range []string{"upstream", "mine", "templates"} {
-		entries, err := os.ReadDir(filepath.Join(fixture, sub))
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, e := range entries {
-			b, err := os.ReadFile(filepath.Join(fixture, sub, e.Name()))
-			if err != nil {
-				t.Fatal(err)
-			}
-			mustWrite(t, filepath.Join(dir, sub, e.Name()), string(b))
-		}
-	}
-	cfgOld, err := os.ReadFile(filepath.Join(fixture, loom.ConfigName))
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfgPath := filepath.Join(dir, loom.ConfigName)
-	mustWrite(t, cfgPath, string(cfgOld))
-	c, err := loom.LoadConfig(cfgPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var migrated []*loom.Migrated
-	for _, name := range []string{"doc.lm", "run.sh.lm"} {
-		m, err := loom.MigrateTemplate(c, filepath.Join(dir, "templates", name))
-		if err != nil {
-			t.Fatalf("%s: %v", name, err)
-		}
-		migrated = append(migrated, m)
-	}
-	newCfg, err := loom.MigrateConfig(cfgPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, m := range migrated {
-		if err := os.Remove(m.From); err != nil {
-			t.Fatal(err)
-		}
-		mustWrite(t, m.To, m.Text)
-	}
-	mustWrite(t, cfgPath, newCfg)
-	c, err = loom.LoadConfig(cfgPath)
-	if err != nil {
-		t.Fatalf("migrated settings cannot be loaded: %v\n%s", err, newCfg)
-	}
-	for _, m := range migrated {
-		tm, err := loom.LoadTemplate(c, m.To)
-		if err != nil {
-			t.Fatalf("migrated template cannot be loaded: %v\n%s", err, m.Text)
-		}
-		got, err := loom.Weave(c, tm)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if want := golden(t, tm.Target); got != want {
-			t.Errorf("%s: the product changed after migration\n--- template ---\n%s\n--- got ---\n%s\n--- want ---\n%s", tm.Target, m.Text, got, want)
-		}
 	}
 }
 

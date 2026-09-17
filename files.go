@@ -5,7 +5,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 )
@@ -17,17 +16,12 @@ const Ext = ".lm"
 
 // LoadTemplate reads one template file.
 //
-// In the object syntax a template does not state its product path — its location in the
-// template directory is the product path (minus .lm), so this needs to know where the
-// template directory is. The legacy syntax (HCL, starting with `weave "..." {`) is still
-// read; the two coexist until migration is done.
+// A template does not state its product path — its location in the template directory is
+// the product path (minus .lm), so this needs to know where the template directory is.
 func LoadTemplate(c *Config, path string) (*Template, error) {
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
-	}
-	if IsLegacySyntax(src) {
-		return ParseTemplate(path, src)
 	}
 	target, err := TargetOf(c, path)
 	if err != nil {
@@ -83,22 +77,6 @@ func (c *Config) resolveImport(layer, spec, fromDir string) (string, error) {
 	return "", fmt.Errorf("%s layer: %q not found", layer, spec)
 }
 
-var legacyHead = regexp.MustCompile(`^\s*weave\s+"`)
-
-// IsLegacySyntax reports whether a template uses the legacy syntax (HCL): its first
-// statement is `weave "..."`. The object syntax has no weave keyword, so the two cannot
-// be confused.
-func IsLegacySyntax(src []byte) bool {
-	for _, line := range strings.Split(string(src), "\n") {
-		t := strings.TrimSpace(line)
-		if t == "" || strings.HasPrefix(t, "//") || strings.HasPrefix(t, "#") {
-			continue
-		}
-		return legacyHead.MatchString(t)
-	}
-	return false
-}
-
 // TargetOf derives the product path from a template path: its path relative to the
 // template directory, minus .lm.
 func TargetOf(c *Config, path string) (string, error) {
@@ -121,14 +99,8 @@ func TargetOf(c *Config, path string) (string, error) {
 }
 
 // Templates lists every template in the configured template directory, sorted by path —
-// a stable order keeps the product reproducible.
-//
-// One product gets exactly one template: if two templates write the same target, which
-// one wins depends on enumeration order, and "I changed the template but nothing happened"
-// becomes a mystery with no traceable cause. Only the loom can see this (it is the only
-// thing that reads every template), so it refuses here. Leaving it to downstream gates,
-// each with its own regex, yields checks that structurally cannot fire — such as a gate
-// keyed by product path, where duplicates were already merged away.
+// a stable order keeps the product reproducible. A template's product path is its own path, so
+// two templates can never weave the same product.
 func Templates(c *Config) ([]string, error) {
 	root := filepath.Join(c.Root, c.Templates)
 	var out []string
@@ -145,18 +117,6 @@ func Templates(c *Config) ([]string, error) {
 		return nil, err
 	}
 	sort.Strings(out)
-	seen := map[string]string{}
-	for _, p := range out {
-		t, err := LoadTemplate(c, p)
-		if err != nil {
-			continue // parse errors are reported by the callers; this only checks for duplicates
-		}
-		if first, dup := seen[t.Target]; dup {
-			return nil, fmt.Errorf("%s has two templates: %s and %s — a product gets exactly one; "+
-				"which one wins depends on enumeration order", t.Target, rel(c, first), rel(c, p))
-		}
-		seen[t.Target] = p
-	}
 	return out, nil
 }
 

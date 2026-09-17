@@ -22,7 +22,6 @@ type anchorUse struct {
 	kind, anchor string
 	within       []Seg
 	ident        bool
-	named        string // name of a named anchor (legacy syntax); empty for inline ones
 	rng          Pos
 }
 
@@ -35,12 +34,6 @@ func anchorUses(t *Template) []anchorUse {
 	for _, s := range t.Stmts {
 		switch s.Op {
 		case "after", "before", "replace", "drop":
-			if s.Kind == "anchor" {
-				if d, ok := t.Anchors[s.Anchor]; ok {
-					out = append(out, anchorUse{kind: d.Kind, anchor: d.Anchor, named: s.Anchor, rng: d.Rng})
-				}
-				continue
-			}
 			out = append(out, anchorUse{kind: s.Kind, anchor: s.Anchor, within: s.Within, ident: s.Ident, rng: s.Rng})
 		case "in":
 			// anchors inside a view refer to the key's value, with coordinates of their own; not listed here
@@ -85,9 +78,6 @@ func ListAnchors(c *Config, w io.Writer) error {
 					q = append(q, seg.Name)
 				}
 				label = strings.Join(append(q, label), " › ")
-			}
-			if u.named != "" {
-				label = u.named
 			}
 			fmt.Fprintf(w, "  %-40s %-9s %s\n", trunc(label, 40), u.kind, where)
 			n++

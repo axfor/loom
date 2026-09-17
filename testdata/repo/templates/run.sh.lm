@@ -1,7 +1,2 @@
-weave "run.sh" {
-  type = "shell"
-
-  before "function" "main" {
-    insert = mine.function["boot"]
-  }
-}
+// the function is named in identifier form
+base.main.before(self.boot)

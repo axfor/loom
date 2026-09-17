@@ -22,18 +22,14 @@ import (
 
 // Info is all the externally visible metadata of one template.
 type Info struct {
-	Template string   `json:"template"` // template path (relative to the repo root)
-	Target   string   `json:"target"`   // product path
-	Type     string   `json:"type"`
-	From     string   `json:"from"`   // base layer name
-	Path     string   `json:"path"`   // base path within that layer
-	Covers   []string `json:"covers"` // upstream files this template declares it replaces
-	Patch    string   `json:"patch"`  // patch file (empty = not patch-based)
-	Inherit  []string `json:"inherit"`
-	Override []string `json:"override"`
-	New      []string `json:"new"`
-	Anchors  []Use    `json:"anchors"` // anchor points on the upstream
-	Inserts  []Src    `json:"inserts"` // content taken from the layers
+	Template string `json:"template"` // template path (relative to the repo root)
+	Target   string `json:"target"`   // product path
+	Type     string `json:"type"`
+	From     string `json:"from"`    // "up": woven on upstream; "me": the whole file is replaced with ours
+	Path     string `json:"path"`    // base path in upstream
+	Patch    string `json:"patch"`   // patch file (empty = not patch-based)
+	Anchors  []Use  `json:"anchors"` // anchor points on the upstream
+	Inserts  []Src  `json:"inserts"` // content taken from the layers
 
 	// Why upstream content is changed, as written with reason: in the template. Tools that account
 	// for upstream content read these instead of parsing templates themselves.
@@ -54,8 +50,7 @@ type Reasoned struct {
 type Use struct {
 	Kind   string `json:"kind"`
 	Anchor string `json:"anchor"`
-	Named  string `json:"named,omitempty"` // name of the named anchor
-	Where  string `json:"where"`           // position in the template
+	Where  string `json:"where"` // position in the template
 }
 
 // Src is one content source.
@@ -63,7 +58,7 @@ type Src struct {
 	Layer  string `json:"layer"`
 	Kind   string `json:"kind"`
 	Anchor string `json:"anchor,omitempty"`
-	Reuse  string `json:"reuse,omitempty"` // file the content is taken from instead
+	File   string `json:"file,omitempty"` // file of ours the content comes from; empty = the product's path
 	Lit    bool   `json:"literal,omitempty"`
 }
 
@@ -83,7 +78,6 @@ func Describe(c *Config, path string) (*Info, error) {
 	}
 	i := &Info{
 		Template: rel, Target: t.Target, Type: t.Type, From: from, Path: t.BasePath,
-		Covers: nz(t.Covers), Inherit: []string{}, Override: []string{}, New: []string{},
 		Anchors: []Use{}, Inserts: []Src{},
 		Reason: t.UseReason, Drops: []Reasoned{}, Replaces: []Reasoned{},
 	}
@@ -122,17 +116,13 @@ func Describe(c *Config, path string) (*Info, error) {
 			if r.Ident || len(r.Within) > 0 {
 				var nest *nestCtx
 				if in != nil {
-					nest = &nestCtx{typ: t.Type, key: in.Key, reuse: in.Reuse}
+					nest = &nestCtx{typ: t.Type, key: in.Key}
 				}
 				if src, useNest, err := refSource(c, t, r, t.Target, nest); err == nil {
 					anchor = real(refTree(t, r.Kind, src, useNest), r.Kind, r.Within, anchor, r.Ident)
 				}
 			}
-			reuse := r.File
-			if in != nil && in.Reuse != "" {
-				reuse = in.Reuse
-			}
-			out = append(out, Src{Layer: r.Layer, Kind: r.Kind, Anchor: anchor, Reuse: reuse, Lit: r.IsLit})
+			out = append(out, Src{Layer: r.Layer, Kind: r.Kind, Anchor: anchor, File: r.File, Lit: r.IsLit})
 		}
 		return out
 	}
@@ -140,21 +130,10 @@ func Describe(c *Config, path string) (*Info, error) {
 	walk = func(ss []Stmt, in *Stmt) {
 		for _, s := range ss {
 			switch s.Op {
-			case "inherit":
-				i.Inherit = append(i.Inherit, s.Names...)
-			case "override":
-				i.Override = append(i.Override, s.Names...)
-			case "new":
-				i.New = append(i.New, s.Names...)
 			case "patch":
 				i.Patch = s.Body
 			case "after", "before", "replace", "drop":
 				u := Use{Kind: s.Kind, Anchor: s.Anchor, Where: s.Rng.String()}
-				if s.Kind == "anchor" {
-					if d, ok := t.Anchors[s.Anchor]; ok {
-						u = Use{Kind: d.Kind, Anchor: d.Anchor, Named: s.Anchor, Where: d.Rng.String()}
-					}
-				}
 				if s.Ident || len(s.Within) > 0 {
 					u.Anchor = real(baseTree(in), s.Kind, s.Within, s.Anchor, s.Ident)
 				}
@@ -169,10 +148,10 @@ func Describe(c *Config, path string) (*Info, error) {
 			case "append", "prepend":
 				i.Inserts = append(i.Inserts, srcs(s.Srcs, in)...)
 			case "frontmatter":
-				i.Inserts = append(i.Inserts, Src{Layer: s.Layer, Kind: "frontmatter", Reuse: s.File})
+				i.Inserts = append(i.Inserts, Src{Layer: s.Layer, Kind: "frontmatter", File: s.File})
 			case "setgroup":
 				for _, kv := range s.Kids {
-					i.Inserts = append(i.Inserts, Src{Layer: kv.SetRef.Layer, Kind: kv.SetRef.Kind, Reuse: kv.SetRef.File})
+					i.Inserts = append(i.Inserts, Src{Layer: kv.SetRef.Layer, Kind: kv.SetRef.Kind, File: kv.SetRef.File})
 				}
 			case "in":
 				walk(s.Kids, &s)
@@ -181,13 +160,6 @@ func Describe(c *Config, path string) (*Info, error) {
 	}
 	walk(t.Stmts, nil)
 	return i, nil
-}
-
-func nz(s []string) []string {
-	if s == nil {
-		return []string{}
-	}
-	return s
 }
 
 // ListTSV prints just six columns: product path / template path / type / base layer /

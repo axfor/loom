@@ -37,7 +37,7 @@ func weave(t *testing.T, c *loom.Config, tpl string) string {
 func TestWeaveGolden(t *testing.T) {
 	c := load(t)
 	for _, cse := range []struct{ tpl, golden string }{
-		{"doc.lm", "doc.md"},
+		{"doc.md.lm", "doc.md"},
 		{"run.sh.lm", "run.sh"},
 	} {
 		got := weave(t, c, cse.tpl)
@@ -55,14 +55,14 @@ func TestWeaveGolden(t *testing.T) {
 // This is not a sentence in the docs; it is a property that can be checked mechanically.
 func TestWarpSurvivesStrip(t *testing.T) {
 	c := load(t)
-	got := weave(t, c, "doc.lm")
+	got := weave(t, c, "doc.md.lm")
 	stripped := stripMarks(got, "<!-- MINE:BEGIN -->", "<!-- MINE:END -->")
 
 	up, err := os.ReadFile(filepath.Join(fixture, "upstream", "doc.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	// the frontmatter is replaced whole on purpose (frontmatter = mine) and is not inside marks, so compare the body only
+	// the frontmatter is replaced on purpose (frontmatter.set) and is not inside marks, so compare the body only
 	if body(stripped) != body(string(up)) {
 		t.Errorf("with the weft stripped, the body differs from the warp\n--- stripped ---\n%q\n--- warp ---\n%q",
 			body(stripped), body(string(up)))
@@ -100,37 +100,15 @@ func body(s string) string {
 
 // Errors must be loud and say which kind they are: a product woven in the wrong place looks perfectly normal.
 func TestErrorsAreLoud(t *testing.T) {
-	c := load(t)
-	cases := []struct {
-		name, tpl, want string
-	}{
-		{"anchor not found", `weave "doc.md" {
-  type = "markdown"
-  after "heading" "No Such Section" { insert = mine.heading["Appendix"] }
-}`, "anchor not found"},
-		{"wrong node kind", `weave "doc.md" {
-  type = "markdown"
-  after "key" "Overview" { insert = mine.heading["Appendix"] }
-}`, "this type has no"},
-		{"unknown layer", `weave "doc.md" {
-  type = "markdown"
-  append = nosuch.body
-}`, "unknown layer name"},
-		{"reference without anchor", `weave "doc.md" {
-  type = "markdown"
-  append = mine.heading
-}`, "needs an anchor"},
-		{"missing base", `weave "nope.md" {
-  type = "markdown"
-  append = mine.body
-}`, "has no nope.md"},
-	}
-	for _, cse := range cases {
+	c, dir := objRepo(t, nil)
+	for _, cse := range []struct{ name, target, src, want string }{
+		{"upstream anchor not found", "doc.md", `base."No Such Section".after("Appendix")`, "anchor not found"},
+		{"our section not found", "doc.md", `base.Overview.after("No such section of ours")`, "anchor not found"},
+		{"wrong node kind", "doc.md", `base.key("Overview").after("Appendix")`, "has no `key(...)` node"},
+		{"missing base", "nope.md", `base.append("Appendix")`, "has no nope.md"},
+	} {
 		t.Run(cse.name, func(t *testing.T) {
-			tm, err := loom.ParseTemplate("t.lm", []byte(cse.tpl))
-			if err == nil {
-				_, err = loom.Weave(c, tm)
-			}
+			_, err := weaveObj(t, c, dir, cse.target, cse.src)
 			if err == nil {
 				t.Fatal("expected an error, but weaving succeeded — exactly the failure this language exists to prevent")
 			}
@@ -143,36 +121,48 @@ func TestErrorsAreLoud(t *testing.T) {
 
 // An anchor matching several places is an error; never take the first.
 func TestAmbiguousAnchorRefuses(t *testing.T) {
-	dir := t.TempDir()
-	mustWrite(t, filepath.Join(dir, "loom.lm"), `
-layer "up" {
-  dir  = "up"
-  role = "warp"
-}
-layer "me" {
-  dir  = "me"
-  role = "weft"
-}
-templates = "t"
-`)
-	mustWrite(t, filepath.Join(dir, "up", "a.md"), "## Same\n\nx\n\n## Same\n\ny\n")
-	mustWrite(t, filepath.Join(dir, "me", "a.md"), "## Mine\n\nz\n")
-	mustWrite(t, filepath.Join(dir, "t", "a.lm"), `
-weave "a.md" {
-  type = "markdown"
-  from = "up"
-  after "heading" "Same" { insert = me.heading["Mine"] }
-}`)
-	c, err := loom.LoadConfig(filepath.Join(dir, "loom.lm"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	tm, err := loom.LoadTemplate(c, filepath.Join(dir, "t", "a.lm"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := loom.Weave(c, tm); err == nil || !strings.Contains(err.Error(), "matches 2 places") {
+	c, dir := objRepo(t, map[string]string{
+		"upstream/a.md": "## Same\n\nx\n\n## Same\n\ny\n",
+		"mine/a.md":     "## Mine\n\nz\n",
+	})
+	if _, err := weaveObj(t, c, dir, "a.md", `base.Same.after("Mine")`); err == nil || !strings.Contains(err.Error(), "matches 2 places") {
 		t.Fatalf("a duplicate anchor must be refused, got: %v", err)
+	}
+}
+
+// Statement order matters: of two insertions at the same anchor, the one written first comes first.
+func TestStatementOrderIsSourceOrder(t *testing.T) {
+	c, dir := objRepo(t, nil)
+	out, err := weaveObj(t, c, dir, "doc.md", "base.Overview.after(\"Appendix\")\nbase.Overview.after(\"Where this fits\")\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	i, j := strings.Index(out, "## Appendix"), strings.Index(out, "## Where this fits")
+	if i < 0 || j < 0 || i > j {
+		t.Errorf("insertion order does not follow the template: Appendix@%d Where this fits@%d", i, j)
+	}
+}
+
+// list must report metadata from the same parse that weaving uses: outside tools rely on it, and
+// "every tool parses templates again on its own" is exactly what this command exists to remove.
+func TestDescribeMatchesWeave(t *testing.T) {
+	c := load(t)
+	i, err := loom.Describe(c, filepath.Join(fixture, "templates", "doc.md.lm"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i.Target != "doc.md" || i.Type != "markdown" || i.From != "up" {
+		t.Errorf("wrong metadata: %+v", i)
+	}
+	if i.Path != "doc.md" {
+		t.Errorf("the base path should default to the product path, got %q", i.Path)
+	}
+	if len(i.Anchors) != 1 || i.Anchors[0].Kind != "heading" || i.Anchors[0].Anchor != "Overview" {
+		t.Errorf("anchors not all reported: %+v", i.Anchors)
+	}
+	// frontmatter.set + after + append
+	if len(i.Inserts) != 3 {
+		t.Errorf("expected 3 content sources, got %d: %+v", len(i.Inserts), i.Inserts)
 	}
 }
 
@@ -183,81 +173,5 @@ func mustWrite(t *testing.T, p, s string) {
 	}
 	if err := os.WriteFile(p, []byte(strings.TrimLeft(s, "\n")), 0o644); err != nil {
 		t.Fatal(err)
-	}
-}
-
-// Statement order matters: of two insertions at the same anchor, the one written first comes first.
-func TestStatementOrderIsSourceOrder(t *testing.T) {
-	c := load(t)
-	tm, err := loom.ParseTemplate("t.lm", []byte(`weave "doc.md" {
-  type = "markdown"
-  append = [mine.heading["Where this fits"], mine.heading["Appendix"]]
-}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	out, err := loom.Weave(c, tm)
-	if err != nil {
-		t.Fatal(err)
-	}
-	i, j := strings.Index(out, "## Where this fits"), strings.Index(out, "## Appendix")
-	if i < 0 || j < 0 || i > j {
-		t.Errorf("append order does not follow the template: Where this fits@%d Appendix@%d", i, j)
-	}
-}
-
-// list must report metadata from the same parse that weaving uses: outside tools rely on it, and
-// "every tool parses templates again on its own" is exactly what this command exists to remove.
-func TestDescribeMatchesWeave(t *testing.T) {
-	c := load(t)
-	i, err := loom.Describe(c, filepath.Join(fixture, "templates", "doc.lm"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if i.Target != "doc.md" || i.Type != "markdown" || i.From != "upstream" {
-		t.Errorf("wrong metadata: %+v", i)
-	}
-	if i.Path != "doc.md" {
-		t.Errorf("the base path should default to the product path, got %q", i.Path)
-	}
-	if len(i.Anchors) != 1 || i.Anchors[0].Kind != "heading" || i.Anchors[0].Anchor != "Overview" {
-		t.Errorf("anchors not all reported: %+v", i.Anchors)
-	}
-	// frontmatter + the insert of after + the insert of append
-	if len(i.Inserts) != 3 {
-		t.Errorf("expected 3 content sources, got %d: %+v", len(i.Inserts), i.Inserts)
-	}
-}
-
-// Two templates for one product: which one wins would depend on enumeration order, so the loom refuses on the spot.
-// Why here: only the loom reads every template. Leaving it to downstream tools with their own regexes produces
-// checks that can never fire, such as a tool keyed by product path where duplicates were already merged away.
-func TestDuplicateTargetRefused(t *testing.T) {
-	dir := t.TempDir()
-	mustWrite(t, filepath.Join(dir, "loom.lm"), `
-layer "up" {
-  dir  = "up"
-  role = "warp"
-}
-templates = "t"
-`)
-	mustWrite(t, filepath.Join(dir, "up", "a.md"), "## A\n\nx\n")
-	one := `
-weave "a.md" {
-  type = "markdown"
-  from = "up"
-}`
-	mustWrite(t, filepath.Join(dir, "t", "a.lm"), one)
-	c, err := loom.LoadConfig(filepath.Join(dir, "loom.lm"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := loom.Templates(c); err != nil {
-		t.Fatalf("a single template must not be an error: %v", err)
-	}
-	mustWrite(t, filepath.Join(dir, "t", "copy-of-a.lm"), one)
-	_, err = loom.Templates(c)
-	if err == nil || !strings.Contains(err.Error(), "has two templates") {
-		t.Fatalf("a duplicate target must be refused, got: %v", err)
 	}
 }

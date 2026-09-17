@@ -29,7 +29,6 @@ lm check    run every check that build runs, write nothing
 - [Anchor completion](#anchor-completion)
 - [The build report](#the-build-report)
 - [Commands](#commands)
-- [Migrating from the HCL syntax](#migrating-from-the-hcl-syntax)
 
 ---
 
@@ -411,34 +410,9 @@ lm weave [-e vars] <template.lm>             weave one template to stdout
 lm list [-tsv]                               template metadata as JSON (or six TSV columns) for other tools
 lm anchors                                   where each anchor currently resolves upstream
 lm view                                      write upstream files annotated with their anchors
-lm migrate [-n]                              rewrite legacy HCL settings and templates to this syntax
 ```
 
 `lm` finds `loom.lm` by walking up from the current directory.
 
 `lm list` resolves identifier forms and section paths to real names, so a tool reading it can compare
 anchors with upstream headings directly.
-
----
-
-## Migrating from the HCL syntax
-
-`lm migrate` rewrites `loom.lm` and every legacy template, then removes the old template files. It
-either converts everything or changes nothing. `-n` only prints the plan.
-
-| HCL | Object syntax |
-|---|---|
-| `weave "x.md" { ... }` in `templates/x.lm` | the file `templates/x.md.lm` |
-| `after "heading" "A" { insert = mine.heading["B"] }` | `base.A.after("B")` |
-| `append = mine.heading["B"]` / `prepend = ...` | `base.append("B")` / `base.start(...)` |
-| `frontmatter = mine` | `base.frontmatter.set(self.frontmatter)` |
-| `bilingual = ["description"]` | `base.frontmatter.join("description")` (markdown) / `base.join("description")` |
-| `set = { k = mine.k }` | `base.k.set(self.k)` (dropped when `join` of the same key follows) |
-| `in "prompt" { as = "markdown"; reuse = "p.md"; append = mine.body }` | `import p "/p"` + `base.prompt.as(markdown).append(p.body)` |
-| `path = "old/name.md"` | `import base "/old/name"` |
-| `from = "mine"` + `// coverage-ok: why` | `base.replace(self, reason: "why")` |
-| `patch = "x.diff"` | `base.patch("x.diff")` |
-| `inherit` / `override` / `new` | removed; the report computes them per function |
-| named `anchor` blocks | expanded where they are used |
-
-The product must not change. XSDD's 81 templates were migrated this way and compared byte for byte.

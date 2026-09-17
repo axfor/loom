@@ -31,28 +31,11 @@ import (
 
 var settingKeywords = []string{"up", "me", "templates", "output", "mark", "registry", "take", "mirror", "manifest"}
 
-var legacyConfigLine = regexp.MustCompile(`^\s*(layer\s+"|[A-Za-z_][A-Za-z0-9_]*\s*=)`)
-
-// isLegacyConfig reports whether src uses the legacy syntax (HCL): it has `layer "..." {`
-// blocks or `name = value` assignments, neither of which exists in the object syntax.
-func isLegacyConfig(src []byte) bool {
-	for _, line := range strings.Split(string(src), "\n") {
-		if legacyConfigLine.MatchString(line) {
-			return true
-		}
-	}
-	return false
-}
-
-// LoadConfig reads loom.lm. Both the object syntax and the legacy syntax (HCL) are
-// accepted; the two coexist until migration is done.
+// LoadConfig reads loom.lm.
 func LoadConfig(path string) (*Config, error) {
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
-	}
-	if isLegacyConfig(src) {
-		return loadLegacyConfig(path, src)
 	}
 	return parseSettings(path, src)
 }

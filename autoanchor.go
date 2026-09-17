@@ -253,9 +253,6 @@ func completeAnchors(c *Config, t *Template, write bool, r *Report) (*Template, 
 	if err != nil {
 		return nil, err
 	}
-	if IsLegacySyntax(src) {
-		return t, nil // legacy syntax is not completed: migrate to object syntax first
-	}
 	gaps, err := findGaps(c, t)
 	if err != nil || len(gaps) == 0 {
 		return t, err

@@ -115,7 +115,6 @@ lm weave [-e vars] <template.lm>             weave one template to stdout
 lm list [-tsv]                               template metadata for other tools
 lm anchors                                   where each anchor resolves upstream right now
 lm view                                      upstream files annotated with their anchors
-lm migrate [-n]                              rewrite legacy HCL settings and templates
 ```
 
 ## Editor

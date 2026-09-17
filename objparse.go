@@ -11,10 +11,8 @@ package loom
 // operations are methods on a node. Only base can be changed: a template produces exactly
 // one file, and that file is base after weaving.
 //
-// Same result as the legacy syntax: the Template read here is the same intermediate result
-// as the same template read in the legacy syntax, so the engine (weave.go) need not know
-// which syntax a template uses — the proof that migration leaves products byte-for-byte
-// unchanged rests on this.
+// What this produces is the template's intermediate form (template.go), which the engine and
+// the tools read.
 
 import (
 	"fmt"
@@ -335,7 +333,7 @@ func ParseTemplateSyntax(file, target string, src []byte, resolve Resolver) (*Te
 	if err != nil {
 		return nil, err
 	}
-	t := &Template{Path: file, Target: target, Type: TypeOf(target), BasePath: target, Anchors: map[string]Stmt{}}
+	t := &Template{Path: file, Target: target, Type: TypeOf(target), BasePath: target}
 	in := &interp{t: t, objects: map[string]object{
 		"base": {layer: "up", file: target, typ: TypeOf(target)},
 		"self": {layer: "me", typ: TypeOf(target)},
@@ -643,7 +641,7 @@ func (in *interp) method(r receiver, st oStep) error {
 	}
 	if r.viewOf != "" {
 		// Statements in a view go into an in statement; adjacent ones on the same key and type
-		// merge into one (matching a single in block in the legacy syntax)
+		// merge into one, so the key's value is parsed and written back once
 		if n := len(in.t.Stmts); n > 0 {
 			last := &in.t.Stmts[n-1]
 			if last.Op == "in" && last.Key == r.viewOf && last.As == r.viewAs {

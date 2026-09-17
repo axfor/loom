@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/axfor/loom"
 )
@@ -29,8 +28,6 @@ Usage:
   lm list [-tsv]            print each template's metadata (for outer gates)
   lm anchors                list the upstream line each anchor resolves to right now
   lm view                   generate a derived view annotated with anchors
-  lm migrate [-n]           rewrite a legacy-syntax (HCL) loom.lm and templates into the new
-                            syntax; -n lists the plan without touching files
 
 Settings are read from the nearest loom.lm (searching up from the current directory).
 `
@@ -59,9 +56,6 @@ func run(cmd string, args []string) error {
 	cfgPath, err := loom.FindConfig(wd)
 	if err != nil {
 		return err
-	}
-	if cmd == "migrate" {
-		return migrate(cfgPath, args)
 	}
 	c, err := loom.LoadConfig(cfgPath)
 	if err != nil {
@@ -162,97 +156,4 @@ func weaveFile(c *loom.Config, path string) (string, error) {
 		return "", err
 	}
 	return loom.Weave(c, t)
-}
-
-// migrate rewrites the settings and every legacy-syntax template. Everything is rewritten in memory
-// before any file is touched: if one can't be rewritten, no file changes, so the repository is never
-// left half old and half new.
-func migrate(cfgPath string, args []string) error {
-	fs := flag.NewFlagSet("migrate", flag.ContinueOnError)
-	dry := fs.Bool("n", false, "only list the plan; don't touch files")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	c, err := loom.LoadConfig(cfgPath)
-	if err != nil {
-		return err
-	}
-	tpls, err := loom.Templates(c)
-	if err != nil {
-		return err
-	}
-	var done []*loom.Migrated
-	for _, p := range tpls {
-		src, err := os.ReadFile(p)
-		if err != nil {
-			return err
-		}
-		if !loom.IsLegacySyntax(src) {
-			continue
-		}
-		m, err := loom.MigrateTemplate(c, p)
-		if err != nil {
-			return err
-		}
-		done = append(done, m)
-	}
-	cfgSrc, err := os.ReadFile(cfgPath)
-	if err != nil {
-		return err
-	}
-	newCfg := ""
-	if strings.Contains(string(cfgSrc), "layer") {
-		if newCfg, err = loom.MigrateConfig(cfgPath); err != nil {
-			return err
-		}
-	}
-
-	rel := func(p string) string {
-		if r, err := filepath.Rel(c.Root, p); err == nil {
-			return r
-		}
-		return p
-	}
-	for _, m := range done {
-		if m.From != m.To {
-			fmt.Printf("  %s → %s\n", rel(m.From), rel(m.To))
-		} else {
-			fmt.Printf("  %s\n", rel(m.From))
-		}
-		for _, n := range m.Notes {
-			fmt.Printf("      ⚠ %s\n", n)
-		}
-	}
-	if newCfg != "" {
-		fmt.Printf("  %s (settings)\n", rel(cfgPath))
-	}
-	if *dry {
-		fmt.Printf("would rewrite %d templates%s (-n: no files touched)\n", len(done), map[bool]string{true: " + settings", false: ""}[newCfg != ""])
-		return nil
-	}
-	for _, m := range done {
-		if _, err := os.Stat(m.To); err == nil && m.To != m.From {
-			return fmt.Errorf("%s already exists; not overwriting", rel(m.To))
-		}
-	}
-	for _, m := range done {
-		if err := os.MkdirAll(filepath.Dir(m.To), 0o755); err != nil {
-			return err
-		}
-		if err := os.WriteFile(m.To, []byte(m.Text), 0o644); err != nil {
-			return err
-		}
-		if m.To != m.From {
-			if err := os.Remove(m.From); err != nil {
-				return err
-			}
-		}
-	}
-	if newCfg != "" {
-		if err := os.WriteFile(cfgPath, []byte(newCfg), 0o644); err != nil {
-			return err
-		}
-	}
-	fmt.Printf("✓ rewrote %d templates%s\n", len(done), map[bool]string{true: " + settings", false: ""}[newCfg != ""])
-	return nil
 }

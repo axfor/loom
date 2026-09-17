@@ -116,7 +116,7 @@ func Weave(c *Config, t *Template) (string, error) {
 			return "", fmt.Errorf("%s: the base has no key `%s`", s.Rng, s.Key)
 		}
 		inner := ast.New(s.As, body)
-		if err := apply(c, t, s.Kids, inner, t.Target, &nestCtx{typ: t.Type, key: s.Key, reuse: s.Reuse}); err != nil {
+		if err := apply(c, t, s.Kids, inner, t.Target, &nestCtx{typ: t.Type, key: s.Key}); err != nil {
 			return "", err
 		}
 		tree.SetBody(s.Key, inner.Text())
@@ -149,7 +149,7 @@ func Weave(c *Config, t *Template) (string, error) {
 }
 
 type nestCtx struct {
-	typ, key, reuse string
+	typ, key string
 }
 
 // apply applies positional statements to the AST.
@@ -168,13 +168,6 @@ func apply(c *Config, t *Template, stmts []Stmt, tree ast.Tree, rel string, nest
 		switch s.Op {
 		case "after", "before", "replace":
 			kind, anchor := s.Kind, s.Anchor
-			if kind == "anchor" {
-				d, ok := t.Anchors[anchor]
-				if !ok {
-					return fmt.Errorf("%s: anchor `%s` is not defined (define it with an anchor block first)", s.Rng, anchor)
-				}
-				kind, anchor = d.Kind, d.Anchor
-			}
 			if !ast.Has(tree.Kinds(), kind) {
 				return fmt.Errorf("%s: this type has no `%s` nodes (it has %s)",
 					s.Rng, kind, strings.Join(tree.Kinds(), "/"))
@@ -489,9 +482,6 @@ func isMarked(c *Config, t *Template, refs []Ref, body string) bool {
 }
 
 func refMarked(c *Config, t *Template, r Ref, body string) bool {
-	if r.IsLit && r.Layer == "" {
-		return false
-	}
 	m, ok := c.marksFor(r.Layer, t.Type)
 	return ok && strings.HasPrefix(body, m.Begin)
 }
@@ -499,21 +489,17 @@ func refMarked(c *Config, t *Template, r Ref, body string) bool {
 // payload evaluates one content source.
 func payload(c *Config, t *Template, r Ref, rel string, nest *nestCtx) (string, error) {
 	if r.IsLit {
-		// A literal in the new syntax belongs to our layer: wrap it in marks like the rest of our content,
-		// or the "byte-identical to upstream once marks are stripped" check fails. Legacy-syntax literals
-		// have no layer and stay as they are.
-		if r.Layer != "" {
-			lit := r.Literal
-			if c.Vars != nil {
-				b, err := c.Vars.Expand([]byte(lit), r.Rng.File, r.Rng.Line, r.Rng.Col+1)
-				if err != nil {
-					return "", err
-				}
-				lit = string(b)
+		// A literal belongs to our layer: wrap it in marks like the rest of our content, or the
+		// "byte-identical to upstream once marks are stripped" check fails.
+		lit := r.Literal
+		if c.Vars != nil {
+			b, err := c.Vars.Expand([]byte(lit), r.Rng.File, r.Rng.Line, r.Rng.Col+1)
+			if err != nil {
+				return "", err
 			}
-			return mark(c, t, r.Layer, lit), nil
+			lit = string(b)
 		}
-		return r.Literal, nil
+		return mark(c, t, r.Layer, lit), nil
 	}
 	src, useNest, err := refSource(c, t, r, rel, nest)
 	if err != nil {
@@ -546,12 +532,6 @@ func refSource(c *Config, t *Template, r Ref, rel string, nest *nestCtx) (string
 	srcRel := weftRel(c, t, r.Layer, rel)
 	if r.File != "" {
 		srcRel = r.File
-	}
-	if nest != nil && nest.reuse != "" {
-		// Cross-file reference: the two entry points are two forms of the same document and share one
-		// weft extension, while each takes its own warp half. Without this, each entry point would keep
-		// its own copy, and the two copies would sooner or later drift apart.
-		srcRel = nest.reuse
 	}
 	src, ok, err := c.read(r.Layer, srcRel)
 	if err != nil {
