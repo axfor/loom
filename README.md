@@ -7,7 +7,7 @@ warp. The product is the woven cloth, and the two stay separate: **pull the weft
 still there.**
 
 ```
-// mine/docs/setup.md.lm
+// mine/docs/setup.lm
 base.Install.after("Install behind a proxy")
 base."How it compares".drop(reason: "compares upstream with other projects; not ours")
 base.append("Troubleshooting")
@@ -16,6 +16,7 @@ base.append("Troubleshooting")
 ```
 lm build    build the whole tree and print the build report
 lm check    the same checks, writing nothing; -o dir also reports out-of-date output
+lm sync     take a new upstream release, carrying our edits onto it
 ```
 
 ## What it solves
@@ -31,15 +32,15 @@ at every build. That whole class of bug cannot happen, instead of being avoided 
 
 ## Insert by name, not by line
 
-A patch can insert anywhere, but when upstream changes the line next to your insertion point the
-patch no longer applies, and someone has to redo it. Loom anchors on upstream's own **names**:
+A diff can change anything, but when upstream changes the lines next to yours it no longer fits,
+and someone has to redo it. Loom anchors on upstream's own **names**:
 markdown headings, shell functions and banner comments, toml keys, json paths. Upstream adds a
 paragraph nearby and your content still lands in the right place, **and the upstream change flows
 into the product**. With a busy upstream, that is the difference between a human stepping in every
 release or not.
 
 When an anchor is not found, or matches more than once, the build stops. Loom does not guess, take
-the first match, or apply a fuzzy patch: a product woven in the wrong place looks exactly like a
+the first match, or fit anything approximately: a product woven in the wrong place looks exactly like a
 correct one, and that is the most expensive way to fail.
 
 ## Reference
@@ -67,14 +68,25 @@ lm.e                              variables (optional)
 upstream/                         base: the upstream project, untouched
 mine/                             self: our layer, laid out like the product
   skills/testing/SKILL.md           our content for that product file
-  skills/testing/SKILL.md.lm        its template: how upstream and ours are woven
-  hooks/run.sh.lm, hooks/run.sh.diff  a patch template and its patch
+  skills/testing/SKILL.lm           its template: how upstream and ours are woven
+  hooks/run.sh                      our version of an upstream script
+  hooks/run.lm                      its template: base.merge(self)
 ```
 
 Both trees share the product's layout, so "what is this product file made of" needs no lookup
-table: the same path in upstream and in our layer, and a template beside our file named
-`<file>.lm`. Templates and the patches they apply are sources only; the build never copies them
-into the product. To keep templates in a tree of their own, set `templates "dir"`.
+table: the same path in upstream and in our layer, and a template beside our file. Templates are
+sources only; the build never copies them into the product. To keep templates in a tree of their
+own, set `templates "dir"`.
+
+A template is named after the file it builds, with the extension left out: `SKILL.lm` builds
+`SKILL.md`. The build finds the file in the layers — one named exactly so (`LICENSE.lm` builds
+`LICENSE`), or else the one file with that name and an extension, templates not counted.
+When several could be meant (`notes.md` and `notes.yml`), the short name is an error and the
+template takes the full name, `notes.md.lm`; a name no layer has a file for is the product path as
+written. Two templates for the same product are an error.
+
+In VS Code the extension folds `X.lm` under the file it builds, so the explorer shows one entry per
+file (see [editors/vscode](editors/vscode/README.md)).
 
 A product file comes from exactly one place, in this order:
 
@@ -135,7 +147,7 @@ where the mark is a comment; an HTML comment in a shell script is not.
 A template is a list of statements, one per line.
 
 ```
-// mine/skills/testing/SKILL.md.lm
+// mine/skills/testing/SKILL.lm
 import ship "/.claude/commands/ship"
 
 base.frontmatter.set(self.frontmatter)
@@ -183,7 +195,7 @@ import base "/old/name"               // base is a renamed upstream file
 | Rule | |
 |---|---|
 | path | `./` and `../` are relative to the product's directory; `/` starts at the layer root |
-| extension | may be left out when exactly one file matches; several matches is an error |
+| extension | may be left out when exactly one file matches (templates do not count); several matches is an error |
 | layer | `base` resolves in upstream, every other name in our layer |
 | name | without a name, the file name without extension; it must be a valid identifier |
 | duplicates | importing a name twice is an error; `self` cannot be redirected |
@@ -259,7 +271,7 @@ exactly one heading.
 | `drop` | node | leave the node out of the product on purpose | `reason:` |
 | `set` | `frontmatter` / key | take the value from another file: `set(self.frontmatter)`, `set(self.description)` | one content |
 | `join` | frontmatter (markdown) / file (toml, json) | value = ours followed by upstream's: `base.frontmatter.join("description")` | key names |
-| `patch` | `base` | apply a unified diff next to the template, with fuzz off | patch files, applied in order |
+| `merge` | `base` | our file is upstream plus our edits: it is the product, and `lm sync` carries the edits onto each new upstream ([Following upstream](#following-upstream)) | `self` |
 | `as` | toml / json key | view the key's value as another type; methods follow | a type name |
 
 ### Arguments
@@ -321,9 +333,38 @@ Inside a view, a bare string names a section of the same key's value in our file
 ### Combinations
 
 - A **whole-file replace** can only be combined with `drop`. Nothing else could take effect.
-- A **patch** can only be combined with `drop`. The patch result is the product.
+- A **merge** can only be combined with `drop`. Our file is the product.
 - In those two cases `drop` is a declaration: *this upstream section is intentionally not in the
   product*. The build verifies the section really is absent.
+
+### Following upstream
+
+Some files can't be woven by name: a script where we changed a few lines inside functions, say. For
+those, our file is upstream plus our edits, and the template says so:
+
+```
+// mine/hooks/run.lm
+base.merge(self)
+```
+
+Edit `mine/hooks/run.sh` as you would any file; the build uses it as the product and still checks
+that no upstream function went missing without a `drop`. There is no patch file to write or keep.
+
+When upstream releases, take it with `lm sync`:
+
+```
+lm sync ../upstream-checkout      the new release; leave out .git and anything else that is not upstream
+```
+
+Sync replaces the upstream layer with that tree — files added, changed and removed, links kept as
+links — and, while the old upstream is still at hand, merges upstream's change into each merge
+template's file (a three-way merge: our file, the upstream it was based on, the new upstream).
+Upstream's fixes where we changed nothing flow in. Where upstream changed the lines we changed, our
+file gets conflict markers, as in git, and the build refuses it until they are resolved. A file
+upstream removed is listed too. Sync exits non-zero while any of that needs a person.
+
+Take upstream through `lm sync`: a copy made some other way leaves no old upstream to merge from, and
+our edits would be kept but upstream's change to those files would not come in.
 
 ---
 
@@ -422,7 +463,7 @@ extended            66 files   upstream kept whole, ours inserted
   ... and 65 more
 overridden          13 files   ours replaces part or all of upstream
   hooks/session-start.sh                       whole file · the two scripts would run twice
-  hooks/sdd-cache-post.sh                      patch · sdd-cache-post.sh.diff · functions: kept 2 · changed 1 (dbg) · added 1 (main)
+  hooks/sdd-cache-post.sh                      merge · functions: kept 2 · changed 1 (dbg) · added 1 (main)
 dropped             15 places  left out on purpose
   README.md § How it compares                  compares upstream with other projects; does not apply here
 added              547 files   only in our layer
@@ -450,6 +491,7 @@ fails when anything differs, so "the product is up to date with its sources" is 
 ```
 lm build [-e vars] [-o dir] [-report file]   build the whole tree
 lm check [-e vars] [-o dir]                  every check of build; with -o, also output files that differ; writes nothing
+lm sync <dir>                                take a new upstream release; merge it into merge templates' files
 lm weave [-e vars] <template.lm>             weave one template to stdout
 lm list [-tsv]                               template metadata as JSON (or six TSV columns) for other tools
 lm anchors                                   where each anchor currently resolves upstream

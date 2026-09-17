@@ -39,7 +39,7 @@ var kindCalls = map[string]map[string]string{
 }
 
 // editMethods are the methods that change base.
-var editMethods = []string{"after", "before", "start", "append", "replace", "drop", "set", "join", "patch"}
+var editMethods = []string{"after", "before", "start", "append", "replace", "drop", "set", "join", "merge"}
 
 func typeWords() []string { return []string{"markdown", "toml", "json", "shell", "text"} }
 
@@ -375,7 +375,7 @@ func ParseTemplateSyntax(file, target string, src []byte, resolve Resolver) (*Te
 			return nil, err
 		}
 	}
-	if err := checkPatchAlone(t); err != nil {
+	if err := checkMergeAlone(t); err != nil {
 		return nil, err
 	}
 	if t.From == "self" {
@@ -489,6 +489,9 @@ func (in *interp) select_(r *receiver, st oStep) error {
 }
 
 func (in *interp) method(r receiver, st oStep) error {
+	if st.name == "patch" {
+		return fmt.Errorf("%s: there are no patch files any more — our file is upstream plus our edits, and lm sync carries the edits onto each new upstream: write base.merge(self) and delete the .diff", st.pos)
+	}
 	if !contains(editMethods, st.name) {
 		if near := nearest(st.name, editMethods); near != "" {
 			return fmt.Errorf("%s: no method `%s` — did you mean %s?", st.pos, st.name, near)
@@ -625,19 +628,14 @@ func (in *interp) method(r receiver, st oStep) error {
 			return fmt.Errorf("%s: join needs key names: join(\"description\")", at)
 		}
 		out = append(out, Stmt{Op: "bilingual", Names: keys, Rng: at})
-	case "patch":
+	case "merge":
 		if r.node || r.viewOf != "" {
-			return fmt.Errorf("%s: patch applies to the whole file: base.patch(\"x.diff\")", at)
+			return fmt.Errorf("%s: merge applies to the whole file: base.merge(self)", at)
 		}
-		for _, a := range pos {
-			if a.val.kind != vString {
-				return fmt.Errorf("%s: patch file names must be quoted", a.pos)
-			}
-			out = append(out, Stmt{Op: "patch", Body: a.val.str, Rng: at})
+		if len(pos) != 1 || pos[0].val.kind != vExpr || pos[0].val.expr.root != "self" || len(pos[0].val.expr.steps) != 0 {
+			return fmt.Errorf("%s: merge takes our file at the same path: base.merge(self)", at)
 		}
-		if len(out) == 0 {
-			return fmt.Errorf("%s: patch needs a patch file: patch(\"x.diff\")", at)
-		}
+		out = append(out, Stmt{Op: "merge", Rng: at})
 	}
 	if r.viewOf != "" {
 		// Statements in a view go into an in statement; adjacent ones on the same key and type
@@ -726,27 +724,27 @@ func (in *interp) contents(args []oArg, typ string, inView bool) ([]Ref, error) 
 	return out, nil
 }
 
-// checkPatchAlone rejects weave statements alongside a patch: once a template applies a
-// patch, the patch result is the product, so other weave statements would have no effect —
-// and letting them silently do nothing is far worse than an error. drop is the exception:
-// it accounts for where an upstream section went and needs no weaving.
-func checkPatchAlone(t *Template) error {
-	var patch *Stmt
+// checkMergeAlone rejects weave statements alongside a merge: our file is the product, so other
+// weave statements would have no effect — and letting them silently do nothing is far worse than
+// an error. drop is the exception: it accounts for where an upstream section went and needs no
+// weaving.
+func checkMergeAlone(t *Template) error {
+	var merge *Stmt
 	for k := range t.Stmts {
-		if t.Stmts[k].Op == "patch" {
-			patch = &t.Stmts[k]
+		if t.Stmts[k].Op == "merge" {
+			merge = &t.Stmts[k]
 			break
 		}
 	}
-	if patch == nil {
+	if merge == nil {
 		return nil
 	}
 	for _, s := range t.Stmts {
-		// In a patch-based template, drop is a declaration: this section is intentionally
-		// absent from the product (the build checks that it really is)
-		if s.Op != "patch" && s.Op != "drop" {
-			return fmt.Errorf("%s: this template applies a patch (%s) and the patch result is the product, so this statement has no effect — move the change into the patch, or don't use a patch",
-				s.Rng, patch.Rng)
+		// In a merge template, drop is a declaration: this section is intentionally absent from the
+		// product (the build checks that it really is)
+		if s.Op != "merge" && s.Op != "drop" {
+			return fmt.Errorf("%s: this template merges upstream into our file (%s) and our file is the product, so this statement has no effect — make the change in our file",
+				s.Rng, merge.Rng)
 		}
 	}
 	return nil

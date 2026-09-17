@@ -37,8 +37,8 @@ func weave(t *testing.T, c *loom.Config, tpl string) string {
 func TestWeaveGolden(t *testing.T) {
 	c := load(t)
 	for _, cse := range []struct{ tpl, golden string }{
-		{"doc.md.lm", "doc.md"},
-		{"run.sh.lm", "run.sh"},
+		{"doc.lm", "doc.md"},
+		{"run.lm", "run.sh"},
 	} {
 		got := weave(t, c, cse.tpl)
 		want, err := os.ReadFile(filepath.Join(fixture, "golden", cse.golden))
@@ -55,7 +55,7 @@ func TestWeaveGolden(t *testing.T) {
 // This is not a sentence in the docs; it is a property that can be checked mechanically.
 func TestWarpSurvivesStrip(t *testing.T) {
 	c := load(t)
-	got := weave(t, c, "doc.md.lm")
+	got := weave(t, c, "doc.lm")
 	stripped := stripMarks(got, "<!-- MINE:BEGIN -->", "<!-- MINE:END -->")
 
 	up, err := os.ReadFile(filepath.Join(fixture, "upstream", "doc.md"))
@@ -147,7 +147,7 @@ func TestStatementOrderIsSourceOrder(t *testing.T) {
 // "every tool parses templates again on its own" is exactly what this command exists to remove.
 func TestDescribeMatchesWeave(t *testing.T) {
 	c := load(t)
-	i, err := loom.Describe(c, filepath.Join(fixture, "templates", "doc.md.lm"))
+	i, err := loom.Describe(c, filepath.Join(fixture, "templates", "doc.lm"))
 	if err != nil {
 		t.Fatal(err)
 	}

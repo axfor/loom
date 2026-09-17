@@ -27,7 +27,7 @@ type Info struct {
 	Type     string `json:"type"`
 	From     string `json:"from"`    // "base": woven on upstream; "self": the whole file is replaced with ours
 	Path     string `json:"path"`    // base path in upstream
-	Patch    string `json:"patch"`   // patch file (empty = not patch-based)
+	Merge    bool   `json:"merge"`   // our file is upstream plus our edits: base.merge(self)
 	Anchors  []Use  `json:"anchors"` // anchor points on the upstream
 	Inserts  []Src  `json:"inserts"` // content taken from the layers
 
@@ -130,8 +130,8 @@ func Describe(c *Config, path string) (*Info, error) {
 	walk = func(ss []Stmt, in *Stmt) {
 		for _, s := range ss {
 			switch s.Op {
-			case "patch":
-				i.Patch = s.Body
+			case "merge":
+				i.Merge = true
 			case "after", "before", "replace", "drop":
 				u := Use{Kind: s.Kind, Anchor: s.Anchor, Where: s.Rng.String()}
 				if s.Ident || len(s.Within) > 0 {
@@ -163,7 +163,7 @@ func Describe(c *Config, path string) (*Info, error) {
 }
 
 // ListTSV prints just six columns: product path / template path / type / base layer /
-// base path / patch file (empty = not patch-based).
+// base path / "merge" for a merge template (empty otherwise).
 //
 // Why not let callers pick fields out of the JSON with jq: the build script itself needs
 // this list most, and the build is the lowest link in the chain — each dependency it adds
@@ -179,7 +179,11 @@ func ListTSV(c *Config, w io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", i.Target, i.Template, i.Type, i.From, i.Path, i.Patch); err != nil {
+		merge := ""
+		if i.Merge {
+			merge = "merge"
+		}
+		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", i.Target, i.Template, i.Type, i.From, i.Path, merge); err != nil {
 			return err
 		}
 	}

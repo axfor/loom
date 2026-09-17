@@ -39,7 +39,7 @@ func findGaps(c *Config, t *Template) ([]anchorGap, error) {
 		return nil, nil
 	}
 	for _, s := range t.Stmts {
-		if s.Op == "patch" {
+		if s.Op == "merge" {
 			return nil, nil
 		}
 	}

@@ -25,6 +25,10 @@ Usage:
   lm check [-e vars-file] [-o output-dir]
                             run the same checks as build without writing anything; with -o, also
                             report files in output-dir that differ from what the sources build
+  lm sync <new-upstream-dir>
+                            replace the upstream layer with a new upstream release and carry our
+                            edits onto it: every merge template's file gets a three-way merge, with
+                            conflict markers where upstream changed the lines we changed
   lm weave [-e vars-file] <template.lm>
                             weave one template and write the product to stdout
   lm list [-tsv]            print each template's metadata (for outer gates)
@@ -141,6 +145,22 @@ func run(cmd string, args []string) error {
 		}
 		return nil
 
+	case "sync":
+		if len(args) != 1 {
+			return fmt.Errorf("usage: lm sync <new-upstream-dir>")
+		}
+		r, err := loom.Sync(c, args[0])
+		if r != nil {
+			printSync(r)
+		}
+		if err != nil {
+			return err
+		}
+		if n := len(r.Conflicts) + len(r.Gone); n > 0 {
+			return fmt.Errorf("%d files need you — resolve the conflict markers, or decide what happens to a file upstream removed; then lm build", n)
+		}
+		return nil
+
 	case "list":
 		if len(args) == 1 && args[0] == "-tsv" {
 			return loom.ListTSV(c, os.Stdout)
@@ -152,6 +172,22 @@ func run(cmd string, args []string) error {
 		return loom.AnchoredView(c, os.Stdout)
 	}
 	return fmt.Errorf("unknown subcommand `%s`\n%s", cmd, usage)
+}
+
+func printSync(r *loom.SyncReport) {
+	fmt.Printf("upstream    %4d added · %d changed · %d removed\n", len(r.Added), len(r.Changed), len(r.Removed))
+	list := func(title string, paths []string, note string) {
+		if len(paths) == 0 {
+			return
+		}
+		fmt.Printf("%-11s %4d files   %s\n", title, len(paths), note)
+		for _, p := range paths {
+			fmt.Printf("  %s\n", p)
+		}
+	}
+	list("merged", r.Merged, "our edits carried onto the new upstream")
+	list("conflicts", r.Conflicts, "conflict markers left in our file")
+	list("gone", r.Gone, "upstream removed the file our file is merged into")
 }
 
 // loadVars reads only the file given with -e (no fallback to lm.e); without -e it reads lm.e next to

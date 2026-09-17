@@ -31,7 +31,7 @@ func (r Ref) String() string {
 
 // Stmt is one statement. Op decides which fields are read.
 type Stmt struct {
-	Op     string // after / before / replace / drop / append / prepend / frontmatter / setgroup / bilingual / in / patch
+	Op     string // after / before / replace / drop / append / prepend / frontmatter / setgroup / bilingual / in / merge
 	Kind   string // position: node kind
 	Anchor string // position: node name
 	Ident  bool   // the name is in identifier form: _ matches a space or an underscore
@@ -47,7 +47,6 @@ type Stmt struct {
 	SetKey string   // set: key to write
 	SetRef Ref      // set: where the value comes from
 	Names  []string // bilingual: key names
-	Body   string   // patch: patch file, relative to the template
 	Reason string   // replace / drop: why the upstream content is changed
 
 	Rng Pos

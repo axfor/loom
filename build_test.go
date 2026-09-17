@@ -2,7 +2,6 @@ package loom_test
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -155,18 +154,6 @@ func TestShadowNeedsTemplate(t *testing.T) {
 	}
 }
 
-func makePatch(t *testing.T, dir, name, from, to string) {
-	t.Helper()
-	a, b := filepath.Join(t.TempDir(), "a"), filepath.Join(t.TempDir(), "b")
-	mustWrite(t, a, from)
-	mustWrite(t, b, to)
-	out, _ := exec.Command("diff", "-u", a, b).Output()
-	if len(out) == 0 {
-		t.Fatal("diff printed nothing")
-	}
-	mustWrite(t, filepath.Join(dir, name), string(out))
-}
-
 // An upstream section missing from the product with nothing in the template to account for it is a build
 // error; a drop accounts for it. Dropping a section that is still there, or dropping a section but leaving
 // its subsections behind, is an error too.
@@ -175,18 +162,18 @@ func TestLostContent(t *testing.T) {
 	c, dir := treeRepo(t, "", map[string]string{
 		"up/a.md": up,
 		"up/b.md": "## Parent\n\np\n\n### Child\n\nc\n\n## Next\n\nn\n",
+		"me/a.md": "## Intro\n\nx\n\n## Keep\n\nz\n",
 	})
-	makePatch(t, filepath.Join(dir, "t"), "a.md.diff", up, "## Intro\n\nx\n\n## Keep\n\nz\n")
 	out := filepath.Join(dir, "out")
 
 	write := func(p, s string) { mustWrite(t, filepath.Join(dir, "t", p), s) }
-	write("a.md.lm", `base.patch("a.md.diff")`)
+	write("a.md.lm", `base.merge(self)`)
 	_, err := build(t, c, out)
 	if err == nil || !strings.Contains(err.Error(), `upstream content lost: in a.md, section "Old"`) {
-		t.Fatalf("a section removed by the patch without a drop must be reported as lost, got: %v", err)
+		t.Fatalf("a section our merged file no longer has, without a drop, must be reported as lost, got: %v", err)
 	}
 
-	write("a.md.lm", "base.patch(\"a.md.diff\")\nbase.Old.drop(reason: \"does not apply\")\n")
+	write("a.md.lm", "base.merge(self)\nbase.Old.drop(reason: \"does not apply\")\n")
 	plan, err := build(t, c, out)
 	if err != nil {
 		t.Fatalf("the drop accounts for it, so no error, got: %v", err)
@@ -195,12 +182,12 @@ func TestLostContent(t *testing.T) {
 		t.Errorf("wrong dropped entries: %+v", plan.Report.Dropped)
 	}
 
-	write("a.md.lm", "base.patch(\"a.md.diff\")\nbase.Old.drop(reason: \"does not apply\")\nbase.Keep.drop(reason: \"does not apply\")\n")
+	write("a.md.lm", "base.merge(self)\nbase.Old.drop(reason: \"does not apply\")\nbase.Keep.drop(reason: \"does not apply\")\n")
 	if _, err := build(t, c, out); err == nil || !strings.Contains(err.Error(), `"Keep" is declared absent from the product but is still there`) {
 		t.Errorf("a dropped section that is still there must be an error, got: %v", err)
 	}
 
-	write("a.md.lm", "")
+	write("a.md.lm", "base.merge(self)\nbase.Old.drop(reason: \"does not apply\")\n")
 	write("b.md.lm", `base.Parent.drop(reason: "does not apply")`)
 	if _, err := build(t, c, out); err == nil || !strings.Contains(err.Error(), `its subsections "Child" are not accounted for`) {
 		t.Errorf("dropping a section but leaving its subsection must be an error, got: %v", err)
@@ -360,25 +347,26 @@ func TestCheckFindsStaleOutput(t *testing.T) {
 	}
 }
 
-// Without a templates setting, templates live next to our files. A template and the patch it
-// applies are sources: neither is ever copied into the product or counted as added.
+// Without a templates setting, templates live next to our files. A template is a source: it is never
+// copied into the product or counted as added.
 func TestTemplatesBesideOurFiles(t *testing.T) {
 	dir := t.TempDir()
-	up := "#!/bin/sh\necho up\n"
 	files := map[string]string{
 		"loom.lm":          "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n",
 		"up/doc.md":        "## Overview\n\nup\n",
 		"me/doc.md":        "## Ours\n\nme\n",
 		"me/doc.md.lm":     "base.Overview.after(\"Ours\")\n",
-		"up/run.sh":        up,
+		"up/run.sh":        "#!/bin/sh\necho up\n",
 		"me/run.sh":        "#!/bin/sh\necho me\n",
-		"me/run.sh.lm":     "base.patch(\"run.sh.diff\")\n",
+		"me/run.sh.lm":     "base.merge(self)\n",
 		"me/notes/free.md": "only ours\n",
+		// doc.md has its template beside it; an import without the extension still means doc.md
+		"up/guide.md":    "## Intro\n\nup\n",
+		"me/guide.md.lm": "import \"/doc\"\nbase.Intro.after(doc.Ours)\n",
 	}
 	for p, s := range files {
 		mustWrite(t, filepath.Join(dir, filepath.FromSlash(p)), s)
 	}
-	makePatch(t, filepath.Join(dir, "me"), "run.sh.diff", up, "#!/bin/sh\necho me\n")
 	c, err := loom.LoadConfig(filepath.Join(dir, "loom.lm"))
 	if err != nil {
 		t.Fatal(err)
@@ -388,8 +376,8 @@ func TestTemplatesBesideOurFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(listTree(t, out), " "); got != "doc.md notes/free.md run.sh" {
-		t.Errorf("templates and patches must not reach the product, got %s", got)
+	if got := strings.Join(listTree(t, out), " "); got != "doc.md guide.md notes/free.md run.sh" {
+		t.Errorf("templates must not reach the product, got %s", got)
 	}
 	if got := strings.Join(plan.Report.Added, " "); got != "notes/free.md" {
 		t.Errorf("only real files of ours count as added, got %s", got)
@@ -397,5 +385,8 @@ func TestTemplatesBesideOurFiles(t *testing.T) {
 	doc, _ := os.ReadFile(filepath.Join(out, "doc.md"))
 	if !strings.Contains(string(doc), "## Ours") {
 		t.Errorf("the template beside doc.md was not woven:\n%s", doc)
+	}
+	if guide, _ := os.ReadFile(filepath.Join(out, "guide.md")); !strings.Contains(string(guide), "## Ours") {
+		t.Errorf("the import of /doc did not bring in doc.md:\n%s", guide)
 	}
 }

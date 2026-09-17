@@ -4,8 +4,8 @@ package loom
 // any upstream content was lost.
 //
 // Lost content is a build error. If an upstream section (a markdown heading, a shell function) is
-// not in the product and the template gives no reason with drop / replace, the build fails. Patch
-// templates need this most: a patch that applies does not mean upstream's sections are still there.
+// not in the product and the template gives no reason with drop / replace, the build fails. Merge
+// templates need this most: our file can lose an upstream section with nothing else noticing.
 // A section newly added upstream may never reach the product, while the product looks perfectly normal.
 //
 // The check counts by name: for every name, the product (with our marks stripped) must have as many
@@ -49,14 +49,15 @@ type ReportLine struct {
 func account(c *Config, t *Template, out string, r *Report) []error {
 	var errs []error
 	whole := t.From != "" && t.From != c.Warp
-	var patches, inserted []string
+	merged := false
+	var inserted []string
 	var drops, replaces []Stmt
 	var walk func(ss []Stmt)
 	walk = func(ss []Stmt) {
 		for _, s := range ss {
 			switch s.Op {
-			case "patch":
-				patches = append(patches, s.Body)
+			case "merge":
+				merged = true
 			case "drop":
 				drops = append(drops, s)
 			case "replace":
@@ -110,8 +111,8 @@ func account(c *Config, t *Template, out string, r *Report) []error {
 	switch {
 	case whole:
 		r.Overridden = append(r.Overridden, ReportLine{t.Target, "whole file · " + t.UseReason})
-	case len(patches) > 0:
-		detail := "patch · " + strings.Join(patches, " · ")
+	case merged:
+		detail := "merge"
 		if t.Type == "shell" && upOK {
 			detail += " · " + functionStats(up, out)
 		}
@@ -123,7 +124,7 @@ func account(c *Config, t *Template, out string, r *Report) []error {
 		}
 		r.Overridden = append(r.Overridden, ReportLine{t.Target, strings.Join(parts, "; ")})
 	}
-	if !whole && len(patches) == 0 && len(inserted) > 0 {
+	if !whole && !merged && len(inserted) > 0 {
 		r.Extended = append(r.Extended, ReportLine{t.Target, fmt.Sprintf("+%d: %s", len(inserted), strings.Join(inserted, " / "))})
 	}
 
@@ -139,7 +140,7 @@ func account(c *Config, t *Template, out string, r *Report) []error {
 		// must be byte-identical to upstream. It is checked on every build instead of by a separate
 		// outside gate: an engine one byte off on a blank line still yields a normal-looking product.
 		// The frontmatter may be replaced by set / join, so only the body is compared.
-		if t.Type == "markdown" && !whole && len(patches) == 0 && len(drops)+len(replaces) == 0 {
+		if t.Type == "markdown" && !whole && !merged && len(drops)+len(replaces) == 0 {
 			body := func(s string) string {
 				b, _ := ast.NewMarkdown(s).BodyOf("body")
 				return strings.TrimRight(b, "\n")
@@ -195,8 +196,8 @@ func account(c *Config, t *Template, out string, r *Report) []error {
 		}
 	}
 
-	// In patch and whole-file replace templates, drop is a declaration: verify the section really is absent from the product
-	if whole || len(patches) > 0 {
+	// In merge and whole-file replace templates, drop is a declaration: verify the section really is absent from the product
+	if whole || merged {
 		for _, s := range drops {
 			if name := realName(s); s.Kind == kind && have[name] > need[name]-covered[name] {
 				errs = append(errs, fmt.Errorf("%s: %q is declared absent from the product but is still there — remove this drop, or really take it out", s.Rng, name))
@@ -277,7 +278,7 @@ func stripMarked(s string, m Marks) string {
 	return strings.Join(out, "\n")
 }
 
-// functionStats counts functions before and after a patch: kept (untouched) · changed · added · removed.
+// functionStats counts functions in upstream and in the product: kept (untouched) · changed · added · removed.
 func functionStats(up, out string) string {
 	bodies := func(src string) map[string]string {
 		t := ast.NewShell(src)

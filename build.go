@@ -99,12 +99,19 @@ func PlanBuild(c *Config, writeAnchors bool) (*Plan, error) {
 		return nil, err
 	}
 	claimed := map[string]bool{} // product paths that have a template: if the template fails, our file there must not be reported again as shadowing upstream
-	// Templates and the patches they apply are sources, never product files. They usually live next
-	// to our files in the self layer, so the walk over that layer must skip them.
+	// Templates are sources, never product files. They usually live next to our files in the self
+	// layer, so the walk over that layer must skip them.
 	sourceOnly := map[string]bool{}
+	firstFor := map[string]string{} // product path → the template that builds it
 	for _, p := range tpls {
 		if target, err := TargetOf(c, p); err == nil {
 			claimed[target] = true
+			if first, dup := firstFor[target]; dup {
+				// SKILL.lm and SKILL.md.lm name the same product; which one wins would be an accident of order
+				fail(fmt.Errorf("%s and %s both build %s — keep one", rel(c, first), rel(c, p), target))
+				continue
+			}
+			firstFor[target] = p
 		}
 		if abs, err := filepath.Abs(p); err == nil {
 			sourceOnly[abs] = true
@@ -113,13 +120,6 @@ func PlanBuild(c *Config, writeAnchors bool) (*Plan, error) {
 		if err != nil {
 			fail(err)
 			continue
-		}
-		for _, s := range t.Stmts {
-			if s.Op == "patch" {
-				if abs, err := filepath.Abs(filepath.Join(filepath.Dir(t.Path), s.Body)); err == nil {
-					sourceOnly[abs] = true
-				}
-			}
 		}
 		claimed[t.Target] = true
 		bases[t.BasePath] = true
@@ -166,7 +166,7 @@ func PlanBuild(c *Config, writeAnchors bool) (*Plan, error) {
 			if upHas(rel) && !sameEntry(abs, filepath.Join(upRoot, filepath.FromSlash(rel))) {
 				fail(fmt.Errorf("%s: this file in our layer shadows the upstream file at the same path, but no template accounts for it — "+
 					"to use ours whole, write template %s: base.replace(self, reason: \"...\"); otherwise weave it in section by section",
-					filepath.Join(meRoot, filepath.FromSlash(rel)), filepath.Join(c.Templates, rel+Ext)))
+					filepath.Join(meRoot, filepath.FromSlash(rel)), TemplateName(c, rel)))
 				return nil
 			}
 			o, err := copyOutput(c, rel, abs, info, "self", true)

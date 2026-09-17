@@ -35,7 +35,8 @@ func LoadTemplate(c *Config, path string) (*Template, error) {
 //   - starting with ./ or ../: relative to this file's directory (the product path);
 //     starting with /: from the layer root
 //   - the extension may be omitted: it looks for the same name with any extension and
-//     accepts exactly one match; several matches are an error, never a guess
+//     accepts exactly one match; several matches are an error, never a guess. Templates do not
+//     count: one sits next to the file it builds, and is never content.
 func (c *Config) resolveImport(layer, spec, fromDir string) (string, error) {
 	l, ok := c.layer(layer)
 	if !ok {
@@ -58,14 +59,7 @@ func (c *Config) resolveImport(layer, spec, fromDir string) (string, error) {
 		return rel, nil
 	}
 	if filepath.Ext(rel) == "" {
-		matches, _ := filepath.Glob(filepath.Join(root, rel) + ".*")
-		var files []string
-		for _, m := range matches {
-			if st, err := os.Stat(m); err == nil && !st.IsDir() {
-				r, _ := filepath.Rel(root, m)
-				files = append(files, filepath.ToSlash(r))
-			}
-		}
+		files := withExtension(root, rel)
 		switch len(files) {
 		case 1:
 			return files[0], nil
@@ -77,8 +71,33 @@ func (c *Config) resolveImport(layer, spec, fromDir string) (string, error) {
 	return "", fmt.Errorf("%s layer: %q not found", layer, spec)
 }
 
-// TargetOf derives the product path from a template path: its path relative to the
-// template directory, minus .lm.
+// withExtension lists the files named rel plus one or more extensions (rel.md, rel.min.js) in a
+// layer root, templates left out, as slash paths relative to the root.
+func withExtension(root, rel string) []string {
+	dir, base := filepath.Split(filepath.Join(root, filepath.FromSlash(rel)))
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range ents {
+		n := e.Name()
+		if e.IsDir() || !strings.HasPrefix(n, base+".") || strings.HasSuffix(n, Ext) {
+			continue
+		}
+		r, _ := filepath.Rel(root, filepath.Join(dir, n))
+		out = append(out, filepath.ToSlash(r))
+	}
+	return out
+}
+
+// TargetOf derives the product path from a template path: its path relative to the template
+// directory, minus .lm. The product file's extension may be left out — SKILL.lm builds SKILL.md —
+// and is then found in the layers:
+//   - a file named exactly as written is the product (SKILL.md.lm, LICENSE.lm)
+//   - otherwise the files named <name>.<ext> in any layer, templates left out: one name
+//     is the product; several are an error that asks for the full name, never a guess
+//   - no such file: the name as written, a product no layer has a file for
 func TargetOf(c *Config, path string) (string, error) {
 	root, err := filepath.Abs(filepath.Join(c.Root, c.Templates))
 	if err != nil {
@@ -95,12 +114,64 @@ func TargetOf(c *Config, path string) (string, error) {
 	if !strings.HasSuffix(rel, Ext) {
 		return "", fmt.Errorf("%s: template names must end in %s", path, Ext)
 	}
-	return filepath.ToSlash(strings.TrimSuffix(rel, Ext)), nil
+	name := filepath.ToSlash(strings.TrimSuffix(rel, Ext))
+	var roots []string
+	for _, n := range c.Order {
+		roots = append(roots, filepath.Join(c.Root, c.Layers[n].Dir))
+	}
+	for _, root := range roots {
+		if st, err := os.Stat(filepath.Join(root, filepath.FromSlash(name))); err == nil && !st.IsDir() {
+			return name, nil
+		}
+	}
+	seen := map[string]bool{}
+	var found []string
+	for _, root := range roots {
+		for _, f := range withExtension(root, name) {
+			if !seen[f] {
+				seen[f] = true
+				found = append(found, f)
+			}
+		}
+	}
+	sort.Strings(found)
+	switch len(found) {
+	case 0:
+		return name, nil
+	case 1:
+		return found[0], nil
+	}
+	var full []string
+	for _, f := range found {
+		full = append(full, filepath.Base(f)+Ext)
+	}
+	return "", fmt.Errorf("%s: %s could mean %s — name the template after the one it builds: %s",
+		path, filepath.Base(name)+Ext, baseNames(found), strings.Join(full, " or "))
+}
+
+func baseNames(paths []string) string {
+	var out []string
+	for _, p := range paths {
+		out = append(out, filepath.Base(p))
+	}
+	return strings.Join(out, ", ")
+}
+
+// TemplateName is the template path to suggest for a product: the short name when it would build
+// exactly that product, the full name otherwise.
+func TemplateName(c *Config, target string) string {
+	full := filepath.Join(c.Root, c.Templates, filepath.FromSlash(target)+Ext)
+	if ext := filepath.Ext(target); ext != "" {
+		short := filepath.Join(c.Root, c.Templates, filepath.FromSlash(strings.TrimSuffix(target, ext))+Ext)
+		if got, err := TargetOf(c, short); err == nil && got == target {
+			return rel(c, short)
+		}
+	}
+	return rel(c, full)
 }
 
 // Templates lists every template in the configured template directory, sorted by path —
-// a stable order keeps the product reproducible. A template's product path is its own path, so
-// two templates can never weave the same product.
+// a stable order keeps the product reproducible.
 func Templates(c *Config) ([]string, error) {
 	root := filepath.Join(c.Root, c.Templates)
 	var out []string

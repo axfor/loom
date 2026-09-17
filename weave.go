@@ -8,9 +8,6 @@ package loom
 
 import (
 	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -30,35 +27,26 @@ func Weave(c *Config, t *Template) (string, error) {
 		from = c.Warp
 	}
 
-	// patch: the base is the warp copy and the edits are written as a unified diff.
-	// -F0 turns off fuzzy matching: the default fuzz applies a hunk at an approximate position
-	// **without an error** when the context does not match, so the product looks fine but the logic
-	// is misplaced — the most dangerous way this mechanism can fail. Better to fail to apply.
-	// Multiple patches apply in the order written, each on top of the previous result.
-	patched := false
-	var cur string
+	// merge: our file is upstream plus our edits, so it is the product. lm sync carries the edits onto
+	// each new upstream, and leaves conflict markers where it can't; those must not reach the product.
 	for _, s := range t.Stmts {
-		if s.Op != "patch" {
+		if s.Op != "merge" {
 			continue
 		}
-		if !patched {
-			base, ok, err := c.read(from, weftRel(c, t, from, t.BasePath))
-			if err != nil {
-				return "", err
-			}
-			if !ok {
-				return "", fmt.Errorf("%s: layer %s has no %s", s.Rng, from, t.BasePath)
-			}
-			cur, patched = base, true
+		if _, ok, err := c.read(from, weftRel(c, t, from, t.BasePath)); err != nil || !ok {
+			return "", fmt.Errorf("%s: layer %s has no %s to merge into", s.Rng, from, t.BasePath)
 		}
-		out, err := applyPatch(t, s, cur)
+		ours, ok, err := c.read(c.Weft, t.Target)
 		if err != nil {
 			return "", err
 		}
-		cur = out
-	}
-	if patched {
-		return cur, nil
+		if !ok {
+			return "", fmt.Errorf("%s: merge needs our file %s", s.Rng, t.Target)
+		}
+		if hasConflictMarkers(ours) {
+			return "", fmt.Errorf("%s: our %s still has conflict markers from lm sync — resolve them, then build", s.Rng, t.Target)
+		}
+		return ours, nil
 	}
 
 	src, ok, err := c.read(from, weftRel(c, t, from, t.BasePath))
@@ -589,45 +577,14 @@ func mark(c *Config, t *Template, layer, v string) string {
 	return m.Begin + "\n" + v + "\n" + m.End
 }
 
-func applyPatch(t *Template, s Stmt, src string) (string, error) {
-	if _, err := exec.LookPath("patch"); err != nil {
-		return "", fmt.Errorf("%s: the patch command is required", s.Rng)
+// hasConflictMarkers reports whether a file still holds the markers a three-way merge leaves.
+func hasConflictMarkers(s string) bool {
+	begin, end := false, false
+	for _, l := range strings.Split(s, "\n") {
+		begin = begin || strings.HasPrefix(l, "<<<<<<< ")
+		end = end || strings.HasPrefix(l, ">>>>>>> ")
 	}
-	d, err := os.MkdirTemp("", "loom")
-	if err != nil {
-		return "", err
-	}
-	defer os.RemoveAll(d)
-	w := filepath.Join(d, "w")
-	if err := os.WriteFile(w, []byte(src), 0o644); err != nil {
-		return "", err
-	}
-	diff, err := os.ReadFile(filepath.Join(filepath.Dir(t.Path), s.Body))
-	if err != nil {
-		return "", fmt.Errorf("%s: cannot read patch file %s: %v", s.Rng, s.Body, err)
-	}
-	pf := filepath.Join(d, "p")
-	if err := os.WriteFile(pf, []byte(strings.TrimRight(string(diff), "\n")+"\n"), 0o644); err != nil {
-		return "", err
-	}
-	in, err := os.Open(pf)
-	if err != nil {
-		return "", err
-	}
-	defer in.Close()
-	cmd := exec.Command("patch", "-s", "-p0", "-F0", "--no-backup-if-mismatch", w)
-	cmd.Stdin = in
-	out, _ := cmd.Output()
-	if cmd.ProcessState == nil || !cmd.ProcessState.Success() {
-		msg := strings.TrimSpace(string(out))
-		if len(msg) > 200 {
-			msg = msg[:200]
-		}
-		return "", fmt.Errorf("%s: patch does not apply — upstream most likely changed a spot the patch edits; "+
-			"check what upstream changed, then redo the patch. patch: %s", s.Rng, msg)
-	}
-	b, err := os.ReadFile(w)
-	return string(b), err
+	return begin && end
 }
 
 // applyBilingual sets the key's value to the weft value followed by the warp value.
