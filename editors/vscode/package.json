@@ -2,7 +2,7 @@
   "name": "loom-lang",
   "displayName": "Loom",
   "description": "Loom for VS Code: syntax highlighting for .lm templates and settings, .e variable files and {{@name}} placeholders; completion of nodes, methods, our sections and import paths; go to definition from a template to the upstream or our file and node it names.",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "publisher": "axfor",
   "icon": "icons/loom.png",
   "license": "Apache-2.0",
@@ -17,12 +17,13 @@
     "Programming Languages"
   ],
   "activationEvents": [
-    "onLanguage:loom",
-    "workspaceContains:**/loom.lm"
+    "onLanguage:loom"
   ],
   "main": "./extension.js",
   "contributes": {
     "configurationDefaults": {
+      "explorer.fileNesting.enabled": true,
+      "explorer.fileNesting.expand": false,
       "explorer.fileNesting.patterns": {
         "*": "${capture}.lm, ${basename}.lm"
       }

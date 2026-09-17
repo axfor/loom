@@ -25,11 +25,11 @@ A template lives next to the file it builds, and the explorer folds it under tha
 ▸ run.sh            run.lm
 ```
 
-In a workspace with a `loom.lm`, the extension turns this on by itself: it contributes the nesting patterns
-(`X.lm`, and the short name that leaves the extension out) and writes
-`"explorer.fileNesting.enabled": true` and `"explorer.fileNesting.expand": false` to the workspace settings.
-It writes a setting only when nobody has set it at any level, so turning nesting off in your own settings
-keeps it off. File nesting needs VS Code 1.67 or later.
+The extension turns this on by itself, through default settings — it writes no file into your workspace:
+file nesting on and folded (`explorer.fileNesting.enabled` / `expand`), with patterns that fold `X.lm` and the
+short name that leaves the extension out under `X`. Defaults apply in every workspace, so VS Code's own
+nesting patterns (lock files under `package.json`, for one) show up elsewhere too; set
+`"explorer.fileNesting.enabled": false` in your settings to turn nesting off. It needs VS Code 1.67 or later.
 
 `.lm` and `.e` files show the Loom icon: warp threads (upstream) with the weft (ours) woven through.
 
@@ -93,7 +93,7 @@ This runs the tests first and packages only if they pass, producing `editors/vsc
 Install it into VS Code in either of these ways:
 
 - In the Extensions view, open the `...` menu at the top right, choose **Install from VSIX...**, and pick the file above
-- From the command line: `code --install-extension editors/vscode/loom-lang-0.4.0.vsix`
+- From the command line: `code --install-extension editors/vscode/loom-lang-0.4.1.vsix`
 
 To skip packaging while developing, install the directory directly: run **Developer: Install Extension from Location...** from the Command Palette and choose `editors/vscode`.
 
@@ -111,7 +111,7 @@ npm test        # inside editors/vscode; make vs runs it first
 - `test/definition.js`: builds a real repository on disk, puts the cursor on names in templates, and checks which file and line each jump lands on, and that a string with spaces is one link
 - `test/completion.js`: puts the cursor in templates over a real repository and checks what is offered and the range it replaces; every name it inserts must go to definition back to the node it was offered for
 - `test/wordpattern.js`: runs VS Code's own word-finding algorithm over every position of every string and name in long template lines
-- `test/nesting.js`: which nesting settings are written in a Loom workspace, and that a choice already made is left alone
+- `test/nesting.js`: nesting is on and folded by default, with patterns for both template names, and the extension writes no settings
 
 The logic lives in `lib/` and does not depend on VS Code: `loom.js` reads templates and finds nodes with the compiler's rules,
 `definition.js` and `completion.js` build on it. `extension.js` only wires them into the editor.
