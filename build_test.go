@@ -84,6 +84,10 @@ manifest ".manifest"
 	if err := os.Symlink("../references", filepath.Join(dir, "me", "link")); err != nil {
 		t.Fatal(err)
 	}
+	// a group-writable source must not make the product group-writable
+	if err := os.Chmod(filepath.Join(dir, "me", "cmds", "ship.toml"), 0o664); err != nil {
+		t.Fatal(err)
+	}
 	out := filepath.Join(dir, "out")
 	mustWrite(t, filepath.Join(out, "stale.txt"), "old\n")
 
@@ -103,6 +107,9 @@ manifest ".manifest"
 		if st, _ := os.Stat(filepath.Join(out, exe)); st.Mode().Perm()&0o111 == 0 {
 			t.Errorf("%s lost its executable bit", exe)
 		}
+	}
+	if st, _ := os.Stat(filepath.Join(out, "cmds", "ship.toml")); st.Mode().Perm() != 0o644 {
+		t.Errorf("product permissions must be 0644 or 0755, got %o", st.Mode().Perm())
 	}
 	if target, err := os.Readlink(filepath.Join(out, "link")); err != nil || target != "../references" {
 		t.Errorf("the symbolic link was not kept as a link: %q %v", target, err)

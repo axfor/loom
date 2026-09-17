@@ -129,9 +129,9 @@ func PlanBuild(c *Config, writeAnchors bool) (*Plan, error) {
 		mode := fs.FileMode(0o644)
 		if meRoot != "" {
 			if st, err := os.Stat(filepath.Join(meRoot, filepath.FromSlash(t.Target))); err == nil {
-				mode = st.Mode().Perm()
+				mode = productMode(st.Mode())
 			} else if st, err := os.Stat(filepath.Join(upRoot, filepath.FromSlash(t.BasePath))); err == nil {
-				mode = st.Mode().Perm()
+				mode = productMode(st.Mode())
 			}
 		}
 		add(&Output{Rel: t.Target, From: "template", Data: []byte(out), Mode: mode})
@@ -266,6 +266,16 @@ func sameEntry(a, b string) bool {
 	return la.Mode().IsRegular() && lb.Mode().IsRegular() && la.Size() == lb.Size() && sameFile(a, b)
 }
 
+// productMode is 0755 when the source is executable, otherwise 0644. Only the executable bit
+// carries meaning (it is also all git records); copying other bits would make the product depend
+// on how a checkout happens to be set up, such as group-writable files on one machine.
+func productMode(m fs.FileMode) fs.FileMode {
+	if m.Perm()&0o111 != 0 {
+		return 0o755
+	}
+	return 0o644
+}
+
 func fromName(from string) string {
 	switch from {
 	case "template":
@@ -301,7 +311,7 @@ func walkLayer(root string, fn func(rel, abs string, info fs.FileInfo) error) er
 
 // copyOutput is one file copied as is. Text files from our layer get variables expanded; binaries and upstream files are left untouched.
 func copyOutput(c *Config, rel, abs string, info fs.FileInfo, from string, expand bool) (*Output, error) {
-	o := &Output{Rel: rel, From: from, Src: abs, Mode: info.Mode().Perm()}
+	o := &Output{Rel: rel, From: from, Src: abs, Mode: productMode(info.Mode())}
 	if info.Mode()&fs.ModeSymlink != 0 {
 		target, err := os.Readlink(abs)
 		if err != nil {
