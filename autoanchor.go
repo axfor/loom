@@ -182,11 +182,21 @@ func fillGaps(path string, src []byte, gaps []anchorGap) ([]byte, []string, erro
 		return nil, nil, err
 	}
 	type insert struct {
-		at   int
-		text string
+		at, end int // replace src[at:end] with text (end == at: a plain insertion)
+		text    string
 	}
 	var ins []insert
 	var lines []string
+
+	// Gaps whose neighbour sits in the same (...) call are rewritten together, so the call is
+	// rendered once: on one line, or as a block with one argument per line.
+	type call struct {
+		open, close int // token indexes of ( and )
+		gaps        []anchorGap
+	}
+	calls := map[int]*call{}
+	var order []int
+
 	for _, g := range gaps {
 		k := -1
 		for i, t := range toks {
@@ -198,37 +208,6 @@ func fillGaps(path string, src []byte, gaps []anchorGap) ([]byte, []string, erro
 		if k < 0 {
 			return nil, nil, fmt.Errorf("%s: can't find the %q reference in the template", g.ref.Rng, g.neighbor)
 		}
-		// Where this argument ends: a string is one token; self.X runs to the end of the expression
-		last := k
-		if toks[k].kind == kIdent {
-			for last+2 < len(toks) && toks[last+1].kind == kDot && (toks[last+2].kind == kIdent || toks[last+2].kind == kString) {
-				last += 2
-			}
-		}
-		start, end := toks[k].off, toks[last].end
-		next := last + 1
-		for next < len(toks) && toks[next].kind == kNewline {
-			next++
-		}
-		paren := next < len(toks) && (toks[next].kind == kComma || toks[next].kind == kRParen)
-
-		quoted := g.args
-		lineStart := strings.LastIndexByte(string(src[:start]), '\n') + 1
-		indent := string(src[lineStart:start])
-		switch {
-		case paren && g.after:
-			ins = append(ins, insert{end, ", " + strings.Join(quoted, ", ")})
-		case paren:
-			ins = append(ins, insert{start, strings.Join(quoted, ", ") + ", "})
-		case g.after:
-			lineEnd := len(src)
-			if i := strings.IndexByte(string(src[end:]), '\n'); i >= 0 {
-				lineEnd = end + i
-			}
-			ins = append(ins, insert{lineEnd, "\n" + indent + strings.Join(quoted, "\n"+indent)})
-		default:
-			ins = append(ins, insert{start, strings.Join(quoted, "\n"+indent) + "\n" + indent})
-		}
 		where := "after"
 		if !g.after {
 			where = "before"
@@ -236,13 +215,168 @@ func fillGaps(path string, src []byte, gaps []anchorGap) ([]byte, []string, erro
 		for _, n := range g.labels {
 			lines = append(lines, fmt.Sprintf("%q placed %s %q (line %d)", n, where, g.neighbor, g.ref.Rng.Line))
 		}
+
+		if open, close := enclosingParens(toks, k); open >= 0 {
+			if calls[open] == nil {
+				calls[open] = &call{open: open, close: close}
+				order = append(order, open)
+			}
+			calls[open].gaps = append(calls[open].gaps, g)
+			continue
+		}
+
+		// Block form already: one argument per line, next to the neighbour's line
+		last := argEnd(toks, k)
+		start, end := toks[k].off, toks[last].end
+		lineStart := strings.LastIndexByte(string(src[:start]), '\n') + 1
+		indent := string(src[lineStart:start])
+		if g.after {
+			lineEnd := len(src)
+			if i := strings.IndexByte(string(src[end:]), '\n'); i >= 0 {
+				lineEnd = end + i
+			}
+			ins = append(ins, insert{lineEnd, lineEnd, "\n" + indent + strings.Join(g.args, "\n"+indent)})
+		} else {
+			ins = append(ins, insert{start, start, strings.Join(g.args, "\n"+indent) + "\n" + indent})
+		}
 	}
+
+	for _, open := range order {
+		cl := calls[open]
+		// the call's current arguments, as written
+		type arg struct {
+			first int
+			text  string
+		}
+		var args []arg
+		first, depth := -1, 0
+		for i := cl.open + 1; i <= cl.close; i++ {
+			t := toks[i]
+			if t.kind == kNewline {
+				continue
+			}
+			if i == cl.close || (depth == 0 && t.kind == kComma) {
+				if first >= 0 {
+					args = append(args, arg{first, string(src[toks[first].off:toks[i-1-trailingNewlines(toks, i-1)].end])})
+				}
+				first = -1
+				continue
+			}
+			if first < 0 {
+				first = i
+			}
+			switch t.kind {
+			case kLParen:
+				depth++
+			case kRParen:
+				depth--
+			}
+		}
+		var out []string
+		path := false
+		for _, a := range args {
+			var before, after []string
+			for _, g := range cl.gaps {
+				if toks[a.first].pos != g.ref.Rng {
+					continue
+				}
+				for _, na := range g.args {
+					path = path || strings.HasPrefix(na, "self.")
+				}
+				if g.after {
+					after = append(after, g.args...)
+				} else {
+					before = append(before, g.args...)
+				}
+			}
+			out = append(append(append(out, before...), a.text), after...)
+		}
+
+		openOff, closeEnd := toks[cl.open].off, toks[cl.close].end
+		lineStart := strings.LastIndexByte(string(src[:openOff]), '\n') + 1
+		prefix := string(src[lineStart:openOff])
+		indent := prefix[:len(prefix)-len(strings.TrimLeft(prefix, " \t"))]
+		oneLine := "(" + strings.Join(out, ", ") + ")"
+		// A section path is easy to misread inside a long line ("..."."..." looks like a stray quote),
+		// and so is a long argument list: both are written as a block, one argument per line.
+		if path || len([]rune(prefix+oneLine)) > maxLine {
+			ins = append(ins, insert{openOff, closeEnd, "{\n" + indent + "    " + strings.Join(out, "\n"+indent+"    ") + "\n" + indent + "}"})
+		} else {
+			ins = append(ins, insert{openOff, closeEnd, oneLine})
+		}
+	}
+
 	sort.SliceStable(ins, func(i, j int) bool { return ins[i].at > ins[j].at })
-	out := append([]byte{}, src...)
+	res := append([]byte{}, src...)
 	for _, in := range ins {
-		out = append(out[:in.at], append([]byte(in.text), out[in.at:]...)...)
+		res = append(res[:in.at], append([]byte(in.text), res[in.end:]...)...)
 	}
-	return out, lines, nil
+	return res, lines, nil
+}
+
+// maxLine is the longest statement anchor completion writes on one line.
+const maxLine = 100
+
+// enclosingParens finds the ( ) call that directly contains token k, or -1 when k is not inside
+// parentheses (it is in a { } block).
+func enclosingParens(toks []tok, k int) (int, int) {
+	open, depth := -1, 0
+	for i := k - 1; i >= 0; i-- {
+		switch toks[i].kind {
+		case kRParen:
+			depth++
+		case kLParen:
+			if depth == 0 {
+				open = i
+			} else {
+				depth--
+			}
+		case kLBrace, kRBrace:
+			if depth == 0 {
+				return -1, -1
+			}
+		}
+		if open >= 0 {
+			break
+		}
+	}
+	if open < 0 {
+		return -1, -1
+	}
+	depth = 0
+	for i := open + 1; i < len(toks); i++ {
+		switch toks[i].kind {
+		case kLParen:
+			depth++
+		case kRParen:
+			if depth == 0 {
+				return open, i
+			}
+			depth--
+		}
+	}
+	return -1, -1
+}
+
+// argEnd is the last token of the argument starting at token k: a string is one token;
+// self.X or self."A"."B" runs to the end of the expression.
+func argEnd(toks []tok, k int) int {
+	last := k
+	if toks[k].kind == kIdent {
+		for last+2 < len(toks) && toks[last+1].kind == kDot && (toks[last+2].kind == kIdent || toks[last+2].kind == kString) {
+			last += 2
+		}
+	}
+	return last
+}
+
+// trailingNewlines counts newline tokens ending at index i (going backwards).
+func trailingNewlines(toks []tok, i int) int {
+	n := 0
+	for i-n >= 0 && toks[i-n].kind == kNewline {
+		n++
+	}
+	return n
 }
 
 // completeAnchors completes the anchors of one template. With write false it only reports (lm check):
