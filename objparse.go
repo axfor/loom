@@ -315,7 +315,7 @@ func (p *oparser) value() (oValue, error) {
 type Resolver func(layer, spec, fromDir string) (string, error)
 
 type object struct {
-	layer string // "up" / "me"
+	layer string // "base" / "self"
 	file  string // path in the layer; empty for self = product path
 	typ   string
 }
@@ -335,8 +335,8 @@ func ParseTemplateSyntax(file, target string, src []byte, resolve Resolver) (*Te
 	}
 	t := &Template{Path: file, Target: target, Type: TypeOf(target), BasePath: target}
 	in := &interp{t: t, objects: map[string]object{
-		"base": {layer: "up", file: target, typ: TypeOf(target)},
-		"self": {layer: "me", typ: TypeOf(target)},
+		"base": {layer: "base", file: target, typ: TypeOf(target)},
+		"self": {layer: "self", typ: TypeOf(target)},
 	}}
 	seen := map[string]Pos{}
 	for _, im := range imports {
@@ -355,9 +355,9 @@ func ParseTemplateSyntax(file, target string, src []byte, resolve Resolver) (*Te
 			return nil, fmt.Errorf("%s: `%s` imported twice (first at %s)", im.pos, name, first)
 		}
 		seen[name] = im.pos
-		layer := "me"
+		layer := "self"
 		if name == "base" {
-			layer = "up"
+			layer = "base"
 		}
 		rel := im.spec
 		if resolve != nil {
@@ -378,7 +378,7 @@ func ParseTemplateSyntax(file, target string, src []byte, resolve Resolver) (*Te
 	if err := checkPatchAlone(t); err != nil {
 		return nil, err
 	}
-	if t.From == "me" {
+	if t.From == "self" {
 		// Whole file replaced with ours: the product is our file, so other weave statements have nothing to weave into
 		for _, s := range t.Stmts {
 			if s.Op != "drop" {
@@ -561,10 +561,10 @@ func (in *interp) method(r receiver, st oStep) error {
 			if !ok {
 				return in.unknownObject(v.expr.root, v.pos)
 			}
-			if obj.layer != "me" {
+			if obj.layer != "self" {
 				return fmt.Errorf("%s: a whole-file replace must use a file from our layer (self or an imported one)", v.pos)
 			}
-			in.t.From, in.t.UseReason, in.t.Source = "me", reason, obj.file
+			in.t.From, in.t.UseReason, in.t.Source = "self", reason, obj.file
 			return nil
 		}
 		if !r.node {
@@ -596,7 +596,7 @@ func (in *interp) method(r receiver, st oStep) error {
 			if ref.Kind != "frontmatter" {
 				return fmt.Errorf("%s: frontmatter can only be set to another frontmatter: set(self.frontmatter)", pos[0].pos)
 			}
-			out = append(out, Stmt{Op: "frontmatter", Layer: "me", File: ref.File, Rng: at})
+			out = append(out, Stmt{Op: "frontmatter", Layer: "self", File: ref.File, Rng: at})
 			break
 		}
 		if r.typ != "toml" && r.typ != "json" {
@@ -606,7 +606,7 @@ func (in *interp) method(r receiver, st oStep) error {
 			return fmt.Errorf("%s: set takes its value from a key in another file: set(self.description)", pos[0].pos)
 		}
 		out = append(out, Stmt{Op: "setgroup", Rng: at, Kids: []Stmt{{Op: "set", SetKey: r.anchor,
-			SetRef: Ref{Layer: "me", Kind: ref.Anchor, File: ref.File, Rng: pos[0].pos}, Rng: at}}})
+			SetRef: Ref{Layer: "self", Kind: ref.Anchor, File: ref.File, Rng: pos[0].pos}, Rng: at}}})
 	case "join":
 		if r.typ == "markdown" && r.kind != "frontmatter" {
 			return fmt.Errorf("%s: in markdown, join applies to frontmatter keys: base.frontmatter.join(\"description\")", at)
@@ -664,9 +664,9 @@ func (in *interp) contents(args []oArg, typ string, inView bool) ([]Ref, error) 
 		v := a.val
 		switch v.kind {
 		case vString:
-			out = append(out, Ref{Layer: "me", Kind: defaultKind[typ], Anchor: v.str, Rng: v.pos})
+			out = append(out, Ref{Layer: "self", Kind: defaultKind[typ], Anchor: v.str, Rng: v.pos})
 		case vRaw:
-			out = append(out, Ref{Layer: "me", IsLit: true, Literal: v.str, Rng: v.pos})
+			out = append(out, Ref{Layer: "self", IsLit: true, Literal: v.str, Rng: v.pos})
 		case vExpr:
 			e := v.expr
 			obj, ok := in.objects[e.root]
@@ -676,10 +676,10 @@ func (in *interp) contents(args []oArg, typ string, inView bool) ([]Ref, error) 
 				}
 				return nil, in.unknownObject(e.root, v.pos)
 			}
-			if obj.layer != "me" {
+			if obj.layer != "self" {
 				return nil, fmt.Errorf("%s: inserted content must come from our layer (self or an imported file); %s is upstream", v.pos, e.root)
 			}
-			ref := Ref{Layer: "me", File: obj.file, Rng: v.pos}
+			ref := Ref{Layer: "self", File: obj.file, Rng: v.pos}
 			switch {
 			case len(e.steps) == 0:
 				ref.Kind = "all"

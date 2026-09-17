@@ -16,7 +16,7 @@ import (
 func treeRepo(t *testing.T, settings string, files map[string]string) (*loom.Config, string) {
 	t.Helper()
 	dir := t.TempDir()
-	mustWrite(t, filepath.Join(dir, "loom.lm"), "up \"up\"\nme \"me\"\ntemplates \"t\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n"+settings)
+	mustWrite(t, filepath.Join(dir, "loom.lm"), "base \"up\"\nself \"me\"\ntemplates \"t\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n"+settings)
 	for p, s := range files {
 		full := filepath.Join(dir, filepath.FromSlash(p))
 		mustWrite(t, full, s)

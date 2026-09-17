@@ -1,9 +1,9 @@
 package loom
 
-// loom.lm in object syntax: it shares the lexer with templates (lexer.go), one setting per line.
+// loom.lm: it shares the lexer with templates (lexer.go), one setting per line.
 //
-//	up        "upstream"
-//	me        "xsdd"
+//	base      "upstream"
+//	self      "xsdd"
 //	templates "templates"
 //	output    "../plugins/XSDD"
 //	mark      markdown "<!-- XSDD:BEGIN -->" "<!-- XSDD:END -->"
@@ -12,8 +12,8 @@ package loom
 //	mirror    ".gemini/commands" "commands"
 //	manifest  ".build-manifest"
 //
-// The layer names are fixed as up / me — those are the words templates use, so the
-// templates need no change from one project to the next.
+// The layers are called base and self, the same words a template uses for the upstream file
+// and our file: `base "upstream"` is where every `base` comes from.
 //
 // Upstream files are not all taken by default: an upstream repo often holds things that
 // only serve its own development (eval fixtures, CI config), and carrying them into the
@@ -29,7 +29,7 @@ import (
 	"strings"
 )
 
-var settingKeywords = []string{"up", "me", "templates", "output", "mark", "registry", "take", "mirror", "manifest"}
+var settingKeywords = []string{"base", "self", "templates", "output", "mark", "registry", "take", "mirror", "manifest"}
 
 // LoadConfig reads loom.lm.
 func LoadConfig(path string) (*Config, error) {
@@ -86,20 +86,20 @@ func parseSettings(path string, src []byte) (*Config, error) {
 			seen[kw] = first.pos
 		}
 		switch kw {
-		case "up", "me", "templates", "output", "manifest":
+		case "base", "self", "templates", "output", "manifest":
 			if len(as) != 1 || as[0].kind != kString {
 				return nil, fmt.Errorf("%s: `%s` takes one quoted directory: %s \"...\"", first.pos, kw, kw)
 			}
 			v := as[0].text
 			switch kw {
-			case "up":
-				c.Layers["up"] = &Layer{Name: "up", Dir: v, Role: "warp", Marks: map[string]Marks{}}
-				c.Order = append(c.Order, "up")
-				c.Warp = "up"
-			case "me":
-				c.Layers["me"] = &Layer{Name: "me", Dir: v, Role: "weft", Marks: map[string]Marks{}}
-				c.Order = append(c.Order, "me")
-				c.Weft = "me"
+			case "base":
+				c.Layers["base"] = &Layer{Name: "base", Dir: v, Role: "warp", Marks: map[string]Marks{}}
+				c.Order = append(c.Order, "base")
+				c.Warp = "base"
+			case "self":
+				c.Layers["self"] = &Layer{Name: "self", Dir: v, Role: "weft", Marks: map[string]Marks{}}
+				c.Order = append(c.Order, "self")
+				c.Weft = "self"
 			case "templates":
 				c.Templates = v
 			case "output":
@@ -149,12 +149,12 @@ func parseSettings(path string, src []byte) (*Config, error) {
 		}
 	}
 	if c.Warp == "" {
-		return nil, fmt.Errorf("%s: upstream location not set — add a line up \"<upstream dir>\"", path)
+		return nil, fmt.Errorf("%s: upstream location not set — add a line base \"<upstream dir>\"", path)
 	}
 	if len(marks) > 0 {
-		me, ok := c.Layers["me"]
+		me, ok := c.Layers["self"]
 		if !ok {
-			return nil, fmt.Errorf("%s: marks wrap our layer's content, but me \"<our dir>\" is not set", marks[0].pos)
+			return nil, fmt.Errorf("%s: marks wrap our layer's content, but self \"<our dir>\" is not set", marks[0].pos)
 		}
 		for _, m := range marks {
 			me.Marks[m.typ] = Marks{Begin: m.begin, End: m.end}

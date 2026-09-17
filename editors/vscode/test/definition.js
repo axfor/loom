@@ -14,7 +14,7 @@ const write = (rel, text) => {
   fs.writeFileSync(p, text);
 };
 
-write('loom.lm', 'up        "upstream"\nme        "mine"\ntemplates "t"\n');
+write('loom.lm', 'base      "upstream"\nself      "mine"\ntemplates "t"\n');
 write('upstream/skills/testing/SKILL.md', [
   '---', 'name: testing', 'description: Upstream.', '---', '',
   '## Overview', '', 'text', '',

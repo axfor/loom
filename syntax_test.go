@@ -10,8 +10,8 @@ import (
 )
 
 const objConfig = `
-up        "upstream"
-me        "mine"
+base      "upstream"
+self      "mine"
 templates "t"
 mark      markdown "<!-- MINE:BEGIN -->" "<!-- MINE:END -->"
 `

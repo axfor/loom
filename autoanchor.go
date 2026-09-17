@@ -35,7 +35,7 @@ type anchorGap struct {
 
 // findGaps finds our sections that a template doesn't weave into the product, and infers where they go.
 func findGaps(c *Config, t *Template) ([]anchorGap, error) {
-	if t.Type != "markdown" || c.Weft == "" || (t.From != "" && t.From != c.Warp && t.From != "up") {
+	if t.Type != "markdown" || c.Weft == "" || (t.From != "" && t.From != c.Warp) {
 		return nil, nil
 	}
 	for _, s := range t.Stmts {
@@ -163,7 +163,7 @@ func argFor(tree ast.Tree, nodes []ast.Named, k int) (string, error) {
 	return "", fmt.Errorf("%q appears %d times in our file and parent headings can't tell them apart — can't infer an anchor; say where it goes", n.Name, same)
 }
 
-func isWeft(c *Config, layer string) bool { return layer == c.Weft || layer == "me" }
+func isWeft(c *Config, layer string) bool { return layer == c.Weft }
 
 func quoteAll(names []string) string {
 	var q []string

@@ -145,9 +145,11 @@ function expectNot(grammar, line, text, scope) {
   expect(lm, 'base."C// notes".drop(reason: "x")', 'C//', 'string.quoted.double.loom');
   expectNot(lm, 'base."C// notes".drop(reason: "x")', 'drop', 'comment.line.double-slash.loom');
 
-  // Settings: a setting word starts the line; `up` / `me` are not objects
-  expect(lm, 'up        "upstream"', 'up', 'keyword.control.config.loom');
-  expect(lm, 'me        "xsdd"', 'me', 'keyword.control.config.loom');
+  // Settings: a setting word starts the line; base / self start settings in loom.lm and objects in templates
+  expect(lm, 'base      "upstream"', 'base', 'keyword.control.config.loom');
+  expect(lm, 'self      "xsdd"', 'self', 'keyword.control.config.loom');
+  expect(lm, 'base.Install.after("x")', 'base', 'variable.language.loom');
+  expectNot(lm, 'base.Install.after("x")', 'base', 'keyword.control.config.loom');
   expect(lm, 'mark      markdown "<!-- XSDD:BEGIN -->" "<!-- XSDD:END -->"', 'mark', 'keyword.control.config.loom');
   expect(lm, 'mark      markdown "<!-- XSDD:BEGIN -->" "<!-- XSDD:END -->"', 'markdown', 'entity.name.type.format.loom');
   expect(lm, 'registry  "hooks" "hooks/(x)"', 'registry', 'keyword.control.config.loom');

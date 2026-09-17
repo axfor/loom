@@ -65,12 +65,12 @@ function findConfig(from) {
   for (;;) {
     const p = path.join(dir, 'loom.lm');
     if (isFile(p)) {
-      const cfg = { root: dir, up: null, me: null, templates: 'templates' };
+      const cfg = { root: dir, base: null, self: null, templates: 'templates' };
       for (const line of fs.readFileSync(p, 'utf8').split('\n')) {
-        const m = /^\s*(up|me|templates)\s+"((?:[^"\\]|\\.)*)"/.exec(line);
+        const m = /^\s*(base|self|templates)\s+"((?:[^"\\]|\\.)*)"/.exec(line);
         if (m) cfg[m[1]] = unquote(m[2]);
       }
-      if (cfg.up) return cfg;
+      if (cfg.base) return cfg;
     }
     const parent = path.dirname(dir);
     if (parent === dir) return null;
@@ -83,7 +83,7 @@ function unquote(s) {
 }
 
 function layerDir(cfg, layer) {
-  const d = layer === 'up' ? cfg.up : cfg.me;
+  const d = layer === 'base' ? cfg.base : cfg.self;
   return d == null ? null : path.join(cfg.root, d);
 }
 
@@ -379,13 +379,13 @@ function definition(docPath, text, line, character) {
 
   const { refs, imports } = parse(lex(text));
   const objects = {
-    base: { layer: 'up', file: path.join(layerDir(cfg, 'up'), target), typ: typeOf(target) },
-    self: { layer: 'me', file: cfg.me == null ? null : path.join(layerDir(cfg, 'me'), target), typ: typeOf(target) },
+    base: { layer: 'base', file: path.join(layerDir(cfg, 'base'), target), typ: typeOf(target) },
+    self: { layer: 'self', file: cfg.self == null ? null : path.join(layerDir(cfg, 'self'), target), typ: typeOf(target) },
   };
   const importFile = new Map();
   for (const imp of imports) {
     const name = imp.name ? imp.name.v : path.posix.basename(imp.spec.v).replace(/\.[^.]*$/, '');
-    const layer = name === 'base' ? 'up' : 'me';
+    const layer = name === 'base' ? 'base' : 'self';
     const file = resolveImport(cfg, layer, imp.spec.v, target);
     importFile.set(imp, file);
     if (name !== 'self' && file) objects[name] = { layer, file, typ: typeOf(file) };

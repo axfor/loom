@@ -34,7 +34,7 @@ import (
 // Output is one file in the product.
 type Output struct {
 	Rel  string
-	From string // "template" / "me" / "up" / "mirror"
+	From string // "template" / "self" / "base" / "mirror"
 	Src  string // source file copied as is; empty for woven or variable-expanded files
 	Data []byte // content to write; nil = copy Src as is
 	Mode fs.FileMode
@@ -153,7 +153,7 @@ func PlanBuild(c *Config, writeAnchors bool) (*Plan, error) {
 					filepath.Join(meRoot, filepath.FromSlash(rel)), filepath.Join(c.Templates, rel+Ext)))
 				return nil
 			}
-			o, err := copyOutput(c, rel, abs, info, "me", true)
+			o, err := copyOutput(c, rel, abs, info, "self", true)
 			if err != nil {
 				fail(err)
 				return nil
@@ -186,7 +186,7 @@ func PlanBuild(c *Config, writeAnchors bool) (*Plan, error) {
 			}
 			return nil
 		}
-		o, err := copyOutput(c, rel, abs, info, "up", false)
+		o, err := copyOutput(c, rel, abs, info, "base", false)
 		if err != nil {
 			fail(err)
 			return nil
@@ -280,9 +280,9 @@ func fromName(from string) string {
 	switch from {
 	case "template":
 		return "a template"
-	case "me":
+	case "self":
 		return "our layer"
-	case "up":
+	case "base":
 		return "the upstream layer"
 	}
 	return from

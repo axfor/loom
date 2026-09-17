@@ -25,7 +25,7 @@ type Info struct {
 	Template string `json:"template"` // template path (relative to the repo root)
 	Target   string `json:"target"`   // product path
 	Type     string `json:"type"`
-	From     string `json:"from"`    // "up": woven on upstream; "me": the whole file is replaced with ours
+	From     string `json:"from"`    // "base": woven on upstream; "self": the whole file is replaced with ours
 	Path     string `json:"path"`    // base path in upstream
 	Patch    string `json:"patch"`   // patch file (empty = not patch-based)
 	Anchors  []Use  `json:"anchors"` // anchor points on the upstream
@@ -86,7 +86,7 @@ func Describe(c *Config, path string) (*Info, error) {
 	// written would flag a perfectly good anchor as missing. Names that cannot be resolved
 	// are reported as written, leaving the gate or the weave to say what is wrong.
 	baseTree := func(in *Stmt) ast.Tree {
-		src, ok, err := c.read("up", t.BasePath)
+		src, ok, err := c.read("base", t.BasePath)
 		if err != nil || !ok {
 			return nil
 		}

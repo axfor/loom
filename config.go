@@ -84,20 +84,10 @@ func (c *Config) layerNames() string { return strings.Join(c.Order, " / ") }
 // Why an unknown layer name must be an error: it used to be "not the warp, so treat it as the weft" —
 // so once a trailing comment got swallowed into the value of from, the base silently became the weft
 // copy, and the warp vanished entirely while the product looked perfectly valid.
-// layer looks up a layer by name: `up` (the warp) or `me` (the weft).
+// layer looks up a layer by name: `base` (upstream, the warp) or `self` (our layer, the weft).
 func (c *Config) layer(name string) (*Layer, bool) {
-	if l, ok := c.Layers[name]; ok {
-		return l, true
-	}
-	switch name {
-	case "up":
-		l, ok := c.Layers[c.Warp]
-		return l, ok
-	case "me":
-		l, ok := c.Layers[c.Weft]
-		return l, ok
-	}
-	return nil, false
+	l, ok := c.Layers[name]
+	return l, ok
 }
 
 func (c *Config) read(layer, rel string) (string, bool, error) {

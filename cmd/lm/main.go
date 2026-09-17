@@ -1,7 +1,7 @@
 // Command lm is the Loom command line: it weaves two source layers into one product.
 //
-// The warp (up) is the upstream layer: kept byte for byte, never broken.
-// The weft (me) is your own layer: passed through the warp one shuttle at a time.
+// The warp (base) is the upstream layer: kept byte for byte, never broken.
+// The weft (self) is your own layer: passed through the warp one shuttle at a time.
 // Pull out the weft and the warp is still intact. That property can be checked mechanically,
 // and it is the reason this language exists.
 package main

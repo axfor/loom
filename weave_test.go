@@ -151,7 +151,7 @@ func TestDescribeMatchesWeave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if i.Target != "doc.md" || i.Type != "markdown" || i.From != "up" {
+	if i.Target != "doc.md" || i.Type != "markdown" || i.From != "base" {
 		t.Errorf("wrong metadata: %+v", i)
 	}
 	if i.Path != "doc.md" {

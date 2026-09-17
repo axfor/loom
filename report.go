@@ -48,7 +48,7 @@ type ReportLine struct {
 // account records a woven template in the report and checks that no upstream section was lost.
 func account(c *Config, t *Template, out string, r *Report) []error {
 	var errs []error
-	whole := t.From != "" && t.From != c.Warp && t.From != "up"
+	whole := t.From != "" && t.From != c.Warp
 	var patches, inserted []string
 	var drops, replaces []Stmt
 	var walk func(ss []Stmt)

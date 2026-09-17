@@ -70,8 +70,8 @@ templates/           <product path>.lm for each woven file
 
 ```
 // loom.lm
-up        "upstream"
-me        "mine"
+base      "upstream"
+self      "mine"
 templates "templates"
 output    "dist"
 mark      markdown "<!-- MINE:BEGIN -->" "<!-- MINE:END -->"

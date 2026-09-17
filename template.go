@@ -58,7 +58,7 @@ type Template struct {
 	Path      string
 	Target    string
 	Type      string
-	From      string // "" = upstream is the base; "me" = the whole file is replaced with ours
+	From      string // "" = upstream is the base; "self" = the whole file is replaced with ours
 	BasePath  string // path of the base in upstream (import base; default = Target)
 	Source    string // whole-file replace: file of ours to use (default = Target)
 	UseReason string // whole-file replace: why

@@ -35,14 +35,14 @@
     },
     "config": {
       "comment": "loom.lm settings: a setting word starts the line and is not followed by `.`, `(` or `:`.",
-      "match": "^\\s*(up|me|templates|output|mark|registry|take|mirror|manifest)\\b(?!\\s*[.(:])",
+      "match": "^\\s*(base|self|templates|output|mark|registry|take|mirror|manifest)\\b(?!\\s*[.(:])",
       "captures": {
         "1": { "name": "keyword.control.config.loom" }
       }
     },
     "unknown-statement": {
       "comment": "A statement starts with an object (`base.`, `self.`, an imported name) or `import`. A bare word at the start of a line is a typo; build would reject it too.",
-      "match": "^\\s*(?!(?:import|up|me|templates|output|mark|registry|take|mirror|manifest)\\b)([\\p{L}_][\\p{L}\\p{N}_]*)\\b(?!\\s*[.:(])",
+      "match": "^\\s*(?!(?:import|base|self|templates|output|mark|registry|take|mirror|manifest)\\b)([\\p{L}_][\\p{L}\\p{N}_]*)\\b(?!\\s*[.:(])",
       "captures": {
         "1": { "name": "invalid.illegal.unknown-statement.loom" }
       }

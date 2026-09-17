@@ -2,8 +2,8 @@
 
 Loom builds a product from two layers of source:
 
-- **upstream** (`up`, the warp) — a project you forked, kept byte for byte
-- **our layer** (`me`, the weft) — only what you add or change
+- **upstream** (`base`, the warp) — a project you forked, kept byte for byte
+- **our layer** (`self`, the weft) — only what you add or change
 
 A template says how the two are woven into one product file. Upstream is the base; our content is
 inserted by the *name* of an upstream node (a heading, a function, a key), not by line number. When
@@ -37,8 +37,8 @@ lm check    run every check that build runs, write nothing
 ```
 loom.lm                      settings
 lm.e                         variables (optional)
-upstream/                    up: the upstream project, untouched
-mine/                        me: our layer, same directory layout as the product
+upstream/                    base: the upstream project, untouched
+mine/                        self: our layer, same directory layout as the product
 templates/                   one template per woven product file
   skills/testing/SKILL.md.lm   → weaves skills/testing/SKILL.md
 ```
@@ -59,8 +59,8 @@ A product file comes from exactly one place, in this order:
 One setting per line. `//` starts a comment.
 
 ```
-up        "upstream"
-me        "mine"
+base      "upstream"
+self      "mine"
 templates "templates"
 output    "../dist"
 
@@ -82,8 +82,8 @@ registry  "hooks" "hooks/([A-Za-z0-9._-]+\.(?:sh|js|py))"
 
 | Setting | Meaning |
 |---|---|
-| `up` | upstream directory (required) |
-| `me` | our layer's directory |
+| `base` | upstream directory (required); in a template, `base` is the file at the product's path in it |
+| `self` | our layer's directory; in a template, `self` is the file at the product's path in it |
 | `templates` | template directory (default `templates`) |
 | `output` | default output directory of `lm build` |
 | `mark` | begin and end marks for one file type; may appear once per type |

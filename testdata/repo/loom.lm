@@ -1,5 +1,5 @@
-up        "upstream"
-me        "mine"
+base      "upstream"
+self      "mine"
 templates "templates"
 mark      markdown "<!-- MINE:BEGIN -->" "<!-- MINE:END -->"
 registry  "hooks" "hooks/([A-Za-z0-9._-]+\.(?:sh|js|py))"

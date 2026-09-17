@@ -221,7 +221,7 @@ func apply(c *Config, t *Template, stmts []Stmt, tree ast.Tree, rel string, nest
 			// in the template, and the build report lists it.
 			// When the whole file is replaced with ours, drop only records where the upstream section went —
 			// the base is not upstream, so there is nothing to delete.
-			if t.From != "" && t.From != c.Warp && t.From != "up" {
+			if t.From != "" && t.From != c.Warp {
 				continue
 			}
 			if !ast.Has(tree.Kinds(), s.Kind) {

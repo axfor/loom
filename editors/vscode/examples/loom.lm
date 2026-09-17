@@ -1,6 +1,6 @@
 // loom.lm: which layer is upstream, which layer is ours, and where the product is written
-up        "upstream"
-me        "xsdd"
+base      "upstream"
+self      "xsdd"
 templates "templates"
 output    "../plugins/XSDD"
 
