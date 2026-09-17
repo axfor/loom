@@ -26,6 +26,14 @@ function productName(templatePath) {
   return path.basename(target || templatePath.replace(/\.lm$/, ''));
 }
 
+// upstreamFile: the upstream file a template weaves onto — where `import base` points, else the same
+// path upstream — for the review view's left side; null when there is none.
+function upstreamFile(templatePath, text) {
+  const t = loom.open(templatePath, text);
+  const file = t && t.objects.base.file;
+  return file && loom.isFile(file) ? file : null;
+}
+
 // weave runs `lm weave -stdin <template>` with the editor's text and resolves to the product, or to
 // the compiler's error as { error }.
 function weave(lm, templatePath, text, timeoutMs = 10000) {
@@ -52,4 +60,4 @@ function weave(lm, templatePath, text, timeoutMs = 10000) {
   });
 }
 
-module.exports = { findLm, productName, weave };
+module.exports = { findLm, productName, upstreamFile, weave };

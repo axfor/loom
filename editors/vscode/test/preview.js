@@ -6,7 +6,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { findLm, productName, weave } = require('../lib/preview');
+const { findLm, productName, upstreamFile, weave } = require('../lib/preview');
 
 let pass = 0;
 let fail = 0;
@@ -39,6 +39,11 @@ async function main() {
   write('me/SKILL.lm', 'base.Overview.after("Ours")\n');
 
   ok(productName(tpl) === 'SKILL.md', 'the preview is named after the product', productName(tpl));
+  ok(upstreamFile(tpl, 'base.Overview.after("Ours")\n') === path.join(root, 'up', 'SKILL.md'), 'review compares with the upstream file');
+  write('up/old/NAME.md', '## Overview\n');
+  ok(upstreamFile(tpl, 'import base "/old/NAME"\n') === path.join(root, 'up', 'old', 'NAME.md'), 'review follows import base');
+  write('me/ours.md', '## Only ours\n');
+  ok(upstreamFile(path.join(root, 'me', 'ours.lm'), 'base.append("Only ours")\n') === null, 'no upstream file: nothing to compare');
 
   // the editor's text wins over the file on disk
   const unsaved = 'base.Overview.after("Ours", "Also ours")\n';

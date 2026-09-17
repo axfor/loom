@@ -197,11 +197,11 @@ const find = (items, label) => items.find((i) => i.label === label);
   };
   for (const it of at(md, 'base.|').items.filter((i) => i.kind === 'section')) {
     const text = `base.${it.insertText}.drop(reason: "x")`;
-    lands(md, text, 'drop', it, lineOf(it));
+    lands(md, text, it.insertText.split('.').pop().replace(/"/g, ''), it, lineOf(it));
   }
   for (const it of at(md, 'base."Example 2".|').items.filter((i) => i.kind === 'section')) {
     const text = `base."Example 2".${it.insertText}.drop(reason: "x")`;
-    lands(md, text, 'drop', it, lineOf(it));
+    lands(md, text, it.insertText.split('.').pop().replace(/"/g, ''), it, lineOf(it));
   }
   for (const it of at(md, 'base.Overview.after(|)').items.filter((i) => i.kind === 'section')) {
     const text = `base.Overview.after(${it.insertText})`;

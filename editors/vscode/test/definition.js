@@ -111,9 +111,9 @@ check(doc, docText, 3, 'Café_Notes', ['mine/shared/notes.md', 2]);
 // base is redirected by `import base`; identifiers match spaces; methods jump to their node
 check(doc, docText, 3, 'base', ['upstream/old/guide.md', 0]);
 check(doc, docText, 3, 'Old_Overview', ['upstream/old/guide.md', 2]);
-check(doc, docText, 3, 'after', ['upstream/old/guide.md', 2]);
+check(doc, docText, 3, 'after', null); // keywords do not jump
 check(doc, docText, 12, 'Old Overview', ['upstream/old/guide.md', 2]);
-check(doc, docText, 12, 'drop', ['upstream/old/guide.md', 2]);
+check(doc, docText, 12, 'drop', null);
 
 // content named by a string lives in our file
 check(doc, docText, 3, 'Überblick', [M, 5]);
@@ -125,7 +125,7 @@ check(doc, docText, 9, 'Overview', null); // inside a literal
 check(doc, docText, 4, 'self', [M, 0]);
 check(doc, docText, 4, 'frontmatter', [M, 0], 2);
 check(doc, docText, 5, 'description', [M, 2]);
-check(doc, docText, 13, 'merge', ['upstream/old/guide.md', 0]);
+check(doc, docText, 13, 'merge', null);
 check(doc, docText, 13, 'self', [M, 0]);
 check(doc, docText, 14, 'self', [M, 0]);
 
@@ -148,7 +148,8 @@ check(cmd, cmdText, 5, 'Naïve_Approach', ['mine/cmd.toml', 2]);
 // shell: functions and banner markers
 check(sh, shText, 0, 'main', ['upstream/run.sh', 2]);
 check(sh, shText, 0, 'boot', ['mine/run.sh', 0]);
-check(sh, shText, 1, 'marker', ['upstream/run.sh', 1]);
+check(sh, shText, 1, 'marker', null);
+check(sh, shText, 1, '# ── main', ['upstream/run.sh', 1]);
 check(sh, shText, 1, 'boot', ['mine/run.sh', 0]);
 
 // a string with spaces is one link: wherever the cursor is inside it, the origin is the whole
@@ -176,7 +177,7 @@ check(sh, shText, 1, 'boot', ['mine/run.sh', 0]);
   }
   // section paths pick the subsection under the named parent, in upstream and in ours
   check(g, gText, 1, 'Phase 1', ['upstream/guide.md', 12]);
-  check(g, gText, 1, 'after', ['upstream/guide.md', 12]);
+  check(g, gText, 1, 'after', null); // a keyword
   check(g, gText, 1, 'Phase 1', ['mine/guide.md', 6], 2);
   // a name that matches several sections is not guessed: the jump lands on the file
   check(g, gText, 2, 'Phase 1', ['upstream/guide.md', 0]);

@@ -2,7 +2,7 @@
   "name": "loom-lang",
   "displayName": "Loom",
   "description": "Loom for VS Code: syntax highlighting for .lm templates and settings, .e variable files and {{@name}} placeholders; completion of nodes, methods, our sections and import paths; a live preview of the product a template builds; go to definition from a template to the upstream or our file and node it names.",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "publisher": "axfor",
   "icon": "icons/loom.png",
   "license": "Apache-2.0",
@@ -18,7 +18,8 @@
   ],
   "activationEvents": [
     "onLanguage:loom",
-    "onCommand:loom.showPreview"
+    "onCommand:loom.showPreview",
+    "onCommand:loom.showReview"
   ],
   "main": "./extension.js",
   "contributes": {
@@ -100,6 +101,12 @@
         "title": "Open Preview to the Side",
         "category": "Loom",
         "icon": "$(open-preview)"
+      },
+      {
+        "command": "loom.showReview",
+        "title": "Review Against Upstream",
+        "category": "Loom",
+        "icon": "$(diff)"
       }
     ],
     "menus": {
@@ -108,11 +115,20 @@
           "command": "loom.showPreview",
           "when": "resourceExtname == .lm && resourceFilename != loom.lm",
           "group": "navigation"
+        },
+        {
+          "command": "loom.showReview",
+          "when": "resourceExtname == .lm && resourceFilename != loom.lm",
+          "group": "navigation"
         }
       ],
       "commandPalette": [
         {
           "command": "loom.showPreview",
+          "when": "resourceExtname == .lm && resourceFilename != loom.lm"
+        },
+        {
+          "command": "loom.showReview",
           "when": "resourceExtname == .lm && resourceFilename != loom.lm"
         }
       ]
@@ -137,7 +153,7 @@
     }
   },
   "scripts": {
-    "test": "node test/tokenize.js && node test/definition.js && node test/completion.js && node test/wordpattern.js && node test/nesting.js && node test/preview.js",
+    "test": "node test/tokenize.js && node test/definition.js && node test/hover.js && node test/completion.js && node test/wordpattern.js && node test/nesting.js && node test/preview.js",
     "package": "vsce package"
   },
   "devDependencies": {

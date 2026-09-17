@@ -6,7 +6,6 @@
 //   base / self / cmd                     the object          → its file
 //   base.Install / base."How it compares" a node              → that heading (key, function...) upstream
 //   base."Example 2"."Phase 1"            a section path      → that subsection, under that parent
-//   .after / .drop                        a method            → the node it changes
 //   "Install XSDD" inside .after(...)       content by name     → that heading in our file
 //   self.frontmatter / cmd.body           a part of a file    → where that part starts
 //   "description" inside .join(...)         a key               → that key in our file
@@ -17,6 +16,7 @@
 // nothing — never a guess at a different node.
 
 const loom = require('./loom');
+const { isKeywordCall } = require('./hover');
 
 function locate(file, node, view) {
   if (!file || !loom.isFile(file)) return null;
@@ -55,8 +55,9 @@ function resolve(t, ref) {
     }
     case 'step': {
       const st = ref.chain.steps[ref.index];
-      // a method jumps to what it changes; anything else to what the chain selects up to it
-      const r = loom.walk(t, ref.chain, st.call && loom.METHODS.has(st.name) ? ref.index : ref.index + 1);
+      // keywords (methods, as, node kinds) explain themselves on hover; they lead nowhere
+      if (isKeywordCall(st)) return null;
+      const r = loom.walk(t, ref.chain, ref.index + 1);
       if (!r) return null;
       return locate(r.obj.file, r.bad ? null : r.node, r.view);
     }

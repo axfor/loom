@@ -6,7 +6,8 @@ const fs = require('fs');
 const vscode = require('vscode');
 const { definition } = require('./lib/definition');
 const { completions } = require('./lib/completion');
-const { findLm, productName, weave } = require('./lib/preview');
+const { findLm, productName, upstreamFile, weave } = require('./lib/preview');
+const { hover } = require('./lib/hover');
 
 // The hover shown while Cmd/Ctrl is held previews the target range when it spans fewer than
 // 8 lines; a longer range falls back to one line of context.
@@ -80,6 +81,21 @@ function activate(context) {
       const doc = await vscode.workspace.openTextDocument(previews.uriFor(target.fsPath));
       await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preview: true, preserveFocus: true });
     }),
+    // review: upstream on the left, the product on the right, in VS Code's diff editor
+    vscode.commands.registerCommand('loom.showReview', async (uri) => {
+      const editor = vscode.window.activeTextEditor;
+      const target = uri instanceof vscode.Uri ? uri : editor && editor.document.uri;
+      if (!target || target.scheme !== 'file' || !target.fsPath.endsWith('.lm')) return;
+      const open = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === target.fsPath);
+      const upstream = upstreamFile(target.fsPath, open ? open.getText() : fs.readFileSync(target.fsPath, 'utf8'));
+      if (!upstream) {
+        vscode.window.showInformationMessage(`${productName(target.fsPath)} has no upstream file to compare with; open the preview instead.`);
+        return;
+      }
+      const name = productName(target.fsPath);
+      await vscode.commands.executeCommand('vscode.diff', vscode.Uri.file(upstream), previews.uriFor(target.fsPath),
+        `${name}: upstream ↔ product`, { viewColumn: vscode.ViewColumn.Beside, preview: true, preserveFocus: true });
+    }),
     // the template as typed, unsaved; any saved file, since upstream and our files feed the product
     vscode.workspace.onDidChangeTextDocument((e) => {
       if (e.document.uri.scheme === 'file') previews.refresh((template) => template === e.document.uri.fsPath);
@@ -110,12 +126,20 @@ function activate(context) {
         }];
       },
     }),
+    vscode.languages.registerHoverProvider(selector, {
+      provideHover(document, position) {
+        const h = hover(document.uri.fsPath, document.getText(), position.line, position.character);
+        if (!h) return null;
+        return new vscode.Hover(new vscode.MarkdownString(h.markdown), new vscode.Range(h.range.line, h.range.s, h.range.line, h.range.e));
+      },
+    }),
     vscode.languages.registerCompletionItemProvider(selector, {
       provideCompletionItems(document, position) {
         return completions(document.uri.fsPath, document.getText(), position.line, position.character).map((it) => {
           const c = new vscode.CompletionItem(it.label, KINDS[it.kind]);
           c.detail = it.detail;
-          if (it.documentation) c.documentation = new vscode.MarkdownString().appendCodeblock(it.documentation, it.lang || '');
+          if (it.markdown) c.documentation = new vscode.MarkdownString(it.markdown);
+          else if (it.documentation) c.documentation = new vscode.MarkdownString().appendCodeblock(it.documentation, it.lang || '');
           if (it.insertText != null) c.insertText = it.snippet ? new vscode.SnippetString(it.insertText) : it.insertText;
           if (it.filterText) c.filterText = it.filterText;
           if (it.sortText) c.sortText = it.sortText;

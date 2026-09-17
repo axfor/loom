@@ -18,6 +18,7 @@
 const fs = require('fs');
 const path = require('path');
 const loom = require('./loom');
+const { markdownFor } = require('./docs');
 
 const METHOD_DOCS = {
   after: 'insert after the node',
@@ -228,16 +229,16 @@ function stepItems(cx, chain, index, range, quoted) {
   if (quoted) return out;
 
   if (!r.node) {
-    if (r.typ === 'markdown' && !r.view) out.push(item('frontmatter', 'part', { detail: 'the frontmatter', range, sortText: '1' }));
-    if (r.obj.layer === 'self' && r.typ === 'markdown') out.push(item('body', 'part', { detail: 'everything after the frontmatter', range, sortText: '1' }));
+    if (r.typ === 'markdown' && !r.view) out.push(item('frontmatter', 'part', { detail: 'the frontmatter', markdown: markdownFor('frontmatter'), range, sortText: '1' }));
+    if (r.obj.layer === 'self' && r.typ === 'markdown') out.push(item('body', 'part', { detail: 'everything after the frontmatter', markdown: markdownFor('body'), range, sortText: '1' }));
     for (const call of Object.keys(loom.KIND_CALLS[r.typ] || {})) {
-      out.push(item(call, 'kind', { detail: `${call}("...")`, insertText: `${call}("$1")`, snippet: true, retrigger: call !== 'line', range, sortText: '3' }));
+      out.push(item(call, 'kind', { detail: `${call}("...")`, markdown: markdownFor(call), insertText: `${call}("$1")`, snippet: true, retrigger: call !== 'line', range, sortText: '3' }));
     }
   }
   if (chain.root.v === 'base' && !chain.argOf) {
     for (const m of methodsFor(r)) {
       const insertText = m === 'replace' && !r.node && !r.view ? 'replace(self, reason: "$1")' : SNIPPETS[m];
-      out.push(item(m, 'method', { detail: METHOD_DOCS[m], insertText, snippet: true, retrigger: m !== 'drop' && m !== 'replace', range, sortText: '2' }));
+      out.push(item(m, 'method', { detail: METHOD_DOCS[m], markdown: markdownFor(m), insertText, snippet: true, retrigger: m !== 'drop' && m !== 'replace', range, sortText: '2' }));
     }
   }
   return out;
@@ -371,7 +372,7 @@ function argItems(cx, argOf, range, quoted) {
     }
   }
   if (st.name === 'replace' || st.name === 'drop') {
-    out.push(item('reason:', 'argument', { detail: 'why upstream content is changed', insertText: 'reason: "$1"', snippet: true, range, sortText: '2' }));
+    out.push(item('reason:', 'argument', { detail: 'why upstream content is changed', markdown: markdownFor('reason'), insertText: 'reason: "$1"', snippet: true, range, sortText: '2' }));
   }
   return out;
 }
@@ -420,7 +421,7 @@ function pathItems(cx, imp, tok) {
 function statementItems(range) {
   return [
     item('base', 'object', { detail: 'the upstream file at this path; the only object a statement changes', insertText: 'base.', retrigger: true, range }),
-    item('import', 'keyword', { detail: 'import [name] "path": another file of our layer', insertText: 'import "$1"', snippet: true, retrigger: true, range }),
+    item('import', 'keyword', { detail: 'import [name] "path": another file of our layer', markdown: markdownFor('import'), insertText: 'import "$1"', snippet: true, retrigger: true, range }),
   ];
 }
 

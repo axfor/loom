@@ -41,6 +41,10 @@ content between its marks — and follows as you type, saved or not. It is woven
 changes on disk, since upstream and our files feed the product too. A compile error shows in the preview with its
 `file:line:column`.
 
+The review button next to it opens VS Code's diff editor instead: upstream's file on the left (where `import base` points,
+when it does) and the woven product on the right, following your edits the same way — what the template changes about
+upstream, the way a code review shows it.
+
 The preview runs the compiler itself, `lm weave -stdin`, so what you see is what `lm build` writes. The `lm` used
 is the `loom.path` setting, else `lm` on `PATH`, else Go's install directory (`~/go/bin/lm`).
 
@@ -68,6 +72,12 @@ What a suggestion inserts is always something the compiler resolves to that node
 - Each suggestion shows where the node is (`## Install · mine/README.md:12`) and the first lines of it.
 - Picking a method inserts its arguments (`drop(reason: "")`) and opens the next suggestions.
 
+## Hover
+
+Hover a keyword — `after`, `merge`, `drop`, `as`, `section`, `import`, `reason:` and the rest — for how it is written, what
+it does, its arguments and examples; completion shows the same next to each suggestion. Keywords do not jump anywhere.
+Hover `base`, `self` or an imported name to see which file it stands for.
+
 ## Go to definition
 
 In a template, Cmd-click a name (Ctrl-click on Windows / Linux), or press F12:
@@ -78,13 +88,12 @@ In a template, Cmd-click a name (Ctrl-click on Windows / Linux), or press F12:
 | `base` / `self` / an imported name | The file it stands for: `base` is the upstream file at the same path (or wherever `import base "..."` points it), `self` is ours |
 | `base.Install`, `base."How it compares"`, `base.Usage_Tips` | That section of the upstream file (`_` matches a space) |
 | `"Phase 1"` in `base."Example 2"."Phase 1"` | That subsection under that parent |
-| A method such as `.after` / `.drop` | The node it changes |
 | `"Install XSDD"` inside a method | That section of our file |
 | `self.frontmatter`, `cmd.body` | Where that part starts |
 | The key in `join("description")` | That key in our file |
-| `marker("...")`, `key("...")`, `function("...")` | The matching comment banner, key or function |
+| The name in `marker("...")`, `key("...")`, `function("...")` | The matching comment banner, key or function |
 
-Holding Cmd (Ctrl) over a name underlines the whole token, so a string with spaces is one link, and shows the first lines of
+Only objects and names lead to a file; keywords show their help on hover instead. Holding Cmd (Ctrl) over a name underlines the whole token, so a string with spaces is one link, and shows the first lines of
 the target. The jump selects the name on the target line.
 
 Names are found with the compiler's rules: headings from `##` down, none inside code fences, a banner by the start of its line
@@ -104,7 +113,7 @@ This runs the tests first and packages only if they pass, producing `editors/vsc
 Install it into VS Code in either of these ways:
 
 - In the Extensions view, open the `...` menu at the top right, choose **Install from VSIX...**, and pick the file above
-- From the command line: `code --install-extension editors/vscode/loom-lang-0.5.0.vsix`
+- From the command line: `code --install-extension editors/vscode/loom-lang-0.6.0.vsix`
 
 To skip packaging while developing, install the directory directly: run **Developer: Install Extension from Location...** from the Command Palette and choose `editors/vscode`.
 
@@ -119,6 +128,7 @@ npm test        # inside editors/vscode; make vs runs it first
 ```
 
 - `test/tokenize.js`: tokenizes the samples with VS Code's own tokenizer (vscode-textmate) and checks the scope each token lands in
+- `test/hover.js`: every keyword shows usage with examples, objects name their files, names show nothing
 - `test/definition.js`: builds a real repository on disk, puts the cursor on names in templates, and checks which file and line each jump lands on, and that a string with spaces is one link
 - `test/completion.js`: puts the cursor in templates over a real repository and checks what is offered and the range it replaces; every name it inserts must go to definition back to the node it was offered for
 - `test/wordpattern.js`: runs VS Code's own word-finding algorithm over every position of every string and name in long template lines
