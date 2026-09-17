@@ -1,8 +1,8 @@
 {
   "name": "loom-lang",
   "displayName": "Loom",
-  "description": "Loom for VS Code: syntax highlighting for .lm templates and settings, .e variable files and {{@name}} placeholders; completion of nodes, methods, our sections and import paths; go to definition from a template to the upstream or our file and node it names.",
-  "version": "0.4.1",
+  "description": "Loom for VS Code: syntax highlighting for .lm templates and settings, .e variable files and {{@name}} placeholders; completion of nodes, methods, our sections and import paths; a live preview of the product a template builds; go to definition from a template to the upstream or our file and node it names.",
+  "version": "0.5.0",
   "publisher": "axfor",
   "icon": "icons/loom.png",
   "license": "Apache-2.0",
@@ -17,7 +17,8 @@
     "Programming Languages"
   ],
   "activationEvents": [
-    "onLanguage:loom"
+    "onLanguage:loom",
+    "onCommand:loom.showPreview"
   ],
   "main": "./extension.js",
   "contributes": {
@@ -92,10 +93,51 @@
           "source.dockerfile"
         ]
       }
-    ]
+    ],
+    "commands": [
+      {
+        "command": "loom.showPreview",
+        "title": "Open Preview to the Side",
+        "category": "Loom",
+        "icon": "$(open-preview)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "loom.showPreview",
+          "when": "resourceExtname == .lm && resourceFilename != loom.lm",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "loom.showPreview",
+          "when": "resourceExtname == .lm && resourceFilename != loom.lm"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "loom.showPreview",
+        "key": "ctrl+k v",
+        "mac": "cmd+k v",
+        "when": "editorTextFocus && resourceExtname == .lm && resourceFilename != loom.lm"
+      }
+    ],
+    "configuration": {
+      "title": "Loom",
+      "properties": {
+        "loom.path": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "The `lm` command the preview runs. Empty: `lm` on `PATH`, then Go's install directory (`$GOBIN`, or `$GOPATH/bin`, or `~/go/bin`)."
+        }
+      }
+    }
   },
   "scripts": {
-    "test": "node test/tokenize.js && node test/definition.js && node test/completion.js && node test/wordpattern.js && node test/nesting.js",
+    "test": "node test/tokenize.js && node test/definition.js && node test/completion.js && node test/wordpattern.js && node test/nesting.js && node test/preview.js",
     "package": "vsce package"
   },
   "devDependencies": {

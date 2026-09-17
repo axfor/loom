@@ -1,10 +1,12 @@
 'use strict';
 
-// Editor glue only: resolving lives in lib/definition.js and lib/completion.js, where it is
-// tested without VS Code.
+// Editor glue only: resolving, completion and weaving live in lib/, where they are tested without
+// VS Code.
+const fs = require('fs');
 const vscode = require('vscode');
 const { definition } = require('./lib/definition');
 const { completions } = require('./lib/completion');
+const { findLm, productName, weave } = require('./lib/preview');
 
 // The hover shown while Cmd/Ctrl is held previews the target range when it spans fewer than
 // 8 lines; a longer range falls back to one line of context.
@@ -24,7 +26,74 @@ const KINDS = {
   folder: vscode.CompletionItemKind.Folder,
 };
 
+const PREVIEW = 'loom-preview';
+
+// Previews are read-only documents of their own scheme: the path names the product (so it gets that
+// file's highlighting), the query holds the template. The content is woven by lm from the template
+// as it is in the editor, and woven again as the template or any file changes.
+class Previews {
+  constructor() {
+    this.changed = new vscode.EventEmitter();
+    this.onDidChange = this.changed.event;
+    this.open = new Map(); // preview uri → template path
+    this.timers = new Map();
+  }
+
+  uriFor(template) {
+    return vscode.Uri.from({ scheme: PREVIEW, path: `/Preview · ${productName(template)}`, query: template });
+  }
+
+  async provideTextDocumentContent(uri) {
+    const template = uri.query;
+    this.open.set(uri.toString(), template);
+    const doc = vscode.workspace.textDocuments.find((d) => d.uri.scheme === 'file' && d.uri.fsPath === template);
+    let text;
+    try {
+      text = doc ? doc.getText() : fs.readFileSync(template, 'utf8');
+    } catch (err) {
+      return `⛔ ${err.message}\n`;
+    }
+    const r = await weave(findLm(vscode.workspace.getConfiguration('loom').get('path')), template, text);
+    return r.error !== undefined ? `⛔ ${r.error}\n` : r.product;
+  }
+
+  // refresh weaves open previews again, a moment after the last change, for templates matching keep.
+  refresh(keep = () => true) {
+    for (const [key, template] of this.open) {
+      if (!keep(template)) continue;
+      clearTimeout(this.timers.get(key));
+      this.timers.set(key, setTimeout(() => this.changed.fire(vscode.Uri.parse(key)), 300));
+    }
+  }
+}
+
 function activate(context) {
+  const previews = new Previews();
+  const watcher = vscode.workspace.createFileSystemWatcher('**/*');
+  const onDisk = () => previews.refresh();
+  context.subscriptions.push(
+    vscode.workspace.registerTextDocumentContentProvider(PREVIEW, previews),
+    vscode.commands.registerCommand('loom.showPreview', async (uri) => {
+      const editor = vscode.window.activeTextEditor;
+      const target = uri instanceof vscode.Uri ? uri : editor && editor.document.uri;
+      if (!target || target.scheme !== 'file' || !target.fsPath.endsWith('.lm')) return;
+      const doc = await vscode.workspace.openTextDocument(previews.uriFor(target.fsPath));
+      await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preview: true, preserveFocus: true });
+    }),
+    // the template as typed, unsaved; any saved file, since upstream and our files feed the product
+    vscode.workspace.onDidChangeTextDocument((e) => {
+      if (e.document.uri.scheme === 'file') previews.refresh((template) => template === e.document.uri.fsPath);
+    }),
+    vscode.workspace.onDidSaveTextDocument(onDisk),
+    watcher.onDidChange(onDisk),
+    watcher.onDidCreate(onDisk),
+    watcher.onDidDelete(onDisk),
+    watcher,
+    vscode.workspace.onDidCloseTextDocument((d) => {
+      if (d.uri.scheme === PREVIEW) previews.open.delete(d.uri.toString());
+    }),
+  );
+
   const selector = { language: 'loom' };
   context.subscriptions.push(
     vscode.languages.registerDefinitionProvider(selector, {

@@ -93,7 +93,8 @@ function layerDir(cfg, layer) {
 }
 
 // withExtension lists the files named rel plus an extension in a layer root (rel.md, rel.min.js),
-// templates left out, as slash paths relative to the root.
+// templates left out, as slash paths relative to the root. Case is ignored, as the compiler does:
+// on macOS and Windows GUIDE.md and guide.sh would want templates that are one file.
 function withExtension(root, rel) {
   const abs = path.join(root, rel);
   let ents;
@@ -104,7 +105,7 @@ function withExtension(root, rel) {
   }
   const stem = path.basename(abs) + '.';
   return ents
-    .filter((e) => !e.isDirectory() && e.name.startsWith(stem) && !e.name.endsWith('.lm'))
+    .filter((e) => !e.isDirectory() && e.name.toLowerCase().startsWith(stem.toLowerCase()) && !e.name.endsWith('.lm'))
     .map((e) => path.posix.join(path.posix.dirname(rel), e.name));
 }
 
@@ -119,8 +120,9 @@ function targetOf(cfg, doc) {
   const roots = ['base', 'self'].map((l) => layerDir(cfg, l)).filter(Boolean);
   if (roots.some((r) => isFile(path.join(r, name)))) return name;
   const found = [...new Set(roots.flatMap((r) => withExtension(r, name)))];
-  if (found.length > 1) return null;
-  return found.length === 1 ? found[0] : name;
+  if (found.length === 0) return name;
+  if (found.length === 1 && path.posix.basename(found[0]).startsWith(path.posix.basename(name) + '.')) return found[0];
+  return null;
 }
 
 // importRel is an import path relative to its layer root, or null when it leaves the layer.

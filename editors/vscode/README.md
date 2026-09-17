@@ -1,6 +1,6 @@
 # Loom for VS Code
 
-Syntax highlighting, completion and go to definition for the Loom language. For the syntax, see the [Loom README](../../README.md#reference).
+Syntax highlighting, completion, a live preview and go to definition for the Loom language. For the syntax, see the [Loom README](../../README.md#reference).
 
 ## Highlighting
 
@@ -32,6 +32,17 @@ nesting patterns (lock files under `package.json`, for one) show up elsewhere to
 `"explorer.fileNesting.enabled": false` in your settings to turn nesting off. It needs VS Code 1.67 or later.
 
 `.lm` and `.e` files show the Loom icon: warp threads (upstream) with the weft (ours) woven through.
+
+## Preview
+
+With a template open, click the preview button at the top right of the editor (or Cmd-K V, Ctrl-K V on Windows /
+Linux). The product the template builds opens to the side — `SKILL.lm` shows the woven `SKILL.md`, with our
+content between its marks — and follows as you type, saved or not. It is woven again when any file is saved or
+changes on disk, since upstream and our files feed the product too. A compile error shows in the preview with its
+`file:line:column`.
+
+The preview runs the compiler itself, `lm weave -stdin`, so what you see is what `lm build` writes. The `lm` used
+is the `loom.path` setting, else `lm` on `PATH`, else Go's install directory (`~/go/bin/lm`).
 
 ## Completion
 
@@ -93,7 +104,7 @@ This runs the tests first and packages only if they pass, producing `editors/vsc
 Install it into VS Code in either of these ways:
 
 - In the Extensions view, open the `...` menu at the top right, choose **Install from VSIX...**, and pick the file above
-- From the command line: `code --install-extension editors/vscode/loom-lang-0.4.1.vsix`
+- From the command line: `code --install-extension editors/vscode/loom-lang-0.5.0.vsix`
 
 To skip packaging while developing, install the directory directly: run **Developer: Install Extension from Location...** from the Command Palette and choose `editors/vscode`.
 
@@ -111,7 +122,8 @@ npm test        # inside editors/vscode; make vs runs it first
 - `test/definition.js`: builds a real repository on disk, puts the cursor on names in templates, and checks which file and line each jump lands on, and that a string with spaces is one link
 - `test/completion.js`: puts the cursor in templates over a real repository and checks what is offered and the range it replaces; every name it inserts must go to definition back to the node it was offered for
 - `test/wordpattern.js`: runs VS Code's own word-finding algorithm over every position of every string and name in long template lines
+- `test/preview.js`: builds `lm` from this repository and weaves a template from editor text that differs from the file on disk, including a compile error
 - `test/nesting.js`: nesting is on and folded by default, with patterns for both template names, and the extension writes no settings
 
 The logic lives in `lib/` and does not depend on VS Code: `loom.js` reads templates and finds nodes with the compiler's rules,
-`definition.js` and `completion.js` build on it. `extension.js` only wires them into the editor.
+`definition.js`, `completion.js` and `preview.js` build on it. `extension.js` only wires them into the editor.
