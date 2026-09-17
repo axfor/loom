@@ -49,7 +49,7 @@ const KEYWORDS = {
   },
   set: {
     usage: 'base.frontmatter.set(self.frontmatter)  ·  base.<key>.set(self.<key>)',
-    what: 'Take a value from our file: the frontmatter of a markdown file, or a toml / json key.',
+    what: 'Take a value from our file: the whole frontmatter of a markdown file, or a toml / json key. With `join` on the same frontmatter, set only matters for the keys join does not name; the build fails when a key of our frontmatter reaches the product neither way.',
     args: 'One value from our layer.',
     examples: ['base.frontmatter.set(self.frontmatter)', 'base.description.set(self.description)'],
   },

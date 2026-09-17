@@ -111,3 +111,28 @@ func TestTemplateThroughSymlink(t *testing.T) {
 		t.Errorf("got %q, %v", got, err)
 	}
 }
+
+// A frontmatter key of ours that does not reach the product is an error, like a section of ours no
+// statement places: without set or join it would disappear with nothing to say so.
+func TestOurFrontmatterReachesProduct(t *testing.T) {
+	c, dir := besideRepo(t, map[string]string{
+		"up/a.md": "---\nname: a\ndescription: Up.\n---\n\n## A\n\nup\n",
+		"me/a.md": "---\nname: a\ndescription: Ours.\nargument-hint: <file>\n---\n\n## B\n\nme\n",
+	})
+	tpl := filepath.Join(dir, "me", "a.lm")
+	for src, want := range map[string]string{
+		"base.A.after(\"B\")\n": `"description"`,
+		"base.frontmatter.join(\"description\")\nbase.A.after(\"B\")\n":                                         `"argument-hint"`,
+		"base.frontmatter.set(self.frontmatter)\nbase.frontmatter.join(\"description\")\nbase.A.after(\"B\")\n": "",
+		"base.frontmatter.set(self.frontmatter)\nbase.A.after(\"B\")\n":                                         "",
+	} {
+		mustWrite(t, tpl, src)
+		_, err := loom.PlanBuild(c, false)
+		switch {
+		case want == "" && err != nil:
+			t.Errorf("%q: our frontmatter is all in the product, got: %v", src, err)
+		case want != "" && (err == nil || !strings.Contains(err.Error(), "our frontmatter key "+want)):
+			t.Errorf("%q: want an error naming %s, got: %v", src, want, err)
+		}
+	}
+}

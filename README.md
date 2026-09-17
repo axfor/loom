@@ -380,6 +380,8 @@ our edits would be kept but upstream's change to those files would not come in.
      subsection, since a section stops at the next heading.
    - **insert-only markdown templates**: with our marks stripped, the body must be byte-identical to
      upstream.
+   - **our frontmatter**: every key of our file's frontmatter must be in the product — taken with
+     `set(self.frontmatter)` or put before upstream's value with `join` — or the build fails.
 4. Copies our layer's files. A file of ours at the same path as an upstream file, with no template,
    is an error — it would silently replace upstream with no reason. An identical copy is fine.
 5. Copies upstream files listed in `take`, applies `mirror`, writes `manifest`.

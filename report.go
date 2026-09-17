@@ -83,6 +83,21 @@ func account(c *Config, t *Template, out string, r *Report) []error {
 	}
 	walk(t.Stmts)
 
+	// Our frontmatter must reach the product too: a key only in our file, left out because the template
+	// neither sets nor joins the frontmatter, would disappear with nothing to say so.
+	if t.Type == "markdown" && !whole && !merged && c.Weft != "" {
+		if ours, ok, _ := c.read(c.Weft, weftRel(c, t, c.Weft, t.Target)); ok {
+			for _, k := range frontmatterKeys(ours) {
+				want, _ := keyValue("markdown", ours, k)
+				got, found := keyValue("markdown", out, k)
+				if !found || !strings.Contains(got, strings.Trim(strings.TrimSpace(want), `"`)) {
+					errs = append(errs, fmt.Errorf("%s: our frontmatter key %q is not in the product %s — base.frontmatter.set(self.frontmatter) takes our frontmatter, base.frontmatter.join(%q) puts ours before upstream's",
+						t.Path, k, t.Target, k))
+				}
+			}
+		}
+	}
+
 	up, upOK, _ := c.read(c.Warp, t.BasePath)
 	var upTree ast.Tree
 	kind := ""
@@ -276,6 +291,21 @@ func stripMarked(s string, m Marks) string {
 		}
 	}
 	return strings.Join(out, "\n")
+}
+
+// frontmatterKeys lists the top-level keys of a markdown file's frontmatter, in order.
+func frontmatterKeys(src string) []string {
+	fm, ok := ast.NewMarkdown(src).BodyOf("frontmatter")
+	if !ok {
+		return nil
+	}
+	var keys []string
+	for _, l := range strings.Split(fm, "\n") {
+		if i := strings.Index(l, ":"); i > 0 && l != "---" && !strings.ContainsAny(l[:i], " \t#") {
+			keys = append(keys, l[:i])
+		}
+	}
+	return keys
 }
 
 // functionStats counts functions in upstream and in the product: kept (untouched) · changed · added · removed.
