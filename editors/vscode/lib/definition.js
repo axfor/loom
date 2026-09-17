@@ -10,14 +10,12 @@
 //   "Install XSDD" inside .after(...)       content by name     → that heading in our file
 //   self.frontmatter / cmd.body           a part of a file    → where that part starts
 //   "description" inside .join(...)         a key               → that key in our file
-//   "x.diff" inside .patch(...)             a patch             → the patch file next to the template
 //
 // The result says what was clicked (origin: the whole token, so a string with spaces is one
 // link) and where it leads (the node's first line, the name on it, and where the node ends).
 // Where the compiler would reject the template, this returns what it can (the file) or
 // nothing — never a guess at a different node.
 
-const path = require('path');
 const loom = require('./loom');
 
 function locate(file, node, view) {
@@ -72,7 +70,6 @@ function resolve(t, ref) {
         const sel = loom.walk(t, chain, index + 1);
         return locate(sel.obj.file, sel.node, sel.view);
       }
-      if (st.name === 'patch') return locate(path.join(path.dirname(t.docPath), ref.tok.v), null);
       if (st.name === 'join') {
         return locate(t.objects.self.file, { kind: r.typ === 'markdown' ? 'fmkey' : loom.DEFAULT_KIND[r.typ], name: ref.tok.v, ident: false });
       }

@@ -29,7 +29,6 @@ write('mine/skills/testing/SKILL.md', [
   '## 例 1', '', '### Phase 1', '', 'b', '',
   '## 例 2', '', '### Phase 1', '', 'c', '',
 ].join('\n'));
-write('mine/skills/testing/SKILL.md.diff', '');
 write('mine/shared/notes.md', '## Café Notes\n');
 write('mine/shared/notes.md.lm', '');
 write('mine/shared/two.md', '');
@@ -71,7 +70,7 @@ const find = (items, label) => items.find((i) => i.label === label);
   const { items } = at(md, 'base.|');
   const l = labels(items);
   ok(l.slice(0, 3).join(',') === 'Overview,How it compares,Example 1', 'base. lists upstream sections first, in file order', l);
-  ok(['frontmatter', 'section', 'line', 'start', 'append', 'replace', 'patch'].every((x) => l.includes(x)), 'base. offers parts, kinds and file methods', l);
+  ok(['frontmatter', 'section', 'line', 'start', 'append', 'replace', 'merge'].every((x) => l.includes(x)), 'base. offers parts, kinds and file methods', l);
   ok(!l.includes('body') && !l.includes('join') && !l.includes('after'), 'base. offers no body, no join, no node methods', l);
   ok(find(items, 'Overview').insertText === 'Overview', 'a plain name is inserted as an identifier');
   ok(find(items, 'How it compares').insertText === '"How it compares"', 'a name with spaces is inserted as a string');
@@ -128,8 +127,8 @@ const find = (items, label) => items.find((i) => i.label === label);
   ok(l2.includes('reason:') && l2.includes('self'), 'replace( offers content and reason:', l2);
   const l3 = labels(at(md, 'base.frontmatter.join("|")').items);
   ok(l3.join(',') === 'name,description', 'join(" offers our frontmatter keys', l3);
-  const l4 = labels(at(md, 'base.patch("|")').items);
-  ok(l4.join(',') === 'SKILL.md.diff', 'patch(" offers the patches next to the template', l4);
+  const l4 = labels(at(md, 'base.merge(|)').items);
+  ok(l4.join(',') === 'self', 'merge( offers self', l4);
   const l5 = labels(at(md, 'base.section("|")').items);
   ok(l5.includes('Overview') && !l5.some((x) => x.includes('Phase 1')), 'section(" offers upstream sections a single name can reach', l5);
   const l6 = labels(at(md, 'base.frontmatter.set(|)').items);
@@ -166,13 +165,13 @@ const find = (items, label) => items.find((i) => i.label === label);
   const l2 = labels(at(md, 'import base "/old/|"').items);
   ok(l2.join(',') === 'guide', 'import base lists the upstream layer', l2);
   const l3 = labels(at(md, 'import "./|"').items);
-  ok(l3.join(',') === 'SKILL', './ is relative to the product directory (templates and patches beside it are not offered)', l3);
+  ok(l3.join(',') === 'SKILL', './ is relative to the product directory (templates beside it are not offered)', l3);
 }
 
 // ── views, toml, shell, settings ──
 {
   const l = labels(at(toml, 'base.prompt.as(markdown).|').items);
-  ok(l[0] === 'Steps' && l.includes('append') && !l.includes('replace') && !l.includes('patch'), 'a view offers its sections and view methods', l);
+  ok(l[0] === 'Steps' && l.includes('append') && !l.includes('replace') && !l.includes('merge'), 'a view offers its sections and view methods', l);
   const l2 = labels(at(toml, 'base.prompt.as(markdown).after("|")').items);
   ok(l2.join(',') === 'Naïve Approach', 'in a view, strings name sections of the same key in our file', l2);
   const l3 = labels(at(toml, 'base.|').items);

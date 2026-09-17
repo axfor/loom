@@ -9,7 +9,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const METHODS = new Set(['after', 'before', 'start', 'append', 'replace', 'drop', 'set', 'join', 'patch']);
+const METHODS = new Set(['after', 'before', 'start', 'append', 'replace', 'drop', 'set', 'join', 'merge']);
 const CONTENT_METHODS = new Set(['after', 'before', 'start', 'append', 'replace', 'set']);
 const KIND_CALLS = {
   markdown: { section: 'heading', line: 'line' },
@@ -92,11 +92,35 @@ function layerDir(cfg, layer) {
   return d == null ? null : path.join(cfg.root, d);
 }
 
-// targetOf: the product path is the template's path under the templates directory, minus .lm.
+// withExtension lists the files named rel plus an extension in a layer root (rel.md, rel.min.js),
+// templates left out, as slash paths relative to the root.
+function withExtension(root, rel) {
+  const abs = path.join(root, rel);
+  let ents;
+  try {
+    ents = fs.readdirSync(path.dirname(abs), { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const stem = path.basename(abs) + '.';
+  return ents
+    .filter((e) => !e.isDirectory() && e.name.startsWith(stem) && !e.name.endsWith('.lm'))
+    .map((e) => path.posix.join(path.posix.dirname(rel), e.name));
+}
+
+// targetOf mirrors the compiler: the template's path under the templates directory, minus .lm,
+// names the product. The extension may be left out (SKILL.lm builds SKILL.md): a file named exactly
+// so in a layer wins, else the one file with that name and an extension; several is null, the
+// compiler's error; none is the name as written.
 function targetOf(cfg, doc) {
   const rel = path.relative(path.join(cfg.root, cfg.templates), doc);
   if (rel.startsWith('..') || path.isAbsolute(rel) || !rel.endsWith('.lm')) return null;
-  return rel.slice(0, -3).split(path.sep).join('/');
+  const name = rel.slice(0, -3).split(path.sep).join('/');
+  const roots = ['base', 'self'].map((l) => layerDir(cfg, l)).filter(Boolean);
+  if (roots.some((r) => isFile(path.join(r, name)))) return name;
+  const found = [...new Set(roots.flatMap((r) => withExtension(r, name)))];
+  if (found.length > 1) return null;
+  return found.length === 1 ? found[0] : name;
 }
 
 // importRel is an import path relative to its layer root, or null when it leaves the layer.
@@ -110,7 +134,8 @@ function importRel(spec, target) {
 }
 
 // resolveImport mirrors the compiler: ./ and ../ are relative to the product's directory,
-// / starts at the layer root, and a missing extension is fine when exactly one file matches.
+// / starts at the layer root, and a missing extension is fine when exactly one file matches
+// (a template next to the file does not count).
 function resolveImport(cfg, layer, spec, target) {
   const root = layerDir(cfg, layer);
   const rel = importRel(spec, target);
@@ -118,15 +143,8 @@ function resolveImport(cfg, layer, spec, target) {
   const abs = path.join(root, rel);
   if (isFile(abs)) return abs;
   if (path.posix.extname(rel) !== '') return null;
-  let names;
-  try {
-    names = fs.readdirSync(path.dirname(abs));
-  } catch {
-    return null;
-  }
-  const stem = path.basename(abs) + '.';
-  const hits = names.filter((n) => n.startsWith(stem) && isFile(path.join(path.dirname(abs), n)));
-  return hits.length === 1 ? path.join(path.dirname(abs), hits[0]) : null;
+  const hits = withExtension(root, rel);
+  return hits.length === 1 ? path.join(root, hits[0]) : null;
 }
 
 // ── tokens and statements ───────────────────────────────────────────────────

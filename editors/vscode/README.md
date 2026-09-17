@@ -16,6 +16,23 @@ A quoted name counts as one word wherever the cursor is in it: the go-to-definit
 completion all take `"离线环境 fallback（无网络 / 内网部署）"` as a whole. (Double-click still selects a single word; that
 follows the editor's word separators setting.)
 
+## Templates next to their files
+
+A template lives next to the file it builds, and the explorer folds it under that file — one entry per file:
+
+```
+▸ SKILL.md          SKILL.lm
+▸ run.sh            run.lm
+```
+
+In a workspace with a `loom.lm`, the extension turns this on by itself: it contributes the nesting patterns
+(`X.lm`, and the short name that leaves the extension out) and writes
+`"explorer.fileNesting.enabled": true` and `"explorer.fileNesting.expand": false` to the workspace settings.
+It writes a setting only when nobody has set it at any level, so turning nesting off in your own settings
+keeps it off. File nesting needs VS Code 1.67 or later.
+
+`.lm` and `.e` files show the Loom icon: warp threads (upstream) with the weft (ours) woven through.
+
 ## Completion
 
 Suggestions open after `.`, `"`, `/` and `(`, or with Ctrl-Space:
@@ -28,7 +45,7 @@ Suggestions open after `.`, `"`, `/` and `(`, or with Ctrl-Space:
 | `base."Example 2".` | The subsections of that section, then its methods |
 | `after(` / `after("` and the other content methods | Our sections, then `self` and imported names; `reason:` in `replace` |
 | `drop(` | `reason:` |
-| `join("` / `patch("` | Our frontmatter keys (or keys) / the `.diff` files next to the template |
+| `join("` | Our frontmatter keys (or keys) |
 | `section("` / `function("` / `marker("` / `key("` | That kind of node in the file being changed |
 | `as(` | The types |
 | `import "/` / `import "./` | Directories and files of our layer (`import base` lists upstream); the extension is left out when no other file has that name |
@@ -54,7 +71,6 @@ In a template, Cmd-click a name (Ctrl-click on Windows / Linux), or press F12:
 | `"Install XSDD"` inside a method | That section of our file |
 | `self.frontmatter`, `cmd.body` | Where that part starts |
 | The key in `join("description")` | That key in our file |
-| The file name in `patch("x.diff")` | The patch file next to the template |
 | `marker("...")`, `key("...")`, `function("...")` | The matching comment banner, key or function |
 
 Holding Cmd (Ctrl) over a name underlines the whole token, so a string with spaces is one link, and shows the first lines of
@@ -77,7 +93,7 @@ This runs the tests first and packages only if they pass, producing `editors/vsc
 Install it into VS Code in either of these ways:
 
 - In the Extensions view, open the `...` menu at the top right, choose **Install from VSIX...**, and pick the file above
-- From the command line: `code --install-extension editors/vscode/loom-lang-0.3.0.vsix`
+- From the command line: `code --install-extension editors/vscode/loom-lang-0.4.0.vsix`
 
 To skip packaging while developing, install the directory directly: run **Developer: Install Extension from Location...** from the Command Palette and choose `editors/vscode`.
 
@@ -95,6 +111,7 @@ npm test        # inside editors/vscode; make vs runs it first
 - `test/definition.js`: builds a real repository on disk, puts the cursor on names in templates, and checks which file and line each jump lands on, and that a string with spaces is one link
 - `test/completion.js`: puts the cursor in templates over a real repository and checks what is offered and the range it replaces; every name it inserts must go to definition back to the node it was offered for
 - `test/wordpattern.js`: runs VS Code's own word-finding algorithm over every position of every string and name in long template lines
+- `test/nesting.js`: which nesting settings are written in a Loom workspace, and that a choice already made is left alone
 
 The logic lives in `lib/` and does not depend on VS Code: `loom.js` reads templates and finds nodes with the compiler's rules,
 `definition.js` and `completion.js` build on it. `extension.js` only wires them into the editor.

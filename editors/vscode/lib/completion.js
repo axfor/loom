@@ -6,7 +6,7 @@
 //   base."Example 2".|            the subsections of that section, and the methods on it
 //   .after(|  .after("|           our sections (a repeated name comes with its parent path), self, imports
 //   .drop(|  .replace(x, |        reason:
-//   .join("|  .patch("|           our frontmatter keys / keys; the .diff files next to the template
+//   .join("|  .merge(|            our frontmatter keys / keys; self
 //   .section("|  .function("|     that kind of node in the file
 //   .as(|                         the types
 //   import "/|                    directories and files of the layer
@@ -28,7 +28,7 @@ const METHOD_DOCS = {
   drop: 'leave out of the product on purpose; needs reason:',
   set: 'take the value from another file',
   join: "value = ours followed by upstream's",
-  patch: 'apply a unified diff next to the template',
+  merge: 'our file is upstream plus our edits; lm sync merges each new upstream into it',
   as: "view the key's value as another type",
 };
 
@@ -41,7 +41,7 @@ const SNIPPETS = {
   drop: 'drop(reason: "$1")',
   set: 'set($1)',
   join: 'join("$1")',
-  patch: 'patch("$1")',
+  merge: 'merge(self)',
   as: 'as($1)',
 };
 
@@ -247,7 +247,7 @@ function stepItems(cx, chain, index, range, quoted) {
 function methodsFor(r) {
   if (!r.node) {
     const m = ['start', 'append'];
-    if (!r.view) m.push('replace', 'patch');
+    if (!r.view) m.push('replace', 'merge');
     if (!r.view && (r.typ === 'toml' || r.typ === 'json')) m.push('join');
     return m;
   }
@@ -343,14 +343,8 @@ function argItems(cx, argOf, range, quoted) {
   if (st.name === 'as') {
     return quoted ? [] : [...loom.TYPES].map((ty) => item(ty, 'type', { range }));
   }
-  if (st.name === 'patch') {
-    let names = [];
-    try {
-      names = fs.readdirSync(path.dirname(cx.t.docPath)).filter((f) => f.endsWith('.diff'));
-    } catch {
-      // no directory, no patches
-    }
-    return names.map((f) => item(f, 'file', { insertText: loom.quote(f), filterText: quoted ? loom.quote(f) : f, range }));
+  if (st.name === 'merge') {
+    return quoted ? [] : [item('self', 'object', { detail: 'our file at this path', range })];
   }
   if (st.name === 'join') {
     const src = source(self.file, null);
@@ -404,8 +398,8 @@ function pathItems(cx, imp, tok) {
     return [];
   }
   const range = { line: cx.line, s: start + slash + 1, e: end };
-  // templates and patches live beside our files; they are not something to import
-  const files = entries.filter((d) => d.isFile() && !/\.(lm|diff)$/.test(d.name) && d.name !== '.DS_Store');
+  // templates live beside our files; they are not something to import
+  const files = entries.filter((d) => d.isFile() && !d.name.endsWith('.lm') && d.name !== '.DS_Store');
   const stems = new Map();
   for (const f of files) {
     const stem = f.name.replace(/\.[^.]*$/, '');

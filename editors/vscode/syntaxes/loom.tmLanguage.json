@@ -117,7 +117,7 @@
       "patterns": [
         {
           "comment": "methods: they change base",
-          "match": "(\\.)\\s*(after|before|start|append|replace|drop|set|join|patch)\\s*(?=[({])",
+          "match": "(\\.)\\s*(after|before|start|append|replace|drop|set|join|merge)\\s*(?=[({])",
           "captures": {
             "1": { "name": "punctuation.accessor.loom" },
             "2": { "name": "entity.name.function.method.loom" }

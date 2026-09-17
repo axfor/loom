@@ -2,8 +2,9 @@
   "name": "loom-lang",
   "displayName": "Loom",
   "description": "Loom for VS Code: syntax highlighting for .lm templates and settings, .e variable files and {{@name}} placeholders; completion of nodes, methods, our sections and import paths; go to definition from a template to the upstream or our file and node it names.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "axfor",
+  "icon": "icons/loom.png",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -16,10 +17,16 @@
     "Programming Languages"
   ],
   "activationEvents": [
-    "onLanguage:loom"
+    "onLanguage:loom",
+    "workspaceContains:**/loom.lm"
   ],
   "main": "./extension.js",
   "contributes": {
+    "configurationDefaults": {
+      "explorer.fileNesting.patterns": {
+        "*": "${capture}.lm, ${basename}.lm"
+      }
+    },
     "languages": [
       {
         "id": "loom",
@@ -30,6 +37,10 @@
         "extensions": [
           ".lm"
         ],
+        "icon": {
+          "light": "./icons/loom.svg",
+          "dark": "./icons/loom.svg"
+        },
         "configuration": "./language-configuration.json"
       },
       {
@@ -40,6 +51,10 @@
         "extensions": [
           ".e"
         ],
+        "icon": {
+          "light": "./icons/loom.svg",
+          "dark": "./icons/loom.svg"
+        },
         "configuration": "./env-language-configuration.json"
       }
     ],
@@ -79,7 +94,7 @@
     ]
   },
   "scripts": {
-    "test": "node test/tokenize.js && node test/definition.js && node test/completion.js && node test/wordpattern.js",
+    "test": "node test/tokenize.js && node test/definition.js && node test/completion.js && node test/wordpattern.js && node test/nesting.js",
     "package": "vsce package"
   },
   "devDependencies": {

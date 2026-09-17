@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- warp (upstream): three threads, cut where a weft passes over them -->
+  <g fill="#3FA7B5">
+    <path d="M6 5a2 2 0 0 1 4 0v2.5h-4z"/>
+    <path d="M6 14.5h4v12.5a2 2 0 0 1-4 0z"/>
+    <path d="M14 5a2 2 0 0 1 4 0v12.5h-4z"/>
+    <path d="M14 24.5h4v2.5a2 2 0 0 1-4 0z"/>
+    <path d="M22 5a2 2 0 0 1 4 0v2.5h-4z"/>
+    <path d="M22 14.5h4v12.5a2 2 0 0 1-4 0z"/>
+  </g>
+  <!-- weft (ours): the upper one over, under, over; the lower one under, over, under -->
+  <g fill="#F0A33A">
+    <path d="M4 9h8.5v4H4a2 2 0 0 1 0-4z"/>
+    <path d="M19.5 9H28a2 2 0 0 1 0 4h-8.5z"/>
+    <path d="M4 19h0.5v4H4a2 2 0 0 1 0-4z"/>
+    <path d="M11.5 19h9v4h-9z"/>
+    <path d="M27.5 19H28a2 2 0 0 1 0 4h-0.5z"/>
+  </g>
+</svg>

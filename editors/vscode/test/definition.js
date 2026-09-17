@@ -34,7 +34,6 @@ write('mine/cmd.toml', 'description = "Mine"\nprompt = """\n## Naïve Approach\n
 write('mine/.claude/commands/ship.md', '---\ndescription: ship\n---\n\n## Release\n\nf\n');
 write('upstream/run.sh', '#!/bin/sh\n# ── main ──\nmain() {\n  echo\n}\n');
 write('mine/run.sh', 'boot() {\n  echo boot\n}\n');
-write('t/skills/testing/SKILL.md.diff', '');
 
 const doc = path.join(root, 't/skills/testing/SKILL.md.lm');
 const docText = [
@@ -51,7 +50,7 @@ const docText = [
   '    `',                                                          // 10
   '}',                                                              // 11
   'base."Old Overview".drop(reason: "Überblick")',                   // 12
-  'base.patch("SKILL.md.diff")',                                    // 13
+  'base.merge(self)',                                               // 13
   'base.replace(self, reason: "x")',                                // 14
 ].join('\n');
 
@@ -122,11 +121,12 @@ check(doc, docText, 7, 'Customer', [M, 9]);
 check(doc, docText, 12, 'Überblick', null); // a reason is not a name
 check(doc, docText, 9, 'Overview', null); // inside a literal
 
-// frontmatter, join, patch, whole-file replace
+// frontmatter, join, merge, whole-file replace
 check(doc, docText, 4, 'self', [M, 0]);
 check(doc, docText, 4, 'frontmatter', [M, 0], 2);
 check(doc, docText, 5, 'description', [M, 2]);
-check(doc, docText, 13, 'SKILL.md.diff', ['t/skills/testing/SKILL.md.diff', 0]);
+check(doc, docText, 13, 'merge', ['upstream/old/guide.md', 0]);
+check(doc, docText, 13, 'self', [M, 0]);
 check(doc, docText, 14, 'self', [M, 0]);
 
 // string-form nodes; an identifier with _ ; a name that does not exist lands on the file
@@ -208,6 +208,26 @@ check(sh, shText, 1, 'boot', ['mine/run.sh', 0]);
   else {
     fail++;
     console.log('  ❌ template beside our file: got', d1, d2);
+  }
+  // a template may leave out the extension: a.lm builds a.md; with a.md and a.yml it could mean either
+  fs.writeFileSync(path.join(r2, 'me', 'b.md'), '## Mine\n');
+  const d4 = definition(path.join(r2, 'me', 'a.lm'), text, 0, text.indexOf('Install'));
+  const d5 = definition(path.join(r2, 'me', 'b.lm'), 'base.append("Mine")', 0, 14);
+  fs.writeFileSync(path.join(r2, 'me', 'b.yml'), 'x: 1\n');
+  const d6 = definition(path.join(r2, 'me', 'b.lm'), 'base.append("Mine")', 0, 14);
+  if (d4 && d4.file === path.join(r2, 'up', 'a.md') && d4.line === 2 && d5 && d5.file === path.join(r2, 'me', 'b.md') && d6 === null) pass++;
+  else {
+    fail++;
+    console.log('  ❌ short template names: got', d4, d5, d6);
+  }
+  // the template next to a.md does not make an import without the extension ambiguous
+  fs.writeFileSync(path.join(r2, 'me', 'a.md.lm'), text);
+  const imp = 'import "/a"';
+  const d3 = definition(path.join(r2, 'me', 'b.md.lm'), imp, 0, imp.indexOf('/a'));
+  if (d3 && d3.file === path.join(r2, 'me', 'a.md')) pass++;
+  else {
+    fail++;
+    console.log('  ❌ import without extension next to a template: got', d3);
   }
   fs.rmSync(r2, { recursive: true, force: true });
 }

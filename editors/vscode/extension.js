@@ -5,6 +5,7 @@
 const vscode = require('vscode');
 const { definition } = require('./lib/definition');
 const { completions } = require('./lib/completion');
+const { nestingUpdates } = require('./lib/nesting');
 
 // The hover shown while Cmd/Ctrl is held previews the target range when it spans fewer than
 // 8 lines; a longer range falls back to one line of context.
@@ -24,7 +25,18 @@ const KINDS = {
   folder: vscode.CompletionItemKind.Folder,
 };
 
+// nestTemplates folds templates under the files they build, in a workspace with a loom.lm.
+async function nestTemplates() {
+  const [settings] = await vscode.workspace.findFiles('**/loom.lm', '**/node_modules/**', 1);
+  if (!settings) return;
+  const explorer = vscode.workspace.getConfiguration('explorer', settings);
+  for (const [key, value] of nestingUpdates(explorer.inspect('fileNesting.enabled'), explorer.inspect('fileNesting.expand'))) {
+    await explorer.update(key, value, vscode.ConfigurationTarget.Workspace);
+  }
+}
+
 function activate(context) {
+  nestTemplates().catch((err) => console.error(`loom: could not turn on file nesting: ${err.message}`));
   const selector = { language: 'loom' };
   context.subscriptions.push(
     vscode.languages.registerDefinitionProvider(selector, {
