@@ -317,3 +317,13 @@ func TestDescribeReportsReasons(t *testing.T) {
 		t.Errorf("replaces: %+v, reason %q", i.Replaces, i.Reason)
 	}
 }
+
+// join names keys, it takes no values: self.description is our content only, so the error says to
+// write the key's name instead.
+func TestJoinTakesKeyNames(t *testing.T) {
+	c, dir := objRepo(t, nil)
+	_, err := weaveObj(t, c, dir, "doc.md", "base.frontmatter.join(self.description)\n")
+	if err == nil || !strings.Contains(err.Error(), `join("description")`) || !strings.Contains(err.Error(), "ours followed by upstream's") {
+		t.Errorf("want an error pointing to join(\"description\"), got: %v", err)
+	}
+}

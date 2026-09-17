@@ -620,6 +620,12 @@ func (in *interp) method(r receiver, st oStep) error {
 		var keys []string
 		for _, a := range pos {
 			if a.val.kind != vString {
+				// self.description names content of our file only; join reads the key from both files
+				if a.val.kind == vExpr && len(a.val.expr.steps) == 1 && !a.val.expr.steps[0].call {
+					k := a.val.expr.steps[0].name
+					return fmt.Errorf("%s: join takes key names, not values: join(%q) — join reads that key from our file and from upstream's and writes ours followed by upstream's, while %s.%s is our content only (in markdown, a section named %s)",
+						a.pos, k, a.val.expr.root, k, k)
+				}
 				return fmt.Errorf("%s: join takes quoted key names", a.pos)
 			}
 			keys = append(keys, a.val.str)

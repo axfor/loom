@@ -56,7 +56,7 @@ const KEYWORDS = {
   join: {
     usage: 'base.frontmatter.join("key", ...)  ·  base.join("key", ...)',
     what: 'The value becomes ours followed by upstream\'s — a bilingual description, say. In markdown on frontmatter keys; in toml / json on the file.',
-    args: 'Quoted key names.',
+    args: 'Quoted key names — not `self.description`: join reads the named key from both files, while `self.description` is content of ours only (in markdown, a section named description).',
     examples: ['base.frontmatter.join("description")', 'base.join("description")'],
   },
   merge: {
