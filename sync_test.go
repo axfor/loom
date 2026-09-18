@@ -191,3 +191,27 @@ func TestSyncRefusesUnresolvedConflict(t *testing.T) {
 		t.Errorf("the upstream layer must be untouched, so the conflict can still be resolved:\n%s", got)
 	}
 }
+
+// Upstream removed the file our file is merged into: nobody can decide that but a person, so it is
+// reported, our file is left alone, and the exit is non-zero.
+func TestSyncReportsAFileUpstreamRemoved(t *testing.T) {
+	c, dir := besideRepo(t, map[string]string{
+		"up/run.sh":  upRun,
+		"up/keep.md": "## A\n",
+		"me/run.sh":  meRun,
+		"me/run.lm":  "base.merge(self)\n",
+	})
+	next := t.TempDir()
+	mustWrite(t, filepath.Join(next, "keep.md"), "## A\n")
+
+	r, err := loom.Sync(c, next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(r.Gone, " ") != "me/run.sh" || len(r.Merged) != 0 || len(r.Conflicts) != 0 {
+		t.Errorf("want our file reported as gone, got: %+v", r)
+	}
+	if got := readFile(t, filepath.Join(dir, "me", "run.sh")); got != meRun {
+		t.Errorf("our file must be left as it is:\n%s", got)
+	}
+}
