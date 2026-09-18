@@ -1,6 +1,6 @@
 # Loom for VS Code
 
-Syntax highlighting, diagnostics, completion, a live preview and go to definition for the Loom language. For the syntax, see the [Loom README](../../README.md#reference).
+Syntax highlighting, diagnostics, completion, a live preview, a whole-tree patch and go to definition for the Loom language. For the syntax, see the [Loom README](../../README.md#reference).
 
 ## Highlighting
 
@@ -47,6 +47,53 @@ upstream, the way a code review shows it.
 
 The preview runs the compiler itself, `lm weave -stdin`, so what you see is what `lm build` writes. The `lm` used
 is the `loom.path` setting, else `lm` on `PATH`, else Go's install directory (`~/go/bin/lm`).
+
+## Patch
+
+The third button opens the whole tree as one unified diff — the `+` / `-` form `git diff` prints —
+upstream on the left of every pair, the product lm weaves on the right:
+
+```
+Loom patch · 2 files changed, 11 insertions(+), 0 deletions(-)
+upstream → product · woven from /w/project, nothing written
+
+ doc.md       | 5 +++++
+ hooks/run.js | 6 ++++++  (merge)
+
+(merge) our file is the product: the diff is the edits lm sync carries onto each new upstream.
+
+diff --loom upstream/doc.md product/doc.md
+--- upstream/doc.md
++++ product/doc.md
+@@ -2,6 +2,11 @@
+ 
+ Upstream overview text.
+ 
++<!-- MINE:BEGIN -->
++## Where this fits
++
++A section we added.
++<!-- MINE:END -->
+ ## Process
+```
+
+Where the Review button compares one file side by side, this is every template at once, compact
+enough to read in one pass and plain enough to paste into a review or send upstream.
+
+**A merge template is marked `(merge)`, and that is the point of the view.** For
+`base.merge(self)` on a script or a `.js` file, our file *is* the product: the patch is the edits we
+carry, the ones `lm sync` re-applies to each new upstream with a three-way merge. They exist nowhere
+in the repository as a file — the difference is the only place they live, and this is where you read
+it. For a json registry the product is computed from both layers instead, so its diff is what the
+merge produced.
+
+The patch is built from the files **on disk**, not from unsaved buffers: it covers a whole tree, and
+one template saying something else in an editor would make it a patch of nothing that exists. It is
+rebuilt when any file is saved or changes on disk.
+
+Templates are woven with `lm weave`, one at a time — never `lm build`, which completes anchors and
+writes them back into the templates. Opening a view must not edit your sources. A template that
+fails to weave is listed with its error rather than quietly left out.
 
 ## Diagnostics
 
@@ -177,7 +224,8 @@ npm test        # inside editors/vscode; make vs runs it first
 - `test/wordpattern.js`: runs VS Code's own word-finding algorithm over every position of every string and name in long template lines
 - `test/preview.js`: builds `lm` from this repository and weaves a template from editor text that differs from the file on disk, including a compile error
 - `test/nesting.js`: nesting is on and folded by default, with patterns for both template names, and the extension writes no settings
+- `test/patch.js`: diffs 76 file pairs with both the diff engine and `git diff --no-index`, and the hunks must come out identical — 16 written by hand (insertions, deletions, hunks that merge, a missing final newline) and 60 pseudo-random; then builds `lm` and checks the whole-tree patch over a woven template and a merged one
 - `test/diagnostics.js`: parses lm's output on its own — positions, nested positions, duplicates, unused variables — then builds `lm` and checks the errors a deliberately broken tree really produces
 
 The logic lives in `lib/` and does not depend on VS Code: `loom.js` reads templates and finds nodes with the compiler's rules,
-`definition.js`, `completion.js`, `hover.js`, `signature.js`, `preview.js` and `diagnostics.js` build on it, with keyword help in `docs.js`. `extension.js` only wires them into the editor.
+`definition.js`, `completion.js`, `hover.js`, `signature.js`, `preview.js`, `diagnostics.js` and `patch.js` build on it, with keyword help in `docs.js`. `extension.js` only wires them into the editor.

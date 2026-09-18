@@ -1,7 +1,7 @@
 {
   "name": "loom-lang",
   "displayName": "Loom",
-  "description": "Loom for VS Code: syntax highlighting for .lm templates and settings, .e variable files and {{@name}} placeholders; the compiler's own errors underlined as you type; completion of nodes, methods, our sections and import paths; a live preview of the product a template builds; go to definition from a template to the upstream or our file and node it names.",
+  "description": "Loom for VS Code: syntax highlighting for .lm templates and settings, .e variable files and {{@name}} placeholders; the compiler's own errors underlined as you type; completion of nodes, methods, our sections and import paths; a live preview of the product a template builds; the whole tree as one unified diff against upstream; go to definition from a template to the upstream or our file and node it names.",
   "version": "1.0.1",
   "publisher": "axfor",
   "icon": "icons/loom.png",
@@ -20,7 +20,8 @@
     "onLanguage:loom",
     "onLanguage:loom-env",
     "onCommand:loom.showPreview",
-    "onCommand:loom.showReview"
+    "onCommand:loom.showReview",
+    "onCommand:loom.showPatch"
   ],
   "main": "./extension.js",
   "contributes": {
@@ -108,6 +109,12 @@
         "title": "Review Against Upstream",
         "category": "Loom",
         "icon": "$(diff)"
+      },
+      {
+        "command": "loom.showPatch",
+        "title": "Show Patch Against Upstream",
+        "category": "Loom",
+        "icon": "$(git-compare)"
       }
     ],
     "menus": {
@@ -121,6 +128,11 @@
           "command": "loom.showReview",
           "when": "resourceExtname == .lm && resourceFilename != loom.lm",
           "group": "navigation"
+        },
+        {
+          "command": "loom.showPatch",
+          "when": "resourceExtname == .lm && resourceFilename != loom.lm",
+          "group": "navigation"
         }
       ],
       "commandPalette": [
@@ -130,6 +142,10 @@
         },
         {
           "command": "loom.showReview",
+          "when": "resourceExtname == .lm && resourceFilename != loom.lm"
+        },
+        {
+          "command": "loom.showPatch",
           "when": "resourceExtname == .lm && resourceFilename != loom.lm"
         }
       ]
@@ -154,7 +170,7 @@
     }
   },
   "scripts": {
-    "test": "node test/tokenize.js && node test/definition.js && node test/hover.js && node test/signature.js && node test/completion.js && node test/wordpattern.js && node test/nesting.js && node test/preview.js && node test/diagnostics.js",
+    "test": "node test/tokenize.js && node test/definition.js && node test/hover.js && node test/signature.js && node test/completion.js && node test/wordpattern.js && node test/nesting.js && node test/preview.js && node test/diagnostics.js && node test/patch.js",
     "package": "vsce package"
   },
   "devDependencies": {

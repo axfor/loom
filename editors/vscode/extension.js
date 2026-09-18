@@ -9,6 +9,7 @@ const { completions } = require('./lib/completion');
 const { findLm, productName, upstreamFile, weave } = require('./lib/preview');
 const { hover } = require('./lib/hover');
 const { commandFor, diagnose } = require('./lib/diagnostics');
+const { treePatch, treeRoot } = require('./lib/patch');
 const { signature } = require('./lib/signature');
 
 // The hover shown while Cmd/Ctrl is held previews the target range when it spans fewer than
@@ -38,6 +39,7 @@ const SEVERITY = {
 };
 
 const PREVIEW = 'loom-preview';
+const PATCH = 'loom-patch';
 
 // Previews are read-only documents of their own scheme: the path names the product (so it gets that
 // file's highlighting), the query holds the template. The content is woven by lm from the template
@@ -75,6 +77,42 @@ class Previews {
       clearTimeout(this.timers.get(key));
       this.timers.set(key, setTimeout(() => this.changed.fire(vscode.Uri.parse(key)), 300));
     }
+  }
+}
+
+// The patch is one read-only document for the whole tree: every template's upstream file against
+// the product lm weaves from it, as a unified diff. The path ends in .diff so VS Code colours it,
+// and the query is the tree's root, so one tree has one patch however it was opened.
+//
+// It is built from the files on disk — unlike the preview, which follows the editor's text. A patch
+// covering a whole tree while one of its templates says something else in an unsaved buffer would
+// be a patch of nothing that exists.
+class Patches {
+  constructor() {
+    this.changed = new vscode.EventEmitter();
+    this.onDidChange = this.changed.event;
+    this.open = new Set();
+    this.timer = null;
+  }
+
+  uriFor(from) {
+    return vscode.Uri.from({ scheme: PATCH, path: '/Loom patch.diff', query: treeRoot(from) || from });
+  }
+
+  async provideTextDocumentContent(uri) {
+    this.open.add(uri.toString());
+    const r = await treePatch(findLm(vscode.workspace.getConfiguration('loom').get('path')), uri.query);
+    return r.error !== undefined ? `⛔ ${r.error}\n` : r.text;
+  }
+
+  // refresh rebuilds open patches a moment after the last change. Every file in the tree feeds the
+  // patch, so there is nothing to match on — any of them changing is a reason to weave again.
+  refresh() {
+    if (this.open.size === 0) return;
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => {
+      for (const key of this.open) this.changed.fire(vscode.Uri.parse(key));
+    }, 500);
   }
 }
 
@@ -144,16 +182,19 @@ class Linter {
 
 function activate(context) {
   const previews = new Previews();
+  const patches = new Patches();
   const linter = new Linter();
   const watcher = vscode.workspace.createFileSystemWatcher('**/*');
   // A file on disk changed: the product is woven from upstream and our files, so both the previews
   // and the errors they could raise are out of date.
   const onDisk = () => {
     previews.refresh();
+    patches.refresh();
     linter.all();
   };
   context.subscriptions.push(
     vscode.workspace.registerTextDocumentContentProvider(PREVIEW, previews),
+    vscode.workspace.registerTextDocumentContentProvider(PATCH, patches),
     vscode.commands.registerCommand('loom.showPreview', async (uri) => {
       const editor = vscode.window.activeTextEditor;
       const target = uri instanceof vscode.Uri ? uri : editor && editor.document.uri;
@@ -176,6 +217,18 @@ function activate(context) {
       await vscode.commands.executeCommand('vscode.diff', vscode.Uri.file(upstream), previews.uriFor(target.fsPath),
         `${name}: upstream ↔ product`, { viewColumn: vscode.ViewColumn.Beside, preview: true, preserveFocus: true });
     }),
+    // patch: the whole tree as a unified diff, upstream against the product, in one document
+    vscode.commands.registerCommand('loom.showPatch', async (uri) => {
+      const editor = vscode.window.activeTextEditor;
+      const target = uri instanceof vscode.Uri ? uri : editor && editor.document.uri;
+      if (!target || target.scheme !== 'file') return;
+      if (!treeRoot(target.fsPath)) {
+        vscode.window.showInformationMessage('No loom.lm above this file — there is no tree to compare with upstream.');
+        return;
+      }
+      const doc = await vscode.workspace.openTextDocument(patches.uriFor(target.fsPath));
+      await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preview: true, preserveFocus: true });
+    }),
     // the template as typed, unsaved; any saved file, since upstream and our files feed the product
     vscode.workspace.onDidChangeTextDocument((e) => {
       if (e.document.uri.scheme !== 'file') return;
@@ -190,6 +243,7 @@ function activate(context) {
     watcher,
     vscode.workspace.onDidCloseTextDocument((d) => {
       if (d.uri.scheme === PREVIEW) previews.open.delete(d.uri.toString());
+      if (d.uri.scheme === PATCH) patches.open.delete(d.uri.toString());
       linter.forget(d);
     }),
     linter,
