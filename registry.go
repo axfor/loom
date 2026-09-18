@@ -161,16 +161,21 @@ func missing(ours, product *ast.Value) []string {
 				walk(at+"/"+k, o.Props[k], pc)
 			}
 		case ast.Array:
-			have := map[string]bool{}
+			// counted, not just present: two registrations of ours can have the same identity (the same
+			// handler under two matchers), and losing one of them must show
+			have := map[string]int{}
 			if p != nil && p.Kind == ast.Array {
 				for _, e := range p.Elems {
-					have[identity(e)] = true
+					have[identity(e)]++
 				}
 			}
 			for _, e := range o.Elems {
-				if !have[identity(e)] {
-					out = append(out, at+"/"+identity(e))
+				id := identity(e)
+				if have[id] == 0 {
+					out = append(out, at+"/"+id)
+					continue
 				}
+				have[id]--
 			}
 		}
 	}
@@ -178,7 +183,9 @@ func missing(ours, product *ast.Value) []string {
 	return out
 }
 
-// duplicates lists handlers registered more than once in the same list.
+// duplicates lists handlers registered twice in the same list of registrations. Only registrations
+// are compared: the same handler under two matchers is a different matter — the matchers cover
+// different tools, and each group is its own registration.
 func duplicates(v *ast.Value) []string {
 	var out []string
 	var walk func(*ast.Value)
@@ -195,7 +202,7 @@ func duplicates(v *ast.Value) []string {
 			seen := map[string]bool{}
 			for _, e := range v.Elems {
 				id := identity(e)
-				if len(handlers(e)) > 0 {
+				if isRegistration(e) {
 					if seen[id] {
 						out = append(out, id)
 					}
@@ -207,4 +214,27 @@ func duplicates(v *ast.Value) []string {
 	}
 	walk(v)
 	return out
+}
+
+// isRegistration reports whether a value is one registration rather than a group of them: it names a
+// handler and holds no list of its own.
+func isRegistration(v *ast.Value) bool {
+	if len(handlers(v)) == 0 {
+		return false
+	}
+	var hasList func(*ast.Value) bool
+	hasList = func(v *ast.Value) bool {
+		switch v.Kind {
+		case ast.Array:
+			return true
+		case ast.Object:
+			for _, k := range v.Keys {
+				if hasList(v.Props[k]) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	return !hasList(v)
 }

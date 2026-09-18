@@ -83,3 +83,27 @@ func TestStatementsInAJsonTemplateAreRefused(t *testing.T) {
 		t.Fatalf("want the same error for a template with no statement, got: %v", err)
 	}
 }
+
+// The same handler under two different matchers is deliberate — the matchers cover different tools —
+// and both of ours must survive. Only the same handler twice in one list of entries is the mistake.
+func TestSameHandlerUnderTwoMatchers(t *testing.T) {
+	c, dir := regRepo(t, map[string]string{
+		"up/hooks/hooks.json": `{"hooks":{"PreToolUse":[{"matcher":"Write","hooks":[` + entry("gate.sh") + `]}]}}`,
+		"me/hooks/hooks.json": `{"hooks":{"PreToolUse":[` +
+			`{"matcher":"Write|Edit","hooks":[` + entry("gate.sh") + `]},` +
+			`{"matcher":"Bash","hooks":[` + entry("gate.sh") + `]}]}}`,
+		"me/hooks/hooks.lm": "base.merge(self)\n",
+	})
+	if _, err := build(t, c, filepath.Join(dir, "out")); err != nil {
+		t.Fatalf("two matchers for one handler must be allowed: %v", err)
+	}
+	got := readFile(t, filepath.Join(dir, "out", "hooks", "hooks.json"))
+	for _, want := range []string{`"matcher": "Write|Edit"`, `"matcher": "Bash"`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("%s is missing:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, `"matcher": "Write"`+"\n") {
+		t.Errorf("upstream's registration of the same handler is replaced by ours:\n%s", got)
+	}
+}
