@@ -1,6 +1,6 @@
 # Loom for VS Code
 
-Syntax highlighting, completion, a live preview and go to definition for the Loom language. For the syntax, see the [Loom README](../../README.md#reference).
+Syntax highlighting, diagnostics, completion, a live preview and go to definition for the Loom language. For the syntax, see the [Loom README](../../README.md#reference).
 
 ## Highlighting
 
@@ -47,6 +47,41 @@ upstream, the way a code review shows it.
 
 The preview runs the compiler itself, `lm weave -stdin`, so what you see is what `lm build` writes. The `lm` used
 is the `loom.path` setting, else `lm` on `PATH`, else Go's install directory (`~/go/bin/lm`).
+
+## Diagnostics
+
+Errors are underlined where they are, as you type — the compiler's own, not a second opinion. Loom refuses to guess
+when an anchor is missing or ambiguous, and this is where it says so before the build does.
+
+| File | Checked with | When |
+|---|---|---|
+| a template | `lm weave -stdin` | as you type; the editor's text is what is checked, saved or not |
+| `loom.lm` | `lm check` | on open and on save — the settings are read from disk |
+| `*.e` | `lm check -e <file>` | on open and on save; `-e` reads only that file, so the variables being edited are the ones checked |
+
+Every diagnostic carries lm's own message, so a fix comes with it:
+
+```
+base.Overview.drop()
+              ~~~~~~  drop changes upstream content and needs a reason: drop(reason: "...")
+
+base.Overview.aftr("Ours")
+              ~~~~  no method `aftr` — did you mean after?
+```
+
+Two details worth knowing:
+
+- **Where a fault is not in the file you are editing** — our content uses `{{@name}}` that no variables file defines,
+  say — lm names both the content file and the template that pulls it in. The squiggle goes on the template, and the
+  content file's `path:line:column` stays in the message, so it still says where to look. An error about another file
+  entirely (a broken `loom.lm`) is reported at the top of the file you have open rather than not at all.
+- **A `.lm` or `.e` file with no `loom.lm` above it is left alone.** It is not part of a tree, so there is nothing to
+  build and nothing to say — the extension also highlights Loom syntax in a repository that only documents it.
+
+A variable a variables file defines but nothing expands is a warning, on the line that defines it.
+
+Diagnostics re-run when any file is saved or changes on disk, since upstream and our files feed the weave. They need
+the same `lm` as the preview (see below); without it, one diagnostic says how to install it.
 
 ## Completion
 
@@ -142,6 +177,7 @@ npm test        # inside editors/vscode; make vs runs it first
 - `test/wordpattern.js`: runs VS Code's own word-finding algorithm over every position of every string and name in long template lines
 - `test/preview.js`: builds `lm` from this repository and weaves a template from editor text that differs from the file on disk, including a compile error
 - `test/nesting.js`: nesting is on and folded by default, with patterns for both template names, and the extension writes no settings
+- `test/diagnostics.js`: parses lm's output on its own — positions, nested positions, duplicates, unused variables — then builds `lm` and checks the errors a deliberately broken tree really produces
 
 The logic lives in `lib/` and does not depend on VS Code: `loom.js` reads templates and finds nodes with the compiler's rules,
-`definition.js`, `completion.js`, `hover.js`, `signature.js` and `preview.js` build on it, with keyword help in `docs.js`. `extension.js` only wires them into the editor.
+`definition.js`, `completion.js`, `hover.js`, `signature.js`, `preview.js` and `diagnostics.js` build on it, with keyword help in `docs.js`. `extension.js` only wires them into the editor.

@@ -8,6 +8,7 @@ const { definition } = require('./lib/definition');
 const { completions } = require('./lib/completion');
 const { findLm, productName, upstreamFile, weave } = require('./lib/preview');
 const { hover } = require('./lib/hover');
+const { commandFor, diagnose } = require('./lib/diagnostics');
 const { signature } = require('./lib/signature');
 
 // The hover shown while Cmd/Ctrl is held previews the target range when it spans fewer than
@@ -26,6 +27,14 @@ const KINDS = {
   argument: vscode.CompletionItemKind.Property,
   file: vscode.CompletionItemKind.File,
   folder: vscode.CompletionItemKind.Folder,
+};
+
+// Diagnostics are re-run a moment after the last keystroke, as the preview is re-woven.
+const LINT_DEBOUNCE = 400;
+
+const SEVERITY = {
+  error: vscode.DiagnosticSeverity.Error,
+  warning: vscode.DiagnosticSeverity.Warning,
 };
 
 const PREVIEW = 'loom-preview';
@@ -69,10 +78,80 @@ class Previews {
   }
 }
 
+// Loom documents are the ones lm can diagnose: templates and loom.lm (loom), variables (loom-env).
+function isLoom(doc) {
+  return doc.uri.scheme === 'file' && (doc.languageId === 'loom' || doc.languageId === 'loom-env');
+}
+
+// Linter keeps the squiggles on Loom documents up to date by running lm over them. Runs are
+// debounced per document, and each carries a generation so a slow run cannot land on top of a
+// newer one and show errors the author has already fixed.
+class Linter {
+  constructor() {
+    this.diagnostics = vscode.languages.createDiagnosticCollection('loom');
+    this.timers = new Map();
+    this.runs = new Map();
+  }
+
+  // typed says the trigger was a keystroke. lm is piped a template's unsaved text, so that one is
+  // diagnosed as it is written; loom.lm and a .e file it reads from disk, and checking those while
+  // the buffer is ahead of the file would squiggle text the author has already changed. They wait
+  // for the save.
+  schedule(doc, typed = false) {
+    if (!isLoom(doc)) return;
+    if (typed && !commandFor(doc.uri.fsPath).stdin) return;
+    const key = doc.uri.toString();
+    clearTimeout(this.timers.get(key));
+    this.timers.set(key, setTimeout(() => this.lint(doc), LINT_DEBOUNCE));
+  }
+
+  // all re-lints every open Loom document: an upstream or our-layer file changed, and the product
+  // it feeds is woven from it, so an error may have appeared or gone anywhere.
+  all() {
+    for (const doc of vscode.workspace.textDocuments) this.schedule(doc);
+  }
+
+  async lint(doc) {
+    const key = doc.uri.toString();
+    const generation = (this.runs.get(key) || 0) + 1;
+    this.runs.set(key, generation);
+    const lm = findLm(vscode.workspace.getConfiguration('loom').get('path'));
+    const found = await diagnose(lm, doc.uri.fsPath, doc.getText());
+    if (this.runs.get(key) !== generation) return;
+    this.diagnostics.set(doc.uri, found.map((d) => {
+      const line = Math.min(Math.max(d.line, 0), Math.max(doc.lineCount - 1, 0));
+      const end = doc.lineAt(line).range.end;
+      const start = new vscode.Position(line, Math.min(Math.max(d.col, 0), end.character));
+      const diagnostic = new vscode.Diagnostic(new vscode.Range(start, end), d.message, SEVERITY[d.severity]);
+      diagnostic.source = 'lm';
+      return diagnostic;
+    }));
+  }
+
+  forget(doc) {
+    const key = doc.uri.toString();
+    clearTimeout(this.timers.get(key));
+    this.timers.delete(key);
+    this.runs.delete(key);
+    this.diagnostics.delete(doc.uri);
+  }
+
+  dispose() {
+    for (const t of this.timers.values()) clearTimeout(t);
+    this.diagnostics.dispose();
+  }
+}
+
 function activate(context) {
   const previews = new Previews();
+  const linter = new Linter();
   const watcher = vscode.workspace.createFileSystemWatcher('**/*');
-  const onDisk = () => previews.refresh();
+  // A file on disk changed: the product is woven from upstream and our files, so both the previews
+  // and the errors they could raise are out of date.
+  const onDisk = () => {
+    previews.refresh();
+    linter.all();
+  };
   context.subscriptions.push(
     vscode.workspace.registerTextDocumentContentProvider(PREVIEW, previews),
     vscode.commands.registerCommand('loom.showPreview', async (uri) => {
@@ -99,8 +178,11 @@ function activate(context) {
     }),
     // the template as typed, unsaved; any saved file, since upstream and our files feed the product
     vscode.workspace.onDidChangeTextDocument((e) => {
-      if (e.document.uri.scheme === 'file') previews.refresh((template) => template === e.document.uri.fsPath);
+      if (e.document.uri.scheme !== 'file') return;
+      previews.refresh((template) => template === e.document.uri.fsPath);
+      linter.schedule(e.document, true);
     }),
+    vscode.workspace.onDidOpenTextDocument((d) => linter.schedule(d)),
     vscode.workspace.onDidSaveTextDocument(onDisk),
     watcher.onDidChange(onDisk),
     watcher.onDidCreate(onDisk),
@@ -108,8 +190,11 @@ function activate(context) {
     watcher,
     vscode.workspace.onDidCloseTextDocument((d) => {
       if (d.uri.scheme === PREVIEW) previews.open.delete(d.uri.toString());
+      linter.forget(d);
     }),
+    linter,
   );
+  linter.all(); // documents already open when the extension starts
 
   const selector = { language: 'loom' };
   context.subscriptions.push(
