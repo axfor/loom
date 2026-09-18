@@ -69,7 +69,7 @@ const KEYWORDS = {
     examples: ['base.frontmatter.set(self.frontmatter)', 'base.frontmatter."argument-hint".set(self.frontmatter."argument-hint")', 'base.description.set(self.description)'],
   },
   merge: {
-    what: 'Our file is upstream plus our edits, and it is the product — for files that can\'t be woven by name, like a script changed inside its functions. Edit our file as any file; the build still fails when an upstream section or function is gone without a `drop`. `lm sync <new upstream>` merges each new upstream release into our file, leaving conflict markers where upstream changed the lines we changed. Can only be combined with `drop`.',
+    what: 'The product is upstream\'s file and ours together; what that means follows the type.\n\n**A script, or any file that can\'t be woven by name** (one changed inside its functions): our file is the product. Edit it as any file; the build still fails when an upstream section or function is gone without a `drop`. `lm sync <new upstream>` merges each new upstream release into our file, leaving conflict markers where upstream changed the lines we changed. Can only be combined with `drop`.\n\n**A json registry** (an event → handler table, `registry` in loom.lm): upstream\'s entries go in, ours replace the ones registering the same handler, and ours alone are added — so the same handler is never registered twice. A registry takes this statement and nothing else.',
     signatures: [{ on: 'file', label: 'base.merge(file: self)', params: [['file: self', '`self` — our file at this path']] }],
     examples: ['base.merge(self)', 'base.merge(self)\nbase.help.drop(reason: "we print our own help")'],
   },

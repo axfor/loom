@@ -58,6 +58,17 @@ func Weave(c *Config, t *Template) (string, error) {
 	}
 
 	if t.Type == "json" {
+		// A registry is merged whole, by entry identity, so weaving statements have no part in it — and a
+		// template that says something the build does not do is worse than one that says nothing. The
+		// template still has to say what happens, or an empty file would be the only way to ask for this.
+		if len(t.Stmts) != 1 || t.Stmts[0].Op != "registry" {
+			at := t.Path
+			if len(t.Stmts) > 0 {
+				at = t.Stmts[0].Rng.String()
+			}
+			return "", fmt.Errorf("%s: %s is a registry (registry in loom.lm): the product is upstream's entries plus ours, ours winning where both register the same handler — the template is exactly `base.merge(self)`",
+				at, t.Target)
+		}
 		return mergeRegistry(c, t)
 	}
 

@@ -633,7 +633,14 @@ func (in *interp) method(r receiver, st oStep) error {
 		if len(pos) != 1 || pos[0].val.kind != vExpr || pos[0].val.expr.root != "self" || len(pos[0].val.expr.steps) != 0 {
 			return fmt.Errorf("%s: merge takes our file at the same path: base.merge(self)", at)
 		}
-		out = append(out, Stmt{Op: "merge", Rng: at})
+		// Both layers hold a file and the product is the two of them together — what that means follows
+		// the type: for a script our file is the product (lm sync carries upstream's changes onto it),
+		// for a registry the entries are merged by identity while building.
+		op := "merge"
+		if in.t.Type == "json" {
+			op = "registry"
+		}
+		out = append(out, Stmt{Op: op, Rng: at})
 	}
 	if r.viewOf != "" {
 		// Statements in a view go into an in statement; adjacent ones on the same key and type

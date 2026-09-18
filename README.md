@@ -51,6 +51,7 @@ correct one, and that is the most expensive way to fail.
 - [Objects](#objects)
 - [Nodes](#nodes)
 - [Methods](#methods)
+- [Registries](#registries)
 - [What lm build does](#what-lm-build-does)
 - [Variables](#variables)
 - [Anchor completion](#anchor-completion)
@@ -272,7 +273,7 @@ exactly one heading.
 | `drop` | node | leave the node out of the product on purpose | `reason:` |
 | `set` | `frontmatter` | take our whole frontmatter: `base.frontmatter.set(self.frontmatter)` | `self.frontmatter` |
 | `set` | key value | the value becomes ours: `base.frontmatter."argument-hint".set(self.frontmatter."argument-hint")`, `base.description.set(self.description)`; adds a frontmatter key upstream does not have | one value |
-| `merge` | `base` | our file is upstream plus our edits: it is the product, and `lm sync` carries the edits onto each new upstream ([Following upstream](#following-upstream)) | `self` |
+| `merge` | `base` | the product is upstream's file and ours together. For a script ours is the product and `lm sync` carries the edits onto each new upstream ([Following upstream](#following-upstream)); for a json registry the entries are merged by identity, ours winning where both register the same handler ([Registries](#registries)) | `self` |
 | `as` | toml / json key | view the key's value as another type; methods follow | a type name |
 
 ### Arguments
@@ -370,6 +371,27 @@ came from, so sync refuses to replace it while any are left.
 
 Take upstream through `lm sync`: a copy made some other way leaves no old upstream to merge from, and
 our edits would be kept but upstream's change to those files would not come in.
+
+### Registries
+
+A registry is a json file that maps an event to the handlers it calls — a hooks file, say. `registry`
+in the settings names the group and how an entry's identity is pulled out of it (usually the handler
+it calls), and a json product is then built from both layers:
+
+```
+// mine/hooks/hooks.lm
+base.merge(self)
+```
+
+Upstream's entries go into the product, ours replace the ones registering the same handler, and ours
+alone are added. Upstream registering a new handler of its own therefore arrives on its own.
+
+The point of the identity is what must not happen: a naive union registers the same handler twice.
+The file stays valid json and the handler simply runs twice — which usually breaks it, quietly. The
+build counts the entries and fails when they do not add up.
+
+A registry is merged whole, so its template is exactly that one statement: weaving statements have no
+part in it, and the build refuses them rather than ignore them.
 
 ---
 

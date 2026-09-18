@@ -38,7 +38,7 @@ func TestRegistryMerge(t *testing.T) {
 			`"PreToolUse":[{"matcher":"Write","hooks":[` + entry("upstream-only.sh") + `]}]}}`,
 		"me/hooks/hooks.json": `{"hooks":{"SessionStart":[{"hooks":[` + entry("session-start.sh") + `]}],` +
 			`"PreToolUse":[{"matcher":"Write|Edit","hooks":[` + entry("ours.sh") + `]}]}}`,
-		"me/hooks/hooks.lm": "// merged as a registry\n",
+		"me/hooks/hooks.lm": "base.merge(self)\n",
 	})
 	if _, err := build(t, c, filepath.Join(dir, "out")); err != nil {
 		t.Fatal(err)
@@ -61,12 +61,32 @@ func TestRegistryNeedsSettings(t *testing.T) {
 	mustWrite(t, filepath.Join(dir, "loom.lm"), "base \"up\"\nself \"me\"\n")
 	mustWrite(t, filepath.Join(dir, "up", "hooks.json"), `{"hooks":{}}`)
 	mustWrite(t, filepath.Join(dir, "me", "hooks.json"), `{"hooks":{}}`)
-	mustWrite(t, filepath.Join(dir, "me", "hooks.lm"), "// merged as a registry\n")
+	mustWrite(t, filepath.Join(dir, "me", "hooks.lm"), "base.merge(self)\n")
 	c, err := loom.LoadConfig(filepath.Join(dir, "loom.lm"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := build(t, c, filepath.Join(dir, "out")); err == nil || !strings.Contains(err.Error(), "registry") {
 		t.Errorf("want an error asking for the registry block, got: %v", err)
+	}
+}
+
+// A registry is merged whole, so weaving statements have no part in it. Keeping them would be the
+// worst kind of no-op: the template says something the build does not do, and nothing says so.
+func TestStatementsInAJsonTemplateAreRefused(t *testing.T) {
+	c, dir := regRepo(t, map[string]string{
+		"up/hooks/hooks.json": `{"hooks":{"SessionStart":[{"hooks":[` + entry("session-start.sh") + `]}]}}`,
+		"me/hooks/hooks.json": `{"hooks":{"SessionStart":[{"hooks":[` + entry("ours.sh") + `]}]}}`,
+		"me/hooks/hooks.lm":   "base.merge(self)\nbase.SessionStart.after(`x`)\n",
+	})
+	_, err := build(t, c, filepath.Join(dir, "out"))
+	if err == nil || !strings.Contains(err.Error(), "base.merge(self)") {
+		t.Fatalf("want an error naming the one statement a registry takes, got: %v", err)
+	}
+
+	// and an empty template is refused too: it would be the only way to ask for this, and it says nothing
+	mustWrite(t, filepath.Join(dir, "me", "hooks", "hooks.lm"), "// merged somehow?\n")
+	if _, err := build(t, c, filepath.Join(dir, "out")); err == nil || !strings.Contains(err.Error(), "base.merge(self)") {
+		t.Fatalf("want the same error for a template with no statement, got: %v", err)
 	}
 }
