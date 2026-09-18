@@ -7,7 +7,6 @@ package loom
 //	templates "templates"
 //	output    "../plugins/XSDD"
 //	mark      markdown "<!-- XSDD:BEGIN -->" "<!-- XSDD:END -->"
-//	registry  "hooks" "hooks/([A-Za-z0-9._-]+\.(?:sh|js|py))"
 //	take      "references/**" "skills/**" "LICENSE"
 //	mirror    ".gemini/commands" "commands"
 //	manifest  ".build-manifest"
@@ -28,6 +27,7 @@ import (
 	"strings"
 )
 
+// registry is listed to be refused with what to do instead, not to be taken as an unknown word
 var settingKeywords = []string{"base", "self", "templates", "output", "mark", "registry", "take", "mirror", "manifest"}
 
 // LoadConfig reads loom.lm.

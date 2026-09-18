@@ -31,7 +31,7 @@ func (r Ref) String() string {
 
 // Stmt is one statement. Op decides which fields are read.
 type Stmt struct {
-	Op     string // after / before / replace / drop / append / prepend / frontmatter / value / in / merge
+	Op     string // after / before / replace / drop / append / prepend / frontmatter / value / in / merge / registry
 	Kind   string // position: node kind
 	Anchor string // position: node name
 	Ident  bool   // the name is in identifier form: _ matches a space or an underscore
