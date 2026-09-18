@@ -151,9 +151,21 @@ async function tree() {
 
   ok(treeRoot(path.join(root, 'me', 'doc.lm')) === root, 'the tree root is the loom.lm directory');
   ok(treeRoot(path.join(os.tmpdir(), 'nowhere.lm')) === null, 'a file in no tree has no root');
+  // The root is a directory, and the loom.lm is *in* it, not above it. Resolving from the parent
+  // walks straight past it — which is what the view did, since that is the path it addresses by.
+  ok(treeRoot(root) === root, 'the root of a tree is its own root');
+  ok(treeRoot(path.join(root, 'me')) === root, 'so is a directory inside it');
+
+  // Exactly what the view does: the command resolves the tree root, the document is addressed by
+  // it, and the provider is handed that root — never the file it was opened from.
+  const viaRoot = await treePatch(lm, treeRoot(path.join(root, 'me', 'doc.lm')));
+  ok(!viaRoot.error, 'the patch resolves from the tree root the view addresses it by', viaRoot.error);
+  const viaDir = await treePatch(lm, path.join(root, 'me'));
+  ok(!viaDir.error, 'and from a directory inside the tree', viaDir.error);
 
   const r = await treePatch(lm, path.join(root, 'me', 'doc.lm'));
   ok(!r.error, 'the tree patch is produced', r.error);
+  ok(viaRoot.text === r.text, 'a tree has one patch, whichever path inside it asked for one');
   ok(r.files.length === 2, 'both templates appear', r.files && r.files.map((f) => f.target));
   ok(/2 files changed, 6 insertions\(\+\), 0 deletions\(-\)/.test(r.text), 'the summary counts every file', r.text.split('\n')[0]);
   ok(r.text.includes('diff --loom upstream/doc.md product/doc.md'), 'each file has a header naming both sides');

@@ -273,7 +273,7 @@ function bar(added, removed, widest, width) {
 // nowhere else as a file, which is the reason this view is worth having.
 async function treePatch(lm, from, timeoutMs = 20000) {
   if (!lm) return { error: 'lm is not installed: go install github.com/axfor/loom/cmd/lm@latest, or set loom.path' };
-  const cfg = loom.findConfig(from);
+  const cfg = configFor(from);
   if (!cfg) return { error: 'no loom.lm above this file — nothing to compare with upstream' };
 
   const listed = await listTemplates(lm, cfg.root, timeoutMs);
@@ -336,10 +336,21 @@ function plural(n, word) {
   return `${n} ${word}${n === 1 ? '' : 's'}`;
 }
 
-// treeRoot is the loom.lm directory a file belongs to — the patch is one document per tree, so the
+// configFor finds the tree a path belongs to, whether the path is a file or a directory.
+//
+// loom.findConfig searches upward from the *parent* of what it is given, which is what a file
+// wants. The patch is addressed by its tree's root — a directory — and searching from its parent
+// walks straight past the loom.lm sitting in it. Joining a name onto the path makes a directory
+// behave like a file inside it, and leaves a real file's search exactly where it was: a file has no
+// children, so the first step up lands on its own directory again.
+function configFor(from) {
+  return loom.findConfig(path.join(from, 'loom.lm'));
+}
+
+// treeRoot is the loom.lm directory a path belongs to — the patch is one document per tree, so the
 // root is what identifies it.
 function treeRoot(from) {
-  const cfg = loom.findConfig(from);
+  const cfg = configFor(from);
   return cfg && cfg.root;
 }
 
