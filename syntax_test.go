@@ -362,6 +362,30 @@ func TestFrontmatterKeyValues(t *testing.T) {
 	}
 }
 
+// A quoted frontmatter value stays quoted: unquoting it would change what the file says, and a value
+// with a colon or a leading * is not a plain scalar any more.
+func TestQuotedFrontmatterValueStaysQuoted(t *testing.T) {
+	c, dir := objRepo(t, map[string]string{
+		"upstream/q.md": "---\nname: q\ndescription: \"Up: the upstream half\"\n---\n\n## A\n\nup\n",
+		"mine/q.md":     "---\nname: q\ndescription: \"Ours: our half\"\n---\n\n## B\n\nme\n",
+	})
+	out, err := weaveObj(t, c, dir, "q.md", "base.frontmatter.description.start(self.frontmatter.description)\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `description: "Ours: our half Up: the upstream half"`) {
+		t.Errorf("the joined value must stay quoted:\n%s", out[:120])
+	}
+	out, err = weaveObj(t, c, dir, "q.md", "base.frontmatter.description.set(`Ours \"quoted\" half`)\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `description: Ours "quoted" half`) {
+		t.Errorf("a plain literal stays plain:\n%s", out[:120])
+	}
+	_ = dir
+}
+
 // A multi-line value (a toml """ block holding markdown) is joined by a blank line, not a space:
 // one line would run two documents together.
 func TestValueJoinSeparator(t *testing.T) {

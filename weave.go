@@ -566,6 +566,7 @@ func applyValue(c *Config, t *Template, tree ast.Tree, s Stmt) error {
 	if s.Kind == "fmkey" {
 		typ = "markdown"
 	}
+	quoted := false
 	ours := s.SetRef.Literal
 	if !s.SetRef.IsLit {
 		rel := weftRel(c, t, s.SetRef.Layer, t.Target)
@@ -589,6 +590,11 @@ func applyValue(c *Config, t *Template, tree ast.Tree, s Stmt) error {
 		}
 		ours = v
 	}
+	// A quoted value stays quoted: unquoting it would change what the file says (a colon or a leading
+	// * makes it something other than a plain scalar).
+	if q := strings.TrimSpace(ours); !s.SetRef.IsLit && strings.HasPrefix(q, `"`) && strings.HasSuffix(q, `"`) && len(q) > 1 {
+		quoted = true
+	}
 	ours = strings.Trim(strings.TrimSpace(ours), `"`)
 
 	val := ours
@@ -604,6 +610,9 @@ func applyValue(c *Config, t *Template, tree ast.Tree, s Stmt) error {
 		uv, ok := keyValue(typ, up, s.SetKey)
 		if !ok {
 			return fmt.Errorf("%s: upstream has no key %q to %s ours to — to add the key, use set", s.Rng, s.SetKey, s.Mode)
+		}
+		if q := strings.TrimSpace(uv); strings.HasPrefix(q, `"`) && strings.HasSuffix(q, `"`) && len(q) > 1 {
+			quoted = true
 		}
 		uv = strings.Trim(strings.TrimSpace(uv), `"`)
 		// A multi-line value (a toml """ block holding markdown) needs a blank line between the halves:
@@ -623,6 +632,9 @@ func applyValue(c *Config, t *Template, tree ast.Tree, s Stmt) error {
 		}
 	}
 
+	if quoted && s.Kind == "fmkey" {
+		val = `"` + strings.ReplaceAll(val, `"`, `\"`) + `"`
+	}
 	if s.Kind != "fmkey" {
 		if !tree.SetBody(s.SetKey, val) {
 			return fmt.Errorf("%s: upstream has no key %q", s.Rng, s.SetKey)
