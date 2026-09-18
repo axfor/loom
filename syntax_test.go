@@ -463,3 +463,26 @@ func TestCompletenessReadsEscapedValues(t *testing.T) {
 		t.Errorf("our key is in the product, so the build must not refuse it: %v", err)
 	}
 }
+
+// A value over several lines can't be joined on one line. Ours must still reach the product, so the
+// build says so instead of leaving upstream's list there with ours nowhere.
+func TestBlockFrontmatterValueMustBeTakenWhole(t *testing.T) {
+	c, dir := objRepo(t, map[string]string{
+		"upstream/b.md": "---\nname: b\ntags:\n  - a\n  - b\n---\n\n## A\n\nup\n",
+		"mine/b.md":     "---\nname: b\ntags:\n  - x\n---\n\n## B\n\nme\n",
+	})
+	if _, err := weaveObj(t, c, dir, "b.md", "base.A.after(\"B\")\n"); err != nil {
+		t.Fatal(err)
+	}
+	_, err := loom.PlanBuild(c, false)
+	if err == nil || !strings.Contains(err.Error(), `"tags" has a value over several lines`) {
+		t.Fatalf("want a refusal naming the key, got: %v", err)
+	}
+
+	if _, err := weaveObj(t, c, dir, "b.md", "base.frontmatter.set(self.frontmatter)\nbase.A.after(\"B\")\n"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loom.PlanBuild(c, false); err != nil && strings.Contains(err.Error(), "several lines") {
+		t.Errorf("taking the block whole accounts for it: %v", err)
+	}
+}

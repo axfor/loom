@@ -85,6 +85,14 @@ func account(c *Config, t *Template, out string, r *Report) []error {
 				// Both sides are read as weaving writes them, so an escaped quote compares equal.
 				want, _ := keyValue("markdown", ours, k)
 				got, found := keyValue("markdown", out, k)
+				// A value over several lines (a list, a nested map) can't be joined on one line, so it
+				// only arrives whole. Upstream's would otherwise stand in the product with ours nowhere.
+				if strings.TrimSpace(want) == "" {
+					if keyBlock(ours, k) != keyBlock(out, k) {
+						errs = append(errs, fmt.Errorf("%s: our frontmatter key %q has a value over several lines and the product has upstream's — a value like that can only be taken whole: base.frontmatter.set(self.frontmatter)", t.Path, k))
+					}
+					continue
+				}
 				mine, _ := unquote(want)
 				theirs, _ := unquote(got)
 				if !found || !strings.Contains(theirs, mine) {
@@ -285,6 +293,29 @@ func stripMarked(s string, m Marks) string {
 			skip = false
 		case !skip:
 			out = append(out, l)
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+// keyBlock is a frontmatter key's whole value: its line and the lines under it that belong to it (a
+// list, a nested map). Empty when the file has no such key.
+func keyBlock(src, key string) string {
+	fm, ok := ast.NewMarkdown(src).BodyOf("frontmatter")
+	if !ok {
+		return ""
+	}
+	var out []string
+	for _, l := range strings.Split(fm, "\n") {
+		switch {
+		case len(out) == 0:
+			if strings.HasPrefix(l, key+":") {
+				out = append(out, l)
+			}
+		case strings.HasPrefix(l, " "), strings.HasPrefix(l, "\t"), strings.HasPrefix(l, "-"):
+			out = append(out, l)
+		default:
+			return strings.Join(out, "\n")
 		}
 	}
 	return strings.Join(out, "\n")
