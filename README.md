@@ -2,22 +2,101 @@
 
 **You forked an upstream project and still want to follow it.** Loom is a small language for that.
 
-The warp is upstream: kept byte for byte, never cut. The weft is your layer: threaded through the
-warp. The product is the woven cloth, and the two stay separate: **pull the weft out and the warp is
-still there.**
+Upstream stays in its own directory, untouched, byte for byte. Your changes live in a second
+directory laid out the same way. Beside each of your files sits a short template saying where your
+content belongs in upstream's, and `lm build` weaves the two into the product you ship.
 
-```
-// mine/docs/setup.lm
-base.Install.after("Install behind a proxy")
-base."How it compares".drop(reason: "compares upstream with other projects; not ours")
-base.append("Troubleshooting")
-```
+The name is the mechanism. The warp is upstream: kept whole, never cut. The weft is your layer,
+threaded through it. The cloth is the product — and because the two never merge into one text,
+**pull the weft out and the warp is still there.** That is not a thing to be careful about; it is a
+byte comparison, and the build makes it every time.
 
 ```
 lm build    build the whole tree and print the build report
 lm check    the same checks, writing nothing; -o dir also reports out-of-date output
 lm sync     take a new upstream release, carrying our edits onto it
 ```
+
+## One file, end to end
+
+Upstream ships a document. You want a section of your own after its overview, an appendix at the
+end, and your wording in front of its description — without editing upstream's file.
+
+**`upstream/doc.md`** — upstream's, never touched:
+
+```markdown
+---
+name: doc
+description: The upstream description.
+---
+
+## Overview
+
+Upstream overview text.
+
+## Process
+
+Upstream process text.
+```
+
+**`mine/doc.md`** — only what is yours. No copy of upstream, no context lines, no line numbers:
+
+```markdown
+---
+name: doc
+description: Our half of the description.
+---
+
+## Where this fits
+
+A section we added.
+
+## Appendix
+
+A section appended at the end.
+```
+
+**`mine/doc.lm`** — the template beside it: one statement per insertion, naming the upstream place
+each piece belongs to.
+
+```
+base.frontmatter.description.start(self.frontmatter.description)
+base.Overview.after("Where this fits")
+base.append("Appendix")
+```
+
+`lm build` weaves them:
+
+```markdown
+---
+name: doc
+description: Our half of the description. The upstream description.
+---
+
+## Overview
+
+Upstream overview text.
+
+<!-- MINE:BEGIN -->
+## Where this fits
+
+A section we added.
+<!-- MINE:END -->
+## Process
+
+Upstream process text.
+
+<!-- MINE:BEGIN -->
+## Appendix
+
+A section appended at the end.
+<!-- MINE:END -->
+```
+
+Every upstream line is there, in order, unchanged; everything of yours sits inside the marks. Take
+the marked blocks out and you are holding `upstream/doc.md` again — and that is checked, not hoped
+for: when a template only inserts, the build compares the product's body with the marks stripped
+against upstream, and refuses to write if a single byte differs.
 
 ## What it solves
 
@@ -33,15 +112,26 @@ at every build. That whole class of bug cannot happen, instead of being avoided 
 ## Insert by name, not by line
 
 A diff can change anything, but when upstream changes the lines next to yours it no longer fits,
-and someone has to redo it. Loom anchors on upstream's own **names**:
-markdown headings, shell functions and banner comments, toml keys, json paths. Upstream adds a
-paragraph nearby and your content still lands in the right place, **and the upstream change flows
-into the product**. With a busy upstream, that is the difference between a human stepping in every
-release or not.
+and someone has to redo it. Loom anchors on upstream's own **names**: markdown headings, shell
+functions and banner comments, toml keys, json paths.
+
+`base.Overview.after(...)` above still means *after the overview* when upstream rewrites the
+paragraph under that heading, adds three sections in front of it, or moves it down the file. Your
+content lands in the right place **and the upstream change flows into the product**. With a busy
+upstream, that is the difference between a human stepping in every release or not.
 
 When an anchor is not found, or matches more than once, the build stops. Loom does not guess, take
 the first match, or fit anything approximately: a product woven in the wrong place looks exactly like a
 correct one, and that is the most expensive way to fail.
+
+## Files with nothing to anchor to
+
+Some files have no names to weave by — a shell script where you changed a few lines inside a
+function, or a json registry both layers add entries to. There the template is `base.merge(self)`:
+your file is the product, and `lm sync` carries each new upstream release onto it with a three-way
+merge, leaving conflict markers only where upstream changed the lines you changed. The build still
+checks that no upstream function went missing without a stated reason. See
+[Following upstream](#following-upstream) and [Registries](#registries).
 
 ## Reference
 
@@ -565,8 +655,9 @@ anchors with upstream headings directly.
 ## Editor
 
 `editors/vscode` is a VS Code extension: syntax highlighting for templates, settings, variables
-files and `{{@name}}` placeholders; completion of nodes, methods, our sections and import paths;
-a live preview of the product a template builds; and go to definition from a template to the upstream or our file and section it names. `make vs`
+files and `{{@name}}` placeholders; the compiler's own errors underlined as you type; completion of
+nodes, methods, our sections and import paths; a live preview of the product a template builds; and
+go to definition from a template to the upstream or our file and section it names. `make vs`
 runs its tests and packages it.
 
 ## License
