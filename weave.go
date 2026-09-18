@@ -557,6 +557,12 @@ func hasConflictMarkers(s string) bool {
 	return begin && end
 }
 
+// belongsToKey reports whether a frontmatter line continues the key above it: an indented line or a
+// list item.
+func belongsToKey(l string) bool {
+	return strings.HasPrefix(l, " ") || strings.HasPrefix(l, "\t") || strings.HasPrefix(l, "-")
+}
+
 // unquote takes a value out of its quotes. Only the quotes that wrap a whole value on one line are
 // its quotes, and a \" inside such a value belongs to the file's syntax; anywhere else a quote is
 // part of the text — `says "go"` is a plain YAML scalar and keeps both.
@@ -663,10 +669,16 @@ func applyValue(c *Config, t *Template, tree ast.Tree, s Stmt) error {
 	lines := strings.Split(fm, "\n")
 	done := false
 	for i, l := range lines {
-		if strings.HasPrefix(l, s.SetKey+":") {
-			lines[i], done = s.SetKey+": "+val, true
-			break
+		if !strings.HasPrefix(l, s.SetKey+":") {
+			continue
 		}
+		// Upstream's value may be a list or a nested map. Writing one line over its first line would
+		// leave the rest of it behind, as lines belonging to a key that is no longer there.
+		if i+1 < len(lines) && strings.TrimSpace(l) == s.SetKey+":" && belongsToKey(lines[i+1]) {
+			return fmt.Errorf("%s: upstream's key %q has a value over several lines — a value like that can only be taken whole: base.frontmatter.set(self.frontmatter)", s.Rng, s.SetKey)
+		}
+		lines[i], done = s.SetKey+": "+val, true
+		break
 	}
 	if !done {
 		// set adds a key upstream does not have, just before the closing ---

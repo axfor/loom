@@ -312,7 +312,7 @@ func keyBlock(src, key string) string {
 			if strings.HasPrefix(l, key+":") {
 				out = append(out, l)
 			}
-		case strings.HasPrefix(l, " "), strings.HasPrefix(l, "\t"), strings.HasPrefix(l, "-"):
+		case belongsToKey(l):
 			out = append(out, l)
 		default:
 			return strings.Join(out, "\n")

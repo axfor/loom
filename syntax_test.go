@@ -486,3 +486,20 @@ func TestBlockFrontmatterValueMustBeTakenWhole(t *testing.T) {
 		t.Errorf("taking the block whole accounts for it: %v", err)
 	}
 }
+
+// The other way round: upstream's key has the value over several lines. Replacing its first line
+// would leave the rest of the list behind, so that is refused too.
+func TestBlockValueUpstreamIsRefused(t *testing.T) {
+	c, dir := objRepo(t, map[string]string{
+		"upstream/u.md": "---\nname: u\ntags:\n  - a\n  - b\n---\n\n## A\n\nup\n",
+		"mine/u.md":     "---\nname: u\ntags: x\n---\n\n## B\n\nme\n",
+	})
+	for _, src := range []string{
+		"base.frontmatter.tags.set(self.frontmatter.tags)\n",
+		"base.frontmatter.tags.append(self.frontmatter.tags)\n",
+	} {
+		if _, err := weaveObj(t, c, dir, "u.md", src); err == nil || !strings.Contains(err.Error(), "several lines") {
+			t.Errorf("%s: want a refusal, got: %v", src, err)
+		}
+	}
+}
