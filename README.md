@@ -569,12 +569,6 @@ files and `{{@name}}` placeholders; completion of nodes, methods, our sections a
 a live preview of the product a template builds; and go to definition from a template to the upstream or our file and section it names. `make vs`
 runs its tests and packages it.
 
-## Install
-
-```
-go install github.com/axfor/loom/cmd/lm@latest
-```
-
 ## License
 
 Apache-2.0.
