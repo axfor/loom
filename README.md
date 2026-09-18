@@ -386,7 +386,9 @@ our edits would be kept but upstream's change to those files would not come in.
    - **insert-only markdown templates**: with our marks stripped, the body must be byte-identical to
      upstream.
    - **our frontmatter**: every key of our file's frontmatter must be in the product — taken with
-     `set`, or put next to upstream's value with `start` / `append` — or the build fails.
+     `set`, or put next to upstream's value with `start` / `append` — or the build fails. A value
+     over several lines (a list, a nested map) is not joined on one line: it can only be taken whole,
+     with `base.frontmatter.set(self.frontmatter)`, and the build says so when it has to be.
 4. Copies our layer's files. A file of ours at the same path as an upstream file, with no template,
    is an error — it would silently replace upstream with no reason. An identical copy is fine.
 5. Copies upstream files listed in `take`, applies `mirror`, writes `manifest`.
