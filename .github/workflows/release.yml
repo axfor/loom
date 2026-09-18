@@ -1,0 +1,31 @@
+# Publishing a release: push a tag, and the binaries plus the extension are attached to it.
+#
+#   git tag v0.7.1 && git push origin v0.7.1
+#
+# The same build runs locally (script/release.sh), so a release can always be reproduced by hand.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # to create the release and upload its files
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # A release that does not pass its own tests is not a release.
+      - run: go test ./...
+      - run: sh script/release.sh "${GITHUB_REF_NAME}"
+      - run: gh release create "${GITHUB_REF_NAME}" dist/* --generate-notes --verify-tag
+        env:
+          GH_TOKEN: ${{ github.token }}

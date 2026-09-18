@@ -1,6 +1,6 @@
 VSCODE := editors/vscode
 
-.PHONY: vs
+.PHONY: vs release
 
 # vs: package the VS Code extension into editors/vscode/loom-lang-<version>.vsix.
 #   Dependencies (vsce, and the tokenizer used by the test) are downloaded on first use,
@@ -15,3 +15,8 @@ vs:
 	  { echo "↓ downloading the vsce packager and test dependencies (first run)"; npm ci --no-audit --no-fund --ignore-scripts; }; } && \
 	npm test && \
 	./node_modules/.bin/vsce package
+
+# release: build what a release ships — lm for five platforms, the extension, and checksums — into
+#   dist/. It publishes nothing: pushing the tag is what publishes (see .github/workflows/release.yml).
+release:
+	@sh script/release.sh $(V)

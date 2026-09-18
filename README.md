@@ -56,6 +56,7 @@ correct one, and that is the most expensive way to fail.
 - [Variables](#variables)
 - [Anchor completion](#anchor-completion)
 - [The build report](#the-build-report)
+- [Install](#install)
 - [Commands](#commands)
 - [Editor](#editor)
 
@@ -516,6 +517,31 @@ fails when anything differs, so "the product is up to date with its sources" is 
 
 ---
 
+## Install
+
+A release carries `lm` for each platform and the VS Code extension:
+
+```
+curl -fsSLO https://github.com/axfor/loom/releases/latest/download/lm_<version>_<os>_<arch>.tar.gz
+tar -xzf lm_*.tar.gz && sudo mv lm_*/lm /usr/local/bin/
+```
+
+`os` is darwin, linux or windows and `arch` is arm64 or amd64 (windows ships amd64 as a `.zip`).
+`SHA256SUMS` in the same release covers every file. With Go at hand,
+`go install github.com/axfor/loom/cmd/lm@latest` does the same thing from source.
+
+The extension is the `loom-lang-<version>.vsix` of the same release: in VS Code, Extensions →
+`…` → Install from VSIX.
+
+Building a release is one command, and it publishes nothing:
+
+```
+make release V=v0.7.1     lm for five platforms + the extension + SHA256SUMS, into dist/
+git tag v0.7.1 && git push origin v0.7.1    publishes it (the workflow builds and attaches dist/)
+```
+
+---
+
 ## Commands
 
 ```
@@ -526,6 +552,7 @@ lm weave [-e vars] [-stdin] <template.lm>    weave one template to stdout; -stdi
 lm list [-tsv]                               template metadata as JSON (or six TSV columns) for other tools
 lm anchors                                   where each anchor currently resolves upstream
 lm view                                      write upstream files annotated with their anchors
+lm version                                   the version, platform and Go version
 ```
 
 `lm` finds `loom.lm` by walking up from the current directory.

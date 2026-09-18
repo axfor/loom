@@ -36,6 +36,7 @@ Usage:
   lm list [-tsv]            print each template's metadata (for outer gates)
   lm anchors                list the upstream line each anchor resolves to right now
   lm view                   generate a derived view annotated with anchors
+  lm version                print the version, platform and Go version
 
 Settings are read from the nearest loom.lm (searching up from the current directory).
 `
@@ -48,6 +49,9 @@ func main() {
 	switch os.Args[1] {
 	case "-h", "--help", "help":
 		fmt.Print(usage)
+		return
+	case "version", "-version", "--version":
+		printVersion()
 		return
 	}
 	if err := run(os.Args[1], os.Args[2:]); err != nil {
