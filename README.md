@@ -365,6 +365,9 @@ Upstream's fixes where we changed nothing flow in. Where upstream changed the li
 file gets conflict markers, as in git, and the build refuses it until they are resolved. A file
 upstream removed is listed too. Sync exits non-zero while any of that needs a person.
 
+Resolve a conflict before the next sync: the markers can only be resolved against the upstream they
+came from, so sync refuses to replace it while any are left.
+
 Take upstream through `lm sync`: a copy made some other way leaves no old upstream to merge from, and
 our edits would be kept but upstream's change to those files would not come in.
 

@@ -61,6 +61,7 @@ func Sync(c *Config, from string) (*SyncReport, error) {
 		old, mine  []byte
 	}
 	var merges []merge
+	var unresolved []string
 	tpls, err := Templates(c)
 	if err != nil {
 		return nil, err
@@ -77,8 +78,16 @@ func Sync(c *Config, from string) (*SyncReport, error) {
 			m := merge{ours: filepath.Join(meRoot, filepath.FromSlash(t.Target)), base: filepath.FromSlash(t.BasePath)}
 			m.old, _ = os.ReadFile(filepath.Join(upRoot, m.base))
 			m.mine, _ = os.ReadFile(m.ours)
+			if hasConflictMarkers(string(m.mine)) {
+				unresolved = append(unresolved, rel(c, m.ours))
+			}
 			merges = append(merges, m)
 		}
+	}
+	// A conflict from the last sync can only be resolved against the upstream it came from, and this
+	// sync replaces it. Merging again would nest markers inside markers and lose that upstream.
+	if len(unresolved) > 0 {
+		return nil, fmt.Errorf("%s still has conflict markers from the last sync — resolve them before syncing again", strings.Join(unresolved, ", "))
 	}
 
 	// A staging directory with no files would empty the upstream layer, and the build would only fail

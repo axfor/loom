@@ -171,3 +171,23 @@ func TestSyncRefusesEmptyAndFollowsShape(t *testing.T) {
 		t.Errorf("its file must be there: %q %v", b, err)
 	}
 }
+
+// A conflict from the last sync must be resolved before the next one: the markers can only be
+// resolved against the upstream they came from, and syncing replaces it.
+func TestSyncRefusesUnresolvedConflict(t *testing.T) {
+	c, dir := besideRepo(t, map[string]string{
+		"up/run.sh": upRun,
+		"me/run.sh": "#!/bin/sh\n<<<<<<< ours\nmain() {\n  echo me\n}\n=======\nmain() {\n  echo up\n}\n>>>>>>> upstream after sync\n\nhelp() {\n  echo help\n}\n",
+		"me/run.lm": "base.merge(self)\n",
+	})
+	next := t.TempDir()
+	mustWrite(t, filepath.Join(next, "run.sh"), strings.Replace(upRun, "echo help", "echo fixed help", 1))
+
+	_, err := loom.Sync(c, next)
+	if err == nil || !strings.Contains(err.Error(), "conflict markers") || !strings.Contains(err.Error(), "me/run.sh") {
+		t.Fatalf("want a refusal naming the file, got: %v", err)
+	}
+	if got := readFile(t, filepath.Join(dir, "up", "run.sh")); got != upRun {
+		t.Errorf("the upstream layer must be untouched, so the conflict can still be resolved:\n%s", got)
+	}
+}
