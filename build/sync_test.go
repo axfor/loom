@@ -1,4 +1,4 @@
-package loom_test
+package build_test
 
 import (
 	"os"
@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/axfor/loom"
+	"github.com/axfor/loom/build"
 )
 
 func readFile(t *testing.T, p string) string {
@@ -31,7 +31,7 @@ func TestMergeTemplate(t *testing.T) {
 		"me/run.lm": "base.merge(self)\n",
 	})
 	out := filepath.Join(dir, "out")
-	if _, err := build(t, c, out); err != nil {
+	if _, err := buildTree(t, c, out); err != nil {
 		t.Fatal(err)
 	}
 	if got := readFile(t, filepath.Join(out, "run.sh")); got != meRun {
@@ -39,11 +39,11 @@ func TestMergeTemplate(t *testing.T) {
 	}
 
 	mustWrite(t, filepath.Join(dir, "me", "run.sh"), "#!/bin/sh\nmain() {\n  echo me\n}\n")
-	if _, err := loom.PlanBuild(c, false); err == nil || !strings.Contains(err.Error(), "help") {
+	if _, err := build.PlanBuild(c, false); err == nil || !strings.Contains(err.Error(), "help") {
 		t.Errorf("an upstream function our file lost without a drop must be an error, got: %v", err)
 	}
 	mustWrite(t, filepath.Join(dir, "me", "run.lm"), "base.merge(self)\nbase.help.drop(reason: \"not ours\")\n")
-	if _, err := loom.PlanBuild(c, false); err != nil {
+	if _, err := build.PlanBuild(c, false); err != nil {
 		t.Errorf("a drop accounts for it: %v", err)
 	}
 
@@ -53,7 +53,7 @@ func TestMergeTemplate(t *testing.T) {
 		"base.patch(\"run.diff\")\n":               "base.merge(self)",
 	} {
 		mustWrite(t, filepath.Join(dir, "me", "run.lm"), src)
-		if _, err := loom.PlanBuild(c, false); err == nil || !strings.Contains(err.Error(), want) {
+		if _, err := build.PlanBuild(c, false); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%q: want an error mentioning %q, got: %v", src, want, err)
 		}
 	}
@@ -89,10 +89,10 @@ func TestSync(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := loom.Sync(c, filepath.Join(dir, "up")); err == nil {
+	if _, err := build.Sync(c, filepath.Join(dir, "up")); err == nil {
 		t.Error("syncing the upstream layer from itself must be refused")
 	}
-	r, err := loom.Sync(c, next)
+	r, err := build.Sync(c, next)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestSync(t *testing.T) {
 	if link, err := os.Readlink(filepath.Join(dir, "up", "link.md")); err != nil || link != "doc.md" {
 		t.Errorf("a symbolic link stays a link: %q %v", link, err)
 	}
-	if _, err := build(t, c, filepath.Join(dir, "out")); err != nil {
+	if _, err := buildTree(t, c, filepath.Join(dir, "out")); err != nil {
 		t.Errorf("the synced tree must build: %v", err)
 	}
 
@@ -128,14 +128,14 @@ func TestSync(t *testing.T) {
 	} {
 		mustWrite(t, filepath.Join(next2, p), s)
 	}
-	r, err = loom.Sync(c, next2)
+	r, err = build.Sync(c, next2)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Join(r.Conflicts, " ") != "me/run.sh" || !strings.Contains(readFile(t, filepath.Join(dir, "me", "run.sh")), "<<<<<<< ours") {
 		t.Errorf("a conflict must leave markers in our file: %+v", r)
 	}
-	if _, err := loom.PlanBuild(c, false); err == nil || !strings.Contains(err.Error(), "conflict markers") {
+	if _, err := build.PlanBuild(c, false); err == nil || !strings.Contains(err.Error(), "conflict markers") {
 		t.Errorf("the build must refuse a file with conflict markers, got: %v", err)
 	}
 }
@@ -150,7 +150,7 @@ func TestSyncRefusesEmptyAndFollowsShape(t *testing.T) {
 		"me/run.lm": "base.merge(self)\n",
 	})
 	empty := t.TempDir()
-	if _, err := loom.Sync(c, empty); err == nil || !strings.Contains(err.Error(), "no files") {
+	if _, err := build.Sync(c, empty); err == nil || !strings.Contains(err.Error(), "no files") {
 		t.Errorf("an empty upstream must be refused, got: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "up", "run.sh")); err != nil {
@@ -161,7 +161,7 @@ func TestSyncRefusesEmptyAndFollowsShape(t *testing.T) {
 	next := t.TempDir()
 	mustWrite(t, filepath.Join(next, "run.sh"), upRun)
 	mustWrite(t, filepath.Join(next, "doc.md", "inner.md"), "## B\n")
-	if _, err := loom.Sync(c, next); err != nil {
+	if _, err := build.Sync(c, next); err != nil {
 		t.Fatalf("a file that became a directory upstream: %v", err)
 	}
 	if st, err := os.Stat(filepath.Join(dir, "up", "doc.md")); err != nil || !st.IsDir() {
@@ -183,7 +183,7 @@ func TestSyncRefusesUnresolvedConflict(t *testing.T) {
 	next := t.TempDir()
 	mustWrite(t, filepath.Join(next, "run.sh"), strings.Replace(upRun, "echo help", "echo fixed help", 1))
 
-	_, err := loom.Sync(c, next)
+	_, err := build.Sync(c, next)
 	if err == nil || !strings.Contains(err.Error(), "conflict markers") || !strings.Contains(err.Error(), "me/run.sh") {
 		t.Fatalf("want a refusal naming the file, got: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestSyncReportsAFileUpstreamRemoved(t *testing.T) {
 	next := t.TempDir()
 	mustWrite(t, filepath.Join(next, "keep.md"), "## A\n")
 
-	r, err := loom.Sync(c, next)
+	r, err := build.Sync(c, next)
 	if err != nil {
 		t.Fatal(err)
 	}

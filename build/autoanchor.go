@@ -1,4 +1,4 @@
-package loom
+package build
 
 // Anchor completion: our layer's file has a section the template doesn't place. Its place is
 // inferred from its position in our file and written back to the template.
@@ -16,6 +16,7 @@ package loom
 
 import (
 	"fmt"
+	"github.com/axfor/loom/lang"
 	"os"
 	"path/filepath"
 	"sort"
@@ -30,11 +31,11 @@ type anchorGap struct {
 	labels   []string // what the report calls them
 	neighbor string
 	after    bool // true = after neighbor; false = before neighbor
-	ref      Ref
+	ref      lang.Ref
 }
 
 // findGaps finds our sections that a template doesn't weave into the product, and infers where they go.
-func findGaps(c *Config, t *Template) ([]anchorGap, error) {
+func findGaps(c *lang.Config, t *lang.Template) ([]anchorGap, error) {
 	if t.Type != "markdown" || c.Weft == "" || (t.From != "" && t.From != c.Warp) {
 		return nil, nil
 	}
@@ -43,7 +44,7 @@ func findGaps(c *Config, t *Template) ([]anchorGap, error) {
 			return nil, nil
 		}
 	}
-	src, ok, err := c.read(c.Weft, weftRel(c, t, c.Weft, t.Target))
+	src, ok, err := c.Read(c.Weft, weftRel(c, t, c.Weft, t.Target))
 	if err != nil || !ok {
 		return nil, err
 	}
@@ -55,7 +56,7 @@ func findGaps(c *Config, t *Template) ([]anchorGap, error) {
 
 	// Sections the template takes from self, keyed by position in our file (several sections may share a name).
 	// References in nested views use other coordinates and don't count. Nothing can follow a replace: it accepts only one content.
-	refs := map[int]Ref{}
+	refs := map[int]lang.Ref{}
 	replaced := map[int]bool{}
 	for _, s := range t.Stmts {
 		switch s.Op {
@@ -71,7 +72,7 @@ func findGaps(c *Config, t *Template) ([]anchorGap, error) {
 			case "body", "all":
 				return nil, nil // the whole file is woven in
 			case "heading":
-				span, _, err := locate(tree, "heading", r.Within, r.Anchor, r.Ident, Stmt{Rng: r.Rng})
+				span, _, err := locate(tree, "heading", r.Within, r.Anchor, r.Ident, lang.Stmt{Rng: r.Rng})
 				if err != nil {
 					return nil, nil // weaving reports this error
 				}
@@ -137,7 +138,7 @@ func argFor(tree ast.Tree, nodes []ast.Named, k int) (string, error) {
 		}
 	}
 	if same == 1 {
-		return quote(n.Name), nil
+		return lang.Quote(n.Name), nil
 	}
 	var ancestors []ast.Named // nearest first
 	level := n.Level
@@ -148,22 +149,22 @@ func argFor(tree ast.Tree, nodes []ast.Named, k int) (string, error) {
 		}
 	}
 	for depth := 1; depth <= len(ancestors); depth++ {
-		var within []Seg
+		var within []lang.Seg
 		for d := depth - 1; d >= 0; d-- {
-			within = append(within, Seg{Name: ancestors[d].Name})
+			within = append(within, lang.Seg{Name: ancestors[d].Name})
 		}
-		if span, _, err := locate(tree, "heading", within, n.Name, false, Stmt{}); err == nil && span[0] == n.Line {
+		if span, _, err := locate(tree, "heading", within, n.Name, false, lang.Stmt{}); err == nil && span[0] == n.Line {
 			parts := []string{"self"}
 			for _, w := range within {
-				parts = append(parts, quote(w.Name))
+				parts = append(parts, lang.Quote(w.Name))
 			}
-			return strings.Join(append(parts, quote(n.Name)), "."), nil
+			return strings.Join(append(parts, lang.Quote(n.Name)), "."), nil
 		}
 	}
 	return "", fmt.Errorf("%q appears %d times in our file and parent headings can't tell them apart — can't infer an anchor; say where it goes", n.Name, same)
 }
 
-func isWeft(c *Config, layer string) bool { return layer == c.Weft }
+func isWeft(c *lang.Config, layer string) bool { return layer == c.Weft }
 
 func quoteAll(names []string) string {
 	var q []string
@@ -177,7 +178,7 @@ func quoteAll(names []string) string {
 // to the neighbor's argument: `, "name"` in a single-line call, a `"name"` line in a multi-line one.
 // It returns the new source and the report lines.
 func fillGaps(path string, src []byte, gaps []anchorGap) ([]byte, []string, error) {
-	toks, err := lexLoom(path, src)
+	toks, err := lang.Lex(path, src)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -200,7 +201,7 @@ func fillGaps(path string, src []byte, gaps []anchorGap) ([]byte, []string, erro
 	for _, g := range gaps {
 		k := -1
 		for i, t := range toks {
-			if t.pos.Line == g.ref.Rng.Line && t.pos.Col == g.ref.Rng.Col && t.kind != kNewline {
+			if t.Pos.Line == g.ref.Rng.Line && t.Pos.Col == g.ref.Rng.Col && t.Kind != lang.KNewline {
 				k = i
 				break
 			}
@@ -227,7 +228,7 @@ func fillGaps(path string, src []byte, gaps []anchorGap) ([]byte, []string, erro
 
 		// Block form already: one argument per line, next to the neighbour's line
 		last := argEnd(toks, k)
-		start, end := toks[k].off, toks[last].end
+		start, end := toks[k].Off, toks[last].End
 		lineStart := strings.LastIndexByte(string(src[:start]), '\n') + 1
 		indent := string(src[lineStart:start])
 		if g.after {
@@ -252,12 +253,12 @@ func fillGaps(path string, src []byte, gaps []anchorGap) ([]byte, []string, erro
 		first, depth := -1, 0
 		for i := cl.open + 1; i <= cl.close; i++ {
 			t := toks[i]
-			if t.kind == kNewline {
+			if t.Kind == lang.KNewline {
 				continue
 			}
-			if i == cl.close || (depth == 0 && t.kind == kComma) {
+			if i == cl.close || (depth == 0 && t.Kind == lang.KComma) {
 				if first >= 0 {
-					args = append(args, arg{first, string(src[toks[first].off:toks[i-1-trailingNewlines(toks, i-1)].end])})
+					args = append(args, arg{first, string(src[toks[first].Off:toks[i-1-trailingNewlines(toks, i-1)].End])})
 				}
 				first = -1
 				continue
@@ -265,10 +266,10 @@ func fillGaps(path string, src []byte, gaps []anchorGap) ([]byte, []string, erro
 			if first < 0 {
 				first = i
 			}
-			switch t.kind {
-			case kLParen:
+			switch t.Kind {
+			case lang.KLParen:
 				depth++
-			case kRParen:
+			case lang.KRParen:
 				depth--
 			}
 		}
@@ -277,7 +278,7 @@ func fillGaps(path string, src []byte, gaps []anchorGap) ([]byte, []string, erro
 		for _, a := range args {
 			var before, after []string
 			for _, g := range cl.gaps {
-				if toks[a.first].pos != g.ref.Rng {
+				if toks[a.first].Pos != g.ref.Rng {
 					continue
 				}
 				for _, na := range g.args {
@@ -292,7 +293,7 @@ func fillGaps(path string, src []byte, gaps []anchorGap) ([]byte, []string, erro
 			out = append(append(append(out, before...), a.text), after...)
 		}
 
-		openOff, closeEnd := toks[cl.open].off, toks[cl.close].end
+		openOff, closeEnd := toks[cl.open].Off, toks[cl.close].End
 		lineStart := strings.LastIndexByte(string(src[:openOff]), '\n') + 1
 		prefix := string(src[lineStart:openOff])
 		indent := prefix[:len(prefix)-len(strings.TrimLeft(prefix, " \t"))]
@@ -319,19 +320,19 @@ const maxLine = 100
 
 // enclosingParens finds the ( ) call that directly contains token k, or -1 when k is not inside
 // parentheses (it is in a { } block).
-func enclosingParens(toks []tok, k int) (int, int) {
+func enclosingParens(toks []lang.Tok, k int) (int, int) {
 	open, depth := -1, 0
 	for i := k - 1; i >= 0; i-- {
-		switch toks[i].kind {
-		case kRParen:
+		switch toks[i].Kind {
+		case lang.KRParen:
 			depth++
-		case kLParen:
+		case lang.KLParen:
 			if depth == 0 {
 				open = i
 			} else {
 				depth--
 			}
-		case kLBrace, kRBrace:
+		case lang.KLBrace, lang.KRBrace:
 			if depth == 0 {
 				return -1, -1
 			}
@@ -345,10 +346,10 @@ func enclosingParens(toks []tok, k int) (int, int) {
 	}
 	depth = 0
 	for i := open + 1; i < len(toks); i++ {
-		switch toks[i].kind {
-		case kLParen:
+		switch toks[i].Kind {
+		case lang.KLParen:
 			depth++
-		case kRParen:
+		case lang.KRParen:
 			if depth == 0 {
 				return open, i
 			}
@@ -360,10 +361,10 @@ func enclosingParens(toks []tok, k int) (int, int) {
 
 // argEnd is the last token of the argument starting at token k: a string is one token;
 // self.X or self."A"."B" runs to the end of the expression.
-func argEnd(toks []tok, k int) int {
+func argEnd(toks []lang.Tok, k int) int {
 	last := k
-	if toks[k].kind == kIdent {
-		for last+2 < len(toks) && toks[last+1].kind == kDot && (toks[last+2].kind == kIdent || toks[last+2].kind == kString) {
+	if toks[k].Kind == lang.KIdent {
+		for last+2 < len(toks) && toks[last+1].Kind == lang.KDot && (toks[last+2].Kind == lang.KIdent || toks[last+2].Kind == lang.KString) {
 			last += 2
 		}
 	}
@@ -371,9 +372,9 @@ func argEnd(toks []tok, k int) int {
 }
 
 // trailingNewlines counts newline tokens ending at index i (going backwards).
-func trailingNewlines(toks []tok, i int) int {
+func trailingNewlines(toks []lang.Tok, i int) int {
 	n := 0
-	for i-n >= 0 && toks[i-n].kind == kNewline {
+	for i-n >= 0 && toks[i-n].Kind == lang.KNewline {
 		n++
 	}
 	return n
@@ -382,7 +383,7 @@ func trailingNewlines(toks []tok, i int) int {
 // completeAnchors completes the anchors of one template. With write false it only reports (lm check):
 // even an anchor that can be inferred is an error, because template and product disagree and check
 // doesn't modify files. It returns the completed template.
-func completeAnchors(c *Config, t *Template, write bool, r *Report) (*Template, error) {
+func completeAnchors(c *lang.Config, t *lang.Template, write bool, r *Report) (*lang.Template, error) {
 	src, err := os.ReadFile(t.Path)
 	if err != nil {
 		return nil, err
@@ -409,5 +410,5 @@ func completeAnchors(c *Config, t *Template, write bool, r *Report) (*Template, 
 	for _, l := range lines {
 		r.Anchored = append(r.Anchored, ReportLine{rel, l})
 	}
-	return LoadTemplate(c, t.Path)
+	return lang.LoadTemplate(c, t.Path)
 }

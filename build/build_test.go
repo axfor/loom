@@ -1,4 +1,4 @@
-package loom_test
+package build_test
 
 import (
 	"os"
@@ -7,15 +7,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/axfor/loom"
+	"github.com/axfor/loom/build"
+	"github.com/axfor/loom/lang"
 )
 
 // treeRepo creates a repository for whole-tree builds. Keys of files are paths from the repository root;
 // values starting with "#!" are written as executable.
-func treeRepo(t *testing.T, settings string, files map[string]string) (*loom.Config, string) {
+func treeRepo(t *testing.T, settings string, files map[string]string) (*lang.Config, string) {
 	t.Helper()
 	dir := t.TempDir()
-	mustWrite(t, filepath.Join(dir, "loom.lm"), "base \"up\"\nself \"me\"\ntemplates \"t\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n"+settings)
+	mustWrite(t, filepath.Join(dir, "build.lm"), "base \"up\"\nself \"me\"\ntemplates \"t\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n"+settings)
 	for p, s := range files {
 		full := filepath.Join(dir, filepath.FromSlash(p))
 		mustWrite(t, full, s)
@@ -30,20 +31,20 @@ func treeRepo(t *testing.T, settings string, files map[string]string) (*loom.Con
 			t.Fatal(err)
 		}
 	}
-	c, err := loom.LoadConfig(filepath.Join(dir, "loom.lm"))
+	c, err := lang.LoadConfig(filepath.Join(dir, "build.lm"))
 	if err != nil {
 		t.Fatalf("load settings: %v", err)
 	}
 	return c, dir
 }
 
-func build(t *testing.T, c *loom.Config, out string) (*loom.Plan, error) {
+func buildTree(t *testing.T, c *lang.Config, out string) (*build.Plan, error) {
 	t.Helper()
-	plan, err := loom.PlanBuild(c, true)
+	plan, err := build.PlanBuild(c, true)
 	if err != nil {
 		return nil, err
 	}
-	return plan, loom.WriteBuild(c, plan, out)
+	return plan, build.WriteBuild(c, plan, out)
 }
 
 func listTree(t *testing.T, root string) []string {
@@ -90,7 +91,7 @@ manifest ".manifest"
 	out := filepath.Join(dir, "out")
 	mustWrite(t, filepath.Join(out, "stale.txt"), "old\n")
 
-	plan, err := build(t, c, out)
+	plan, err := buildTree(t, c, out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +129,7 @@ manifest ".manifest"
 		t.Errorf("a whole-file replace belongs under overridden: %+v", r.Overridden)
 	}
 
-	plan, err = build(t, c, out)
+	plan, err = buildTree(t, c, out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +146,7 @@ func TestShadowNeedsTemplate(t *testing.T) {
 		"up/same.md": "same\n",
 		"me/same.md": "same\n",
 	})
-	_, err := build(t, c, filepath.Join(dir, "out"))
+	_, err := buildTree(t, c, filepath.Join(dir, "out"))
 	if err == nil || !strings.Contains(err.Error(), "shadows the upstream file") {
 		t.Fatalf("must be refused, got: %v", err)
 	}
@@ -168,13 +169,13 @@ func TestLostContent(t *testing.T) {
 
 	write := func(p, s string) { mustWrite(t, filepath.Join(dir, "t", p), s) }
 	write("a.md.lm", `base.merge(self)`)
-	_, err := build(t, c, out)
+	_, err := buildTree(t, c, out)
 	if err == nil || !strings.Contains(err.Error(), `upstream content lost: in a.md, section "Old"`) {
 		t.Fatalf("a section our merged file no longer has, without a drop, must be reported as lost, got: %v", err)
 	}
 
 	write("a.md.lm", "base.merge(self)\nbase.Old.drop(reason: \"does not apply\")\n")
-	plan, err := build(t, c, out)
+	plan, err := buildTree(t, c, out)
 	if err != nil {
 		t.Fatalf("the drop accounts for it, so no error, got: %v", err)
 	}
@@ -183,17 +184,17 @@ func TestLostContent(t *testing.T) {
 	}
 
 	write("a.md.lm", "base.merge(self)\nbase.Old.drop(reason: \"does not apply\")\nbase.Keep.drop(reason: \"does not apply\")\n")
-	if _, err := build(t, c, out); err == nil || !strings.Contains(err.Error(), `"Keep" is declared absent from the product but is still there`) {
+	if _, err := buildTree(t, c, out); err == nil || !strings.Contains(err.Error(), `"Keep" is declared absent from the product but is still there`) {
 		t.Errorf("a dropped section that is still there must be an error, got: %v", err)
 	}
 
 	write("a.md.lm", "base.merge(self)\nbase.Old.drop(reason: \"does not apply\")\n")
 	write("b.md.lm", `base.Parent.drop(reason: "does not apply")`)
-	if _, err := build(t, c, out); err == nil || !strings.Contains(err.Error(), `its subsections "Child" are not accounted for`) {
+	if _, err := buildTree(t, c, out); err == nil || !strings.Contains(err.Error(), `its subsections "Child" are not accounted for`) {
 		t.Errorf("dropping a section but leaving its subsection must be an error, got: %v", err)
 	}
 	write("b.md.lm", "base.Parent.drop(reason: \"does not apply\")\nbase.Child.drop(reason: \"does not apply\")\n")
-	if _, err := build(t, c, out); err != nil {
+	if _, err := buildTree(t, c, out); err != nil {
 		t.Errorf("the subsection is dropped too, so no error, got: %v", err)
 	}
 }
@@ -210,12 +211,12 @@ func TestVariables(t *testing.T) {
 		"inner.e":       "url = https://inner.example/x\n",
 	})
 	out := filepath.Join(dir, "out")
-	v, err := loom.LoadVars(filepath.Join(dir, "lm.e"))
+	v, err := lang.LoadVars(filepath.Join(dir, "lm.e"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	c.Vars = v
-	plan, err := build(t, c, out)
+	plan, err := buildTree(t, c, out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,23 +240,23 @@ func TestVariables(t *testing.T) {
 	}
 
 	// -e inner.e: it has no npm, and there is no fallback to lm.e
-	inner, err := loom.LoadVars(filepath.Join(dir, "inner.e"))
+	inner, err := lang.LoadVars(filepath.Join(dir, "inner.e"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	c.Vars = inner
-	if _, err := loom.PlanBuild(c, true); err == nil || !strings.Contains(err.Error(), "variable {{@npm}} is not defined in") || !strings.Contains(err.Error(), "doc.md.lm:1:") {
+	if _, err := build.PlanBuild(c, true); err == nil || !strings.Contains(err.Error(), "variable {{@npm}} is not defined in") || !strings.Contains(err.Error(), "doc.md.lm:1:") {
 		t.Errorf("npm is missing from the -e file; must be an error pointing at the template, got: %v", err)
 	}
 
-	c.Vars = loom.NoVars()
-	_, err = loom.PlanBuild(c, true)
+	c.Vars = lang.NoVars()
+	_, err = build.PlanBuild(c, true)
 	if err == nil || !strings.Contains(err.Error(), "install.md:3:7: variable {{@url}} is used, but there is no variables file") {
 		t.Errorf("a variable used without a variables file must be an error at file:line:col (columns count characters, not bytes), got: %v", err)
 	}
 
 	mustWrite(t, filepath.Join(dir, "bad.e"), "url https://x\n")
-	if _, err := loom.LoadVars(filepath.Join(dir, "bad.e")); err == nil || !strings.Contains(err.Error(), "bad.e:1:") {
+	if _, err := lang.LoadVars(filepath.Join(dir, "bad.e")); err == nil || !strings.Contains(err.Error(), "bad.e:1:") {
 		t.Errorf("a malformed variables file must report the line, got: %v", err)
 	}
 }
@@ -264,11 +265,11 @@ func TestVariables(t *testing.T) {
 func TestOutputGuard(t *testing.T) {
 	c, dir := treeRepo(t, "", map[string]string{"up/a.md": "## A\n"})
 	for _, out := range []string{dir, filepath.Dir(dir), filepath.Join(dir, "me", "out")} {
-		plan, err := loom.PlanBuild(c, true)
+		plan, err := build.PlanBuild(c, true)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := loom.WriteBuild(c, plan, out); err == nil {
+		if err := build.WriteBuild(c, plan, out); err == nil {
 			t.Errorf("output directory %s must be refused", out)
 		}
 	}
@@ -283,7 +284,7 @@ func TestMirrorConflict(t *testing.T) {
 		"me/a/x.md": "a\n",
 		"me/b/x.md": "b\n",
 	})
-	if _, err := build(t, c, filepath.Join(dir, "out")); err == nil || !strings.Contains(err.Error(), "the mirror would overwrite it") {
+	if _, err := buildTree(t, c, filepath.Join(dir, "out")); err == nil || !strings.Contains(err.Error(), "the mirror would overwrite it") {
 		t.Errorf("a mirror colliding with an existing file must be an error, got: %v", err)
 	}
 }
@@ -302,11 +303,11 @@ func TestCheckFindsStaleOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := filepath.Join(dir, "out")
-	plan, err := build(t, c, out)
+	plan, err := buildTree(t, c, out)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if problems, err := loom.StaleOutputs(c, plan, out); err != nil || len(problems) != 0 {
+	if problems, err := build.StaleOutputs(c, plan, out); err != nil || len(problems) != 0 {
 		t.Fatalf("a fresh build must be clean, got %v %v", problems, err)
 	}
 
@@ -318,7 +319,7 @@ func TestCheckFindsStaleOutput(t *testing.T) {
 	os.Symlink("tool.sh", filepath.Join(out, "link"))
 	mustWrite(t, filepath.Join(out, ".manifest"), "stale\n")
 
-	problems, err := loom.StaleOutputs(c, plan, out)
+	problems, err := build.StaleOutputs(c, plan, out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,13 +337,13 @@ func TestCheckFindsStaleOutput(t *testing.T) {
 		}
 	}
 
-	if plan, err = build(t, c, out); err != nil {
+	if plan, err = buildTree(t, c, out); err != nil {
 		t.Fatal(err)
 	}
-	if problems, _ := loom.StaleOutputs(c, plan, out); len(problems) != 0 {
+	if problems, _ := build.StaleOutputs(c, plan, out); len(problems) != 0 {
 		t.Errorf("after lm build the output must be clean again, got %v", problems)
 	}
-	if problems, _ := loom.StaleOutputs(c, plan, filepath.Join(dir, "never-built")); len(problems) != 0 {
+	if problems, _ := build.StaleOutputs(c, plan, filepath.Join(dir, "never-built")); len(problems) != 0 {
 		t.Errorf("an output directory that does not exist is not stale, got %v", problems)
 	}
 }
@@ -352,7 +353,7 @@ func TestCheckFindsStaleOutput(t *testing.T) {
 func TestTemplatesBesideOurFiles(t *testing.T) {
 	dir := t.TempDir()
 	files := map[string]string{
-		"loom.lm":          "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n",
+		"build.lm":         "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n",
 		"up/doc.md":        "## Overview\n\nup\n",
 		"me/doc.md":        "## Ours\n\nme\n",
 		"me/doc.md.lm":     "base.Overview.after(\"Ours\")\n",
@@ -367,12 +368,12 @@ func TestTemplatesBesideOurFiles(t *testing.T) {
 	for p, s := range files {
 		mustWrite(t, filepath.Join(dir, filepath.FromSlash(p)), s)
 	}
-	c, err := loom.LoadConfig(filepath.Join(dir, "loom.lm"))
+	c, err := lang.LoadConfig(filepath.Join(dir, "build.lm"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	out := filepath.Join(dir, "out")
-	plan, err := build(t, c, out)
+	plan, err := buildTree(t, c, out)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,3 +1,19 @@
+# Loom
+
+## Code layout
+
+```
+lang/       the language: settings, the lexer, template parsing, writing Loom syntax back
+build/      building a tree: weaving, the registry merge, anchor completion, the report, lm sync
+ast/        one AST per resource type: markdown headings, shell functions, toml/json keys, lines
+cmd/lm/     the command
+editors/vscode/   the extension (its own tests: npm test)
+script/release.sh what a release ships; .github/workflows/release.yml publishes it on a tag
+```
+
+`build` depends on `lang` and `ast`; `lang` depends on `ast` only. The tests live with `build`,
+where a case can weave a real tree (`build/testdata/repo`).
+
 ## Coding discipline
 
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.

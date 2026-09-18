@@ -1,4 +1,4 @@
-package loom
+package lang
 
 // loom.lm: it shares the lexer with templates (lexer.go), one setting per line.
 //
@@ -40,24 +40,24 @@ func LoadConfig(path string) (*Config, error) {
 }
 
 func parseSettings(path string, src []byte) (*Config, error) {
-	toks, err := lexLoom(path, src)
+	toks, err := Lex(path, src)
 	if err != nil {
 		return nil, err
 	}
 	// One setting per line: split the tokens into lines at newlines
-	var lines [][]tok
-	var cur []tok
+	var lines [][]Tok
+	var cur []Tok
 	for _, t := range toks {
-		switch t.kind {
-		case kNewline, kEOF:
+		switch t.Kind {
+		case KNewline, KEOF:
 			if len(cur) > 0 {
 				lines = append(lines, cur)
 				cur = nil
 			}
-		case kIdent, kString:
+		case KIdent, KString:
 			cur = append(cur, t)
 		default:
-			return nil, fmt.Errorf("%s: the settings file takes one setting per line, with only names and quoted values; unexpected %s", t.pos, t)
+			return nil, fmt.Errorf("%s: the settings file takes one setting per line, with only names and quoted values; unexpected %s", t.Pos, t)
 		}
 	}
 	c := &Config{Root: filepath.Dir(path), Layers: map[string]*Layer{}, Anchored: "anchored"}
@@ -70,26 +70,26 @@ func parseSettings(path string, src []byte) (*Config, error) {
 	var marks []markDecl
 	for _, ln := range lines {
 		first := ln[0]
-		if first.kind != kIdent {
-			return nil, fmt.Errorf("%s: a line must start with a setting name, got %s", first.pos, first)
+		if first.Kind != KIdent {
+			return nil, fmt.Errorf("%s: a line must start with a setting name, got %s", first.Pos, first)
 		}
-		kw := first.text
+		kw := first.Text
 		if !contains(settingKeywords, kw) {
-			return nil, unknownIn(kw, settingKeywords, "setting", first.pos)
+			return nil, unknownIn(kw, settingKeywords, "setting", first.Pos)
 		}
 		as := ln[1:]
 		if kw != "mark" && kw != "take" && kw != "mirror" {
 			if p, dup := seen[kw]; dup {
-				return nil, fmt.Errorf("%s: `%s` can only be set once (first set at %s)", first.pos, kw, p)
+				return nil, fmt.Errorf("%s: `%s` can only be set once (first set at %s)", first.Pos, kw, p)
 			}
-			seen[kw] = first.pos
+			seen[kw] = first.Pos
 		}
 		switch kw {
 		case "base", "self", "templates", "output", "manifest":
-			if len(as) != 1 || as[0].kind != kString {
-				return nil, fmt.Errorf("%s: `%s` takes one quoted directory: %s \"...\"", first.pos, kw, kw)
+			if len(as) != 1 || as[0].Kind != KString {
+				return nil, fmt.Errorf("%s: `%s` takes one quoted directory: %s \"...\"", first.Pos, kw, kw)
 			}
-			v := as[0].text
+			v := as[0].Text
 			switch kw {
 			case "base":
 				c.Layers["base"] = &Layer{Name: "base", Dir: v, Role: "warp", Marks: map[string]Marks{}}
@@ -107,40 +107,40 @@ func parseSettings(path string, src []byte) (*Config, error) {
 				c.Manifest = v
 			}
 		case "mark":
-			if len(as) != 3 || as[0].kind != kIdent || as[1].kind != kString || as[2].kind != kString {
-				return nil, fmt.Errorf("%s: `mark` takes a type, a begin marker and an end marker: mark markdown \"<!-- BEGIN -->\" \"<!-- END -->\"", first.pos)
+			if len(as) != 3 || as[0].Kind != KIdent || as[1].Kind != KString || as[2].Kind != KString {
+				return nil, fmt.Errorf("%s: `mark` takes a type, a begin marker and an end marker: mark markdown \"<!-- BEGIN -->\" \"<!-- END -->\"", first.Pos)
 			}
-			if _, ok := defaultKind[as[0].text]; !ok {
-				return nil, unknownIn(as[0].text, typeWords(), "type", as[0].pos)
+			if _, ok := defaultKind[as[0].Text]; !ok {
+				return nil, unknownIn(as[0].Text, typeWords(), "type", as[0].Pos)
 			}
 			for _, m := range marks {
-				if m.typ == as[0].text {
-					return nil, fmt.Errorf("%s: marks for %s declared twice (first at %s)", first.pos, m.typ, m.pos)
+				if m.typ == as[0].Text {
+					return nil, fmt.Errorf("%s: marks for %s declared twice (first at %s)", first.Pos, m.typ, m.pos)
 				}
 			}
-			marks = append(marks, markDecl{as[0].text, as[1].text, as[2].text, first.pos})
+			marks = append(marks, markDecl{as[0].Text, as[1].Text, as[2].Text, first.Pos})
 		case "take":
 			if len(as) == 0 {
-				return nil, fmt.Errorf("%s: `take` lists the upstream paths to carry into the product; * and ** are allowed: take \"references/**\" \"LICENSE\"", first.pos)
+				return nil, fmt.Errorf("%s: `take` lists the upstream paths to carry into the product; * and ** are allowed: take \"references/**\" \"LICENSE\"", first.Pos)
 			}
 			for _, a := range as {
-				if a.kind != kString {
-					return nil, fmt.Errorf("%s: paths must be quoted", a.pos)
+				if a.Kind != KString {
+					return nil, fmt.Errorf("%s: paths must be quoted", a.Pos)
 				}
-				if err := checkPattern(a.text); err != nil {
-					return nil, fmt.Errorf("%s: %v", a.pos, err)
+				if err := checkPattern(a.Text); err != nil {
+					return nil, fmt.Errorf("%s: %v", a.Pos, err)
 				}
-				c.Take = append(c.Take, a.text)
+				c.Take = append(c.Take, a.Text)
 			}
 		case "mirror":
-			if len(as) != 2 || as[0].kind != kString || as[1].kind != kString {
-				return nil, fmt.Errorf("%s: `mirror` takes a source directory in the product and a mirror directory: mirror \".gemini/commands\" \"commands\"", first.pos)
+			if len(as) != 2 || as[0].Kind != KString || as[1].Kind != KString {
+				return nil, fmt.Errorf("%s: `mirror` takes a source directory in the product and a mirror directory: mirror \".gemini/commands\" \"commands\"", first.Pos)
 			}
-			c.Mirrors = append(c.Mirrors, [2]string{cleanRel(as[0].text), cleanRel(as[1].text)})
+			c.Mirrors = append(c.Mirrors, [2]string{cleanRel(as[0].Text), cleanRel(as[1].Text)})
 		case "registry":
 			// There is nothing left to configure: a json product is both layers' registrations together,
 			// and an element of ours takes the place of the upstream one calling the same scripts.
-			return nil, fmt.Errorf("%s: `registry` is not a setting any more — a json product is built from both layers, ours replacing the upstream registration that calls the same scripts; write base.merge(self) in its template and delete this line", first.pos)
+			return nil, fmt.Errorf("%s: `registry` is not a setting any more — a json product is built from both layers, ours replacing the upstream registration that calls the same scripts; write base.merge(self) in its template and delete this line", first.Pos)
 		}
 	}
 	if c.Warp == "" {
@@ -184,7 +184,7 @@ func checkPattern(p string) error {
 }
 
 // matchPattern reports whether a layer-relative path matches one take path.
-func matchPattern(pattern, rel string) bool {
+func MatchPattern(pattern, rel string) bool {
 	return matchSegs(strings.Split(pattern, "/"), strings.Split(rel, "/"))
 }
 

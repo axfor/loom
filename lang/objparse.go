@@ -1,4 +1,4 @@
-package loom
+package lang
 
 // Templates: object syntax.
 //
@@ -104,38 +104,38 @@ type oImport struct {
 }
 
 type oparser struct {
-	toks []tok
+	toks []Tok
 	i    int
 }
 
-func (p *oparser) peek() tok { return p.toks[p.i] }
+func (p *oparser) peek() Tok { return p.toks[p.i] }
 
-func (p *oparser) next() tok {
+func (p *oparser) next() Tok {
 	t := p.toks[p.i]
-	if t.kind != kEOF {
+	if t.Kind != KEOF {
 		p.i++
 	}
 	return t
 }
 
 func (p *oparser) skipNewlines() {
-	for p.peek().kind == kNewline {
+	for p.peek().Kind == KNewline {
 		p.next()
 	}
 }
 
 func (p *oparser) endOfStatement() error {
 	t := p.peek()
-	if t.kind == kNewline || t.kind == kEOF {
+	if t.Kind == KNewline || t.Kind == KEOF {
 		p.next()
 		return nil
 	}
-	return fmt.Errorf("%s: statement should end here, got %s — one statement per line", t.pos, t)
+	return fmt.Errorf("%s: statement should end here, got %s — one statement per line", t.Pos, t)
 }
 
 // parseObjects reads the imports and statements.
 func parseObjects(file string, src []byte) ([]oImport, []*oExpr, error) {
-	toks, err := lexLoom(file, src)
+	toks, err := Lex(file, src)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -145,21 +145,21 @@ func parseObjects(file string, src []byte) ([]oImport, []*oExpr, error) {
 	for {
 		p.skipNewlines()
 		t := p.peek()
-		if t.kind == kEOF {
+		if t.Kind == KEOF {
 			return imports, stmts, nil
 		}
-		if t.kind == kIdent && t.text == "import" {
+		if t.Kind == KIdent && t.Text == "import" {
 			p.next()
-			im := oImport{pos: t.pos}
-			if n := p.peek(); n.kind == kIdent {
+			im := oImport{pos: t.Pos}
+			if n := p.peek(); n.Kind == KIdent {
 				p.next()
-				im.name, im.named = n.text, true
+				im.name, im.named = n.Text, true
 			}
 			s := p.next()
-			if s.kind != kString {
-				return nil, nil, fmt.Errorf("%s: import takes a quoted path: import cmd \"/.claude/commands/ship\"", s.pos)
+			if s.Kind != KString {
+				return nil, nil, fmt.Errorf("%s: import takes a quoted path: import cmd \"/.claude/commands/ship\"", s.Pos)
 			}
-			im.spec = s.text
+			im.spec = s.Text
 			if err := p.endOfStatement(); err != nil {
 				return nil, nil, err
 			}
@@ -179,29 +179,29 @@ func parseObjects(file string, src []byte) ([]oImport, []*oExpr, error) {
 
 func (p *oparser) expr() (*oExpr, error) {
 	t := p.next()
-	if t.kind != kIdent {
-		return nil, fmt.Errorf("%s: expected an object (base / self / an imported name), got %s", t.pos, t)
+	if t.Kind != KIdent {
+		return nil, fmt.Errorf("%s: expected an object (base / self / an imported name), got %s", t.Pos, t)
 	}
-	e := &oExpr{root: t.text, pos: t.pos}
-	for p.peek().kind == kDot {
+	e := &oExpr{root: t.Text, pos: t.Pos}
+	for p.peek().Kind == KDot {
 		p.next()
 		n := p.next()
-		switch n.kind {
-		case kString:
-			e.steps = append(e.steps, oStep{name: n.text, str: true, pos: n.pos})
-		case kIdent:
-			st := oStep{name: n.text, pos: n.pos}
-			switch p.peek().kind {
-			case kLParen:
+		switch n.Kind {
+		case KString:
+			e.steps = append(e.steps, oStep{name: n.Text, str: true, pos: n.Pos})
+		case KIdent:
+			st := oStep{name: n.Text, pos: n.Pos}
+			switch p.peek().Kind {
+			case KLParen:
 				p.next()
 				args, err := p.parenArgs()
 				if err != nil {
 					return nil, err
 				}
 				st.call, st.args = true, args
-			case kLBrace:
+			case KLBrace:
 				b := p.next()
-				args, err := p.blockArgs(b.pos)
+				args, err := p.blockArgs(b.Pos)
 				if err != nil {
 					return nil, err
 				}
@@ -212,7 +212,7 @@ func (p *oparser) expr() (*oExpr, error) {
 				return e, nil // a block-form method is always the last step of the statement
 			}
 		default:
-			return nil, fmt.Errorf("%s: expected a node or method name after `.`, got %s", n.pos, n)
+			return nil, fmt.Errorf("%s: expected a node or method name after `.`, got %s", n.Pos, n)
 		}
 	}
 	return e, nil
@@ -222,7 +222,7 @@ func (p *oparser) parenArgs() ([]oArg, error) {
 	var out []oArg
 	for {
 		p.skipNewlines()
-		if p.peek().kind == kRParen {
+		if p.peek().Kind == KRParen {
 			p.next()
 			return out, nil
 		}
@@ -232,32 +232,32 @@ func (p *oparser) parenArgs() ([]oArg, error) {
 		}
 		out = append(out, a)
 		p.skipNewlines()
-		switch t := p.next(); t.kind {
-		case kComma:
-		case kRParen:
+		switch t := p.next(); t.Kind {
+		case KComma:
+		case KRParen:
 			return out, nil
 		default:
-			return nil, fmt.Errorf("%s: separate arguments with commas and close with `)`, got %s", t.pos, t)
+			return nil, fmt.Errorf("%s: separate arguments with commas and close with `)`, got %s", t.Pos, t)
 		}
 	}
 }
 
 func (p *oparser) blockArgs(open Pos) ([]oArg, error) {
-	if t := p.peek(); t.kind != kNewline {
-		return nil, fmt.Errorf("%s: expected a newline after `{` — the block form takes one argument per line", t.pos)
+	if t := p.peek(); t.Kind != KNewline {
+		return nil, fmt.Errorf("%s: expected a newline after `{` — the block form takes one argument per line", t.Pos)
 	}
 	var out []oArg
 	for {
 		p.skipNewlines()
 		t := p.peek()
-		switch t.kind {
-		case kRBrace:
+		switch t.Kind {
+		case KRBrace:
 			p.next()
 			if len(out) == 0 {
 				return nil, fmt.Errorf("%s: empty block — { } with nothing inside", open)
 			}
 			return out, nil
-		case kEOF:
+		case KEOF:
 			return nil, fmt.Errorf("%s: block has no closing `}`", open)
 		}
 		a, err := p.arg()
@@ -265,47 +265,47 @@ func (p *oparser) blockArgs(open Pos) ([]oArg, error) {
 			return nil, err
 		}
 		out = append(out, a)
-		switch n := p.peek(); n.kind {
-		case kNewline:
+		switch n := p.peek(); n.Kind {
+		case KNewline:
 			p.next()
-		case kRBrace:
-		case kComma:
-			return nil, fmt.Errorf("%s: the block form takes one argument per line, without commas", n.pos)
+		case KRBrace:
+		case KComma:
+			return nil, fmt.Errorf("%s: the block form takes one argument per line, without commas", n.Pos)
 		default:
-			return nil, fmt.Errorf("%s: the block form takes one argument per line; unexpected %s", n.pos, n)
+			return nil, fmt.Errorf("%s: the block form takes one argument per line; unexpected %s", n.Pos, n)
 		}
 	}
 }
 
 func (p *oparser) arg() (oArg, error) {
 	t := p.peek()
-	if t.kind == kIdent && p.toks[p.i+1].kind == kColon {
+	if t.Kind == KIdent && p.toks[p.i+1].Kind == KColon {
 		p.next()
 		p.next()
 		v, err := p.value()
-		return oArg{name: t.text, val: v, pos: t.pos}, err
+		return oArg{name: t.Text, val: v, pos: t.Pos}, err
 	}
 	v, err := p.value()
-	return oArg{val: v, pos: t.pos}, err
+	return oArg{val: v, pos: t.Pos}, err
 }
 
 func (p *oparser) value() (oValue, error) {
 	t := p.peek()
-	switch t.kind {
-	case kString:
+	switch t.Kind {
+	case KString:
 		p.next()
-		return oValue{kind: vString, str: t.text, pos: t.pos}, nil
-	case kRaw:
+		return oValue{kind: vString, str: t.Text, pos: t.Pos}, nil
+	case KRaw:
 		p.next()
-		return oValue{kind: vRaw, str: t.text, pos: t.pos}, nil
-	case kIdent:
+		return oValue{kind: vRaw, str: t.Text, pos: t.Pos}, nil
+	case KIdent:
 		e, err := p.expr()
 		if err != nil {
 			return oValue{}, err
 		}
-		return oValue{kind: vExpr, expr: e, pos: t.pos}, nil
+		return oValue{kind: vExpr, expr: e, pos: t.Pos}, nil
 	}
-	return oValue{}, fmt.Errorf("%s: expected an argument: \"name\", `literal`, or something like self.xxx, got %s", t.pos, t)
+	return oValue{}, fmt.Errorf("%s: expected an argument: \"name\", `literal`, or something like self.xxx, got %s", t.Pos, t)
 }
 
 // ── Interpretation: syntax tree → engine statements ───────────────────────────
@@ -393,8 +393,8 @@ func isIdent(s string) bool {
 	if s == "" {
 		return false
 	}
-	toks, err := lexLoom("", []byte(s))
-	return err == nil && len(toks) == 3 && toks[0].kind == kIdent && toks[0].text == s
+	toks, err := Lex("", []byte(s))
+	return err == nil && len(toks) == 3 && toks[0].Kind == KIdent && toks[0].Text == s
 }
 
 // receiver is the thing a statement changes.
@@ -804,14 +804,14 @@ func unknownIn(w string, words []string, what string, at Pos) error {
 func nearest(w string, words []string) string {
 	best, bestD := "", 3
 	for _, c := range words {
-		if d := editDistance(w, c); d < bestD {
+		if d := EditDistance(w, c); d < bestD {
 			best, bestD = c, d
 		}
 	}
 	return best
 }
 
-func editDistance(a, b string) int {
+func EditDistance(a, b string) int {
 	ra, rb := []rune(a), []rune(b)
 	prev := make([]int, len(rb)+1)
 	cur := make([]int, len(rb)+1)

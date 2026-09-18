@@ -1,4 +1,4 @@
-package loom
+package lang
 
 import (
 	"fmt"
@@ -44,7 +44,7 @@ func LoadTemplateSource(c *Config, path string, src []byte) (*Template, error) {
 //     accepts exactly one match; several matches are an error, never a guess. Templates do not
 //     count: one sits next to the file it builds, and is never content.
 func (c *Config) resolveImport(layer, spec, fromDir string) (string, error) {
-	l, ok := c.layer(layer)
+	l, ok := c.Layer(layer)
 	if !ok {
 		return "", fmt.Errorf("no %s layer", layer)
 	}
@@ -182,10 +182,10 @@ func TemplateName(c *Config, target string) string {
 	if ext := filepath.Ext(target); ext != "" {
 		short := filepath.Join(c.Root, c.Templates, filepath.FromSlash(strings.TrimSuffix(target, ext))+Ext)
 		if got, err := TargetOf(c, short); err == nil && got == target {
-			return rel(c, short)
+			return Rel(c, short)
 		}
 	}
-	return rel(c, full)
+	return Rel(c, full)
 }
 
 // Templates lists every template in the configured template directory, sorted by path —
@@ -209,7 +209,7 @@ func Templates(c *Config) ([]string, error) {
 	return out, nil
 }
 
-func rel(c *Config, p string) string {
+func Rel(c *Config, p string) string {
 	if r, err := filepath.Rel(c.Root, p); err == nil {
 		return r
 	}

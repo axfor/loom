@@ -1,4 +1,4 @@
-package loom
+package lang
 
 // loom.lm — how the loom understands this repository. The settings syntax is read by settings.go.
 
@@ -78,13 +78,13 @@ func (c *Config) layerNames() string { return strings.Join(c.Order, " / ") }
 // so once a trailing comment got swallowed into the value of from, the base silently became the weft
 // copy, and the warp vanished entirely while the product looked perfectly valid.
 // layer looks up a layer by name: `base` (upstream, the warp) or `self` (our layer, the weft).
-func (c *Config) layer(name string) (*Layer, bool) {
+func (c *Config) Layer(name string) (*Layer, bool) {
 	l, ok := c.Layers[name]
 	return l, ok
 }
 
-func (c *Config) read(layer, rel string) (string, bool, error) {
-	l, ok := c.layer(layer)
+func (c *Config) Read(layer, rel string) (string, bool, error) {
+	l, ok := c.Layer(layer)
 	if !ok {
 		return "", false, fmt.Errorf("unknown layer name `%s` (known layers: %s)", layer, c.layerNames())
 	}
@@ -104,8 +104,8 @@ func (c *Config) read(layer, rel string) (string, bool, error) {
 // marksFor returns a layer's wrapping marks for a resource type. No entry means no wrapping.
 //
 // Why per type: an HTML comment is not a comment in shell / toml / json — it is garbage or a syntax error.
-func (c *Config) marksFor(layer, typ string) (Marks, bool) {
-	l, ok := c.layer(layer)
+func (c *Config) MarksFor(layer, typ string) (Marks, bool) {
+	l, ok := c.Layer(layer)
 	if !ok {
 		return Marks{}, false
 	}

@@ -1,4 +1,4 @@
-package loom_test
+package build_test
 
 import (
 	"os"
@@ -6,7 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/axfor/loom"
+	"github.com/axfor/loom/build"
+	"github.com/axfor/loom/lang"
 )
 
 const objConfig = `
@@ -18,10 +19,10 @@ mark      markdown "<!-- MINE:BEGIN -->" "<!-- MINE:END -->"
 
 // objRepo creates a repository with new-style settings: upstream and our doc.md / run.sh come from
 // the golden repository, and files are written in by relative path.
-func objRepo(t *testing.T, files map[string]string) (*loom.Config, string) {
+func objRepo(t *testing.T, files map[string]string) (*lang.Config, string) {
 	t.Helper()
 	dir := t.TempDir()
-	mustWrite(t, filepath.Join(dir, "loom.lm"), objConfig)
+	mustWrite(t, filepath.Join(dir, "build.lm"), objConfig)
 	for _, layer := range []string{"upstream", "mine"} {
 		for _, name := range []string{"doc.md", "run.sh"} {
 			b, err := os.ReadFile(filepath.Join(fixture, layer, name))
@@ -34,7 +35,7 @@ func objRepo(t *testing.T, files map[string]string) (*loom.Config, string) {
 	for p, s := range files {
 		mustWrite(t, filepath.Join(dir, filepath.FromSlash(p)), s)
 	}
-	c, err := loom.LoadConfig(filepath.Join(dir, "loom.lm"))
+	c, err := lang.LoadConfig(filepath.Join(dir, "build.lm"))
 	if err != nil {
 		t.Fatalf("load settings: %v", err)
 	}
@@ -42,15 +43,15 @@ func objRepo(t *testing.T, files map[string]string) (*loom.Config, string) {
 }
 
 // weaveObj writes src as the template of product target, loads it and weaves it.
-func weaveObj(t *testing.T, c *loom.Config, dir, target, src string) (string, error) {
+func weaveObj(t *testing.T, c *lang.Config, dir, target, src string) (string, error) {
 	t.Helper()
-	p := filepath.Join(dir, "t", filepath.FromSlash(target)+loom.Ext)
+	p := filepath.Join(dir, "t", filepath.FromSlash(target)+lang.Ext)
 	mustWrite(t, p, src)
-	tm, err := loom.LoadTemplate(c, p)
+	tm, err := lang.LoadTemplate(c, p)
 	if err != nil {
 		return "", err
 	}
-	return loom.Weave(c, tm)
+	return build.Weave(c, tm)
 }
 
 // (...) on one line and { ... } over several lines are two layouts of the same statement.
@@ -280,9 +281,9 @@ func TestDescribeResolvesIdentifiers(t *testing.T) {
 		"upstream/a.md": "## Usage Tips\n\nx\n",
 		"mine/a.md":     "## Café Notes\n\nz\n",
 	})
-	p := filepath.Join(dir, "t", "a.md"+loom.Ext)
+	p := filepath.Join(dir, "t", "a.md"+lang.Ext)
 	mustWrite(t, p, "base.Usage_Tips.after(self.Café_Notes)\n")
-	i, err := loom.Describe(c, p)
+	i, err := build.Describe(c, p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,9 +298,9 @@ func TestDescribeResolvesIdentifiers(t *testing.T) {
 // list carries the reasons written in the template, so tools never parse templates themselves.
 func TestDescribeReportsReasons(t *testing.T) {
 	c, dir := objRepo(t, nil)
-	whole := filepath.Join(dir, "t", "doc.md"+loom.Ext)
+	whole := filepath.Join(dir, "t", "doc.md"+lang.Ext)
 	mustWrite(t, whole, "base.replace(self, reason: \"ours is a rewrite\")\nbase.Process.drop(reason: \"described in ours\")\n")
-	i, err := loom.Describe(c, whole)
+	i, err := build.Describe(c, whole)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -310,7 +311,7 @@ func TestDescribeReportsReasons(t *testing.T) {
 		t.Errorf("drops: %+v", i.Drops)
 	}
 	mustWrite(t, whole, "base.Overview.replace(\"Where this fits\", reason: \"ours says it better\")\n")
-	if i, err = loom.Describe(c, whole); err != nil {
+	if i, err = build.Describe(c, whole); err != nil {
 		t.Fatal(err)
 	}
 	if len(i.Replaces) != 1 || i.Replaces[0].Anchor != "Overview" || i.Replaces[0].Reason != "ours says it better" || i.Reason != "" {
@@ -459,7 +460,7 @@ func TestCompletenessReadsEscapedValues(t *testing.T) {
 		t.Errorf("the value quotes ours and escapes the quotes inside it:\n%s", out)
 	}
 	// The fixture files of objRepo have complaints of their own; this is about the key.
-	if _, err := loom.PlanBuild(c, false); err != nil && strings.Contains(err.Error(), "frontmatter key") {
+	if _, err := build.PlanBuild(c, false); err != nil && strings.Contains(err.Error(), "frontmatter key") {
 		t.Errorf("our key is in the product, so the build must not refuse it: %v", err)
 	}
 }
@@ -474,7 +475,7 @@ func TestBlockFrontmatterValueMustBeTakenWhole(t *testing.T) {
 	if _, err := weaveObj(t, c, dir, "b.md", "base.A.after(\"B\")\n"); err != nil {
 		t.Fatal(err)
 	}
-	_, err := loom.PlanBuild(c, false)
+	_, err := build.PlanBuild(c, false)
 	if err == nil || !strings.Contains(err.Error(), `"tags" has a value over several lines`) {
 		t.Fatalf("want a refusal naming the key, got: %v", err)
 	}
@@ -482,7 +483,7 @@ func TestBlockFrontmatterValueMustBeTakenWhole(t *testing.T) {
 	if _, err := weaveObj(t, c, dir, "b.md", "base.frontmatter.set(self.frontmatter)\nbase.A.after(\"B\")\n"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := loom.PlanBuild(c, false); err != nil && strings.Contains(err.Error(), "several lines") {
+	if _, err := build.PlanBuild(c, false); err != nil && strings.Contains(err.Error(), "several lines") {
 		t.Errorf("taking the block whole accounts for it: %v", err)
 	}
 }

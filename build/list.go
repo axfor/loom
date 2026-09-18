@@ -1,4 +1,4 @@
-package loom
+package build
 
 // loom list — prints each template's metadata as JSON.
 //
@@ -14,6 +14,7 @@ package loom
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/axfor/loom/lang"
 	"io"
 	"path/filepath"
 
@@ -63,8 +64,8 @@ type Src struct {
 }
 
 // Describe reads one template's metadata.
-func Describe(c *Config, path string) (*Info, error) {
-	t, err := LoadTemplate(c, path)
+func Describe(c *lang.Config, path string) (*Info, error) {
+	t, err := lang.LoadTemplate(c, path)
 	if err != nil {
 		return nil, err
 	}
@@ -85,8 +86,8 @@ func Describe(c *Config, path string) (*Info, error) {
 	// tree — gates reading list match them against headings, and reporting the spelling as
 	// written would flag a perfectly good anchor as missing. Names that cannot be resolved
 	// are reported as written, leaving the gate or the weave to say what is wrong.
-	baseTree := func(in *Stmt) ast.Tree {
-		src, ok, err := c.read("base", t.BasePath)
+	baseTree := func(in *lang.Stmt) ast.Tree {
+		src, ok, err := c.Read("base", t.BasePath)
 		if err != nil || !ok {
 			return nil
 		}
@@ -100,16 +101,16 @@ func Describe(c *Config, path string) (*Info, error) {
 		}
 		return ast.New(in.As, body)
 	}
-	real := func(tree ast.Tree, kind string, within []Seg, name string, ident bool) string {
+	real := func(tree ast.Tree, kind string, within []lang.Seg, name string, ident bool) string {
 		if tree == nil || (!ident && len(within) == 0) {
 			return name
 		}
-		if _, r, err := locate(tree, kind, within, name, ident, Stmt{}); err == nil {
+		if _, r, err := locate(tree, kind, within, name, ident, lang.Stmt{}); err == nil {
 			return r
 		}
 		return name
 	}
-	srcs := func(rs []Ref, in *Stmt) []Src {
+	srcs := func(rs []lang.Ref, in *lang.Stmt) []Src {
 		var out []Src
 		for _, r := range rs {
 			anchor := r.Anchor
@@ -126,8 +127,8 @@ func Describe(c *Config, path string) (*Info, error) {
 		}
 		return out
 	}
-	var walk func(ss []Stmt, in *Stmt)
-	walk = func(ss []Stmt, in *Stmt) {
+	var walk func(ss []lang.Stmt, in *lang.Stmt)
+	walk = func(ss []lang.Stmt, in *lang.Stmt) {
 		for _, s := range ss {
 			switch s.Op {
 			case "merge":
@@ -167,8 +168,8 @@ func Describe(c *Config, path string) (*Info, error) {
 // this list most, and the build is the lowest link in the chain — each dependency it adds
 // is one more way a fresh clone can fail to set up. Six columns of plain text are
 // readable by awk.
-func ListTSV(c *Config, w io.Writer) error {
-	tpls, err := Templates(c)
+func ListTSV(c *lang.Config, w io.Writer) error {
+	tpls, err := lang.Templates(c)
 	if err != nil {
 		return err
 	}
@@ -189,8 +190,8 @@ func ListTSV(c *Config, w io.Writer) error {
 }
 
 // List writes every template's metadata as JSON.
-func List(c *Config, w io.Writer) error {
-	tpls, err := Templates(c)
+func List(c *lang.Config, w io.Writer) error {
+	tpls, err := lang.Templates(c)
 	if err != nil {
 		return err
 	}

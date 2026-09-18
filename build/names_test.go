@@ -1,4 +1,4 @@
-package loom_test
+package build_test
 
 import (
 	"os"
@@ -6,18 +6,19 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/axfor/loom"
+	"github.com/axfor/loom/build"
+	"github.com/axfor/loom/lang"
 )
 
 // besideRepo writes a repository whose templates sit next to our files (no templates setting).
-func besideRepo(t *testing.T, files map[string]string) (*loom.Config, string) {
+func besideRepo(t *testing.T, files map[string]string) (*lang.Config, string) {
 	t.Helper()
 	dir := t.TempDir()
-	mustWrite(t, filepath.Join(dir, "loom.lm"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n")
+	mustWrite(t, filepath.Join(dir, "build.lm"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n")
 	for p, s := range files {
 		mustWrite(t, filepath.Join(dir, filepath.FromSlash(p)), s)
 	}
-	c, err := loom.LoadConfig(filepath.Join(dir, "loom.lm"))
+	c, err := lang.LoadConfig(filepath.Join(dir, "build.lm"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +43,7 @@ func TestShortTemplateNames(t *testing.T) {
 		"me/guide.md.lm": "import \"/run\"\nbase.Intro.after(`see run`)\n",
 	})
 	out := filepath.Join(dir, "out")
-	if _, err := build(t, c, out); err != nil {
+	if _, err := buildTree(t, c, out); err != nil {
 		t.Fatal(err)
 	}
 	if got := strings.Join(listTree(t, out), " "); got != "LICENSE guide.md run.sh skills/t/SKILL.md" {
@@ -67,7 +68,7 @@ func TestShortTemplateNameConflicts(t *testing.T) {
 		"me/notes.yml": "a: 1\n",
 		"me/notes.lm":  "base.append(`x`)\n",
 	})
-	_, err := loom.PlanBuild(c, false)
+	_, err := build.PlanBuild(c, false)
 	if err == nil || !strings.Contains(err.Error(), "notes.md, notes.yml") || !strings.Contains(err.Error(), "notes.md.lm") {
 		t.Errorf("an ambiguous short name must name the candidates and the full name, got: %v", err)
 	}
@@ -78,7 +79,7 @@ func TestShortTemplateNameConflicts(t *testing.T) {
 		"me/guide.sh": "echo\n",
 		"me/guide.lm": "base.append(`x`)\n",
 	})
-	_, err = loom.PlanBuild(c, false)
+	_, err = build.PlanBuild(c, false)
 	if err == nil || !strings.Contains(err.Error(), "GUIDE.md, guide.sh") {
 		t.Errorf("a short name matching files that differ in case must be ambiguous, got: %v", err)
 	}
@@ -89,7 +90,7 @@ func TestShortTemplateNameConflicts(t *testing.T) {
 		"me/doc.lm":    "base.A.after(\"B\")\n",
 		"me/doc.md.lm": "base.A.before(\"B\")\n",
 	})
-	_, err = loom.PlanBuild(c, false)
+	_, err = build.PlanBuild(c, false)
 	if err == nil || !strings.Contains(err.Error(), "doc.lm") || !strings.Contains(err.Error(), "doc.md.lm") || !strings.Contains(err.Error(), "both build doc.md") {
 		t.Errorf("two templates for one product must be an error, got: %v", err)
 	}
@@ -106,7 +107,7 @@ func TestTemplateThroughSymlink(t *testing.T) {
 	if err := os.Symlink(dir, link); err != nil {
 		t.Fatal(err)
 	}
-	got, err := loom.TargetOf(c, filepath.Join(link, "me", "a.lm"))
+	got, err := lang.TargetOf(c, filepath.Join(link, "me", "a.lm"))
 	if err != nil || got != "a.md" {
 		t.Errorf("got %q, %v", got, err)
 	}
@@ -127,7 +128,7 @@ func TestOurFrontmatterReachesProduct(t *testing.T) {
 		"base.frontmatter.set(self.frontmatter)\nbase.A.after(\"B\")\n":                                                                   "",
 	} {
 		mustWrite(t, tpl, src)
-		_, err := loom.PlanBuild(c, false)
+		_, err := build.PlanBuild(c, false)
 		switch {
 		case want == "" && err != nil:
 			t.Errorf("%q: our frontmatter is all in the product, got: %v", src, err)

@@ -1,4 +1,4 @@
-package loom_test
+package build_test
 
 import (
 	"os"
@@ -6,27 +6,28 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/axfor/loom"
+	"github.com/axfor/loom/build"
+	"github.com/axfor/loom/lang"
 )
 
 const fixture = "testdata/repo"
 
-func load(t *testing.T) *loom.Config {
+func load(t *testing.T) *lang.Config {
 	t.Helper()
-	c, err := loom.LoadConfig(filepath.Join(fixture, loom.ConfigName))
+	c, err := lang.LoadConfig(filepath.Join(fixture, lang.ConfigName))
 	if err != nil {
 		t.Fatalf("load settings: %v", err)
 	}
 	return c
 }
 
-func weave(t *testing.T, c *loom.Config, tpl string) string {
+func weave(t *testing.T, c *lang.Config, tpl string) string {
 	t.Helper()
-	tm, err := loom.LoadTemplate(c, filepath.Join(fixture, "templates", tpl))
+	tm, err := lang.LoadTemplate(c, filepath.Join(fixture, "templates", tpl))
 	if err != nil {
 		t.Fatalf("%s: parse failed: %v", tpl, err)
 	}
-	out, err := loom.Weave(c, tm)
+	out, err := build.Weave(c, tm)
 	if err != nil {
 		t.Fatalf("%s: weave failed: %v", tpl, err)
 	}
@@ -147,7 +148,7 @@ func TestStatementOrderIsSourceOrder(t *testing.T) {
 // "every tool parses templates again on its own" is exactly what this command exists to remove.
 func TestDescribeMatchesWeave(t *testing.T) {
 	c := load(t)
-	i, err := loom.Describe(c, filepath.Join(fixture, "templates", "doc.lm"))
+	i, err := build.Describe(c, filepath.Join(fixture, "templates", "doc.lm"))
 	if err != nil {
 		t.Fatal(err)
 	}

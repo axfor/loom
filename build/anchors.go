@@ -1,4 +1,4 @@
-package loom
+package build
 
 // Three anchor tools: check, list, and generate the derived view.
 //
@@ -9,6 +9,7 @@ package loom
 
 import (
 	"fmt"
+	"github.com/axfor/loom/lang"
 	"io"
 	"io/fs"
 	"os"
@@ -20,16 +21,16 @@ import (
 
 type anchorUse struct {
 	kind, anchor string
-	within       []Seg
+	within       []lang.Seg
 	ident        bool
-	rng          Pos
+	rng          lang.Pos
 }
 
 // anchorUses collects every anchor a template places something on, in upstream.
 //
 // Inline anchors count too, not only named ones. A tool that checks only named declarations reports
 // "all 0 valid", which reads exactly like all green: a check that covered 0 items is not working.
-func anchorUses(t *Template) []anchorUse {
+func anchorUses(t *lang.Template) []anchorUse {
 	var out []anchorUse
 	for _, s := range t.Stmts {
 		switch s.Op {
@@ -44,14 +45,14 @@ func anchorUses(t *Template) []anchorUse {
 
 // ListAnchors lists the upstream line each anchor currently resolves to. It resolves names the same
 // way weaving does (identifier form, section paths), so what it shows is what the build will use.
-func ListAnchors(c *Config, w io.Writer) error {
-	tpls, err := Templates(c)
+func ListAnchors(c *lang.Config, w io.Writer) error {
+	tpls, err := lang.Templates(c)
 	if err != nil {
 		return err
 	}
 	n := 0
 	for _, p := range tpls {
-		t, err := LoadTemplate(c, p)
+		t, err := lang.LoadTemplate(c, p)
 		if err != nil {
 			return err
 		}
@@ -59,13 +60,13 @@ func ListAnchors(c *Config, w io.Writer) error {
 		if len(uses) == 0 {
 			continue
 		}
-		src, _, _ := c.read(c.Warp, t.BasePath)
+		src, _, _ := c.Read(c.Warp, t.BasePath)
 		tree := ast.New(t.Type, src)
 		fmt.Fprintln(w, t.Target)
 		for _, u := range uses {
 			label := u.anchor
 			var where string
-			if span, name, err := locate(tree, u.kind, u.within, u.anchor, u.ident, Stmt{Rng: u.rng}); err == nil {
+			if span, name, err := locate(tree, u.kind, u.within, u.anchor, u.ident, lang.Stmt{Rng: u.rng}); err == nil {
 				label, where = name, fmt.Sprintf("upstream line %d", span[0]+1)
 			} else if hits := len(tree.Find(u.kind, u.anchor)); hits > 1 {
 				where = fmt.Sprintf("★ %d matches", hits)
@@ -112,11 +113,11 @@ var commentOf = map[string][2]string{
 // Why mark every anchor, not just the used ones: when writing a template, what you really want to know
 // is "which points in this file can I anchor to". Marking only the used ones shows only what is already
 // used — and the unused ones are what you are looking for.
-func AnchoredView(c *Config, w io.Writer) error {
+func AnchoredView(c *lang.Config, w io.Writer) error {
 	if c.Anchored == "" {
 		return fmt.Errorf("loom.lm has no anchored setting — it does not say where to write the view")
 	}
-	tpls, err := Templates(c)
+	tpls, err := lang.Templates(c)
 	if err != nil {
 		return err
 	}
@@ -124,7 +125,7 @@ func AnchoredView(c *Config, w io.Writer) error {
 	// template, and generating them all would bury the few dozen that matter.
 	want := map[string]bool{}
 	for _, p := range tpls {
-		t, err := LoadTemplate(c, p)
+		t, err := lang.LoadTemplate(c, p)
 		if err != nil {
 			return err
 		}

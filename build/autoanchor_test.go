@@ -1,4 +1,4 @@
-package loom_test
+package build_test
 
 import (
 	"os"
@@ -6,19 +6,20 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/axfor/loom"
+	"github.com/axfor/loom/build"
+	"github.com/axfor/loom/lang"
 )
 
 // completeOnce builds with anchor completion, returns the rewritten template, and builds again:
 // what completion writes must itself build, and must not change on a second build.
-func completeOnce(t *testing.T, c *loom.Config, dir, tpl string) string {
+func completeOnce(t *testing.T, c *lang.Config, dir, tpl string) string {
 	t.Helper()
 	p := filepath.Join(dir, "t", tpl)
-	if _, err := loom.PlanBuild(c, true); err != nil {
+	if _, err := build.PlanBuild(c, true); err != nil {
 		t.Fatalf("build with anchor completion: %v", err)
 	}
 	got, _ := os.ReadFile(p)
-	plan, err := loom.PlanBuild(c, false)
+	plan, err := build.PlanBuild(c, false)
 	if err != nil {
 		t.Fatalf("the completed template does not build:\n%s\n%v", got, err)
 	}
@@ -89,7 +90,7 @@ func TestAnchorCompletionCheckAndNoNeighbour(t *testing.T) {
 		"t/a.md.lm": "base.Intro.after(\"Ours\")\n",
 	})
 	p := filepath.Join(dir, "t", "a.md.lm")
-	if _, err := loom.PlanBuild(c, false); err == nil || !strings.Contains(err.Error(), "not woven into the product") {
+	if _, err := build.PlanBuild(c, false); err == nil || !strings.Contains(err.Error(), "not woven into the product") {
 		t.Errorf("check must report the section no statement places, got: %v", err)
 	}
 	if b, _ := os.ReadFile(p); string(b) != "base.Intro.after(\"Ours\")\n" {
@@ -97,7 +98,7 @@ func TestAnchorCompletionCheckAndNoNeighbour(t *testing.T) {
 	}
 
 	mustWrite(t, p, "base.append(`only a literal`)\n")
-	if _, err := loom.PlanBuild(c, true); err == nil || !strings.Contains(err.Error(), "can't infer an anchor") {
+	if _, err := build.PlanBuild(c, true); err == nil || !strings.Contains(err.Error(), "can't infer an anchor") {
 		t.Errorf("no section to follow must be an error, got: %v", err)
 	}
 }

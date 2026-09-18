@@ -1,4 +1,4 @@
-package loom
+package lang
 
 // Lexer shared by templates (object syntax) and loom.lm (one setting per line).
 //
@@ -13,50 +13,52 @@ import (
 	"unicode/utf8"
 )
 
-type tkind int
+type Kind int
 
 const (
-	kIdent  tkind = iota
-	kString       // "..."
-	kRaw          // `...`
-	kDot
-	kComma
-	kColon
-	kLParen
-	kRParen
-	kLBrace
-	kRBrace
-	kNewline
-	kEOF
+	KIdent  Kind = iota
+	KString      // "..."
+	KRaw         // `...`
+	KDot
+	KComma
+	KColon
+	KLParen
+	KRParen
+	KLBrace
+	KRBrace
+	KNewline
+	KEOF
 )
 
-type tok struct {
-	kind tkind
-	text string // source text for names; the unquoted value for strings and literals
-	pos  Pos
-	off  int // byte range [off, end) in the source; used when rewriting the template
-	end  int
+// Tok is one token. The fields are public: rewriting a template's text (adding an anchor argument
+// to a statement, say) needs the byte range a token covers.
+type Tok struct {
+	Kind Kind
+	Text string // source text for names; the unquoted value for strings and literals
+	Pos  Pos
+	Off  int // byte range [Off, End) in the source
+	End  int
 }
 
-func (t tok) String() string {
-	switch t.kind {
-	case kIdent:
-		return "`" + t.text + "`"
-	case kString:
-		return fmt.Sprintf("%q", t.text)
-	case kRaw:
+func (t Tok) String() string {
+	switch t.Kind {
+	case KIdent:
+		return "`" + t.Text + "`"
+	case KString:
+		return fmt.Sprintf("%q", t.Text)
+	case KRaw:
 		return "literal"
-	case kNewline:
+	case KNewline:
 		return "newline"
-	case kEOF:
+	case KEOF:
 		return "end of file"
 	}
-	return "`" + t.text + "`"
+	return "`" + t.Text + "`"
 }
 
-func lexLoom(file string, src []byte) ([]tok, error) {
+func Lex(file string, src []byte) ([]Tok, error) {
 	s := string(src)
-	var out []tok
+	var out []Tok
 	line, col, i := 1, 1, 0
 	adv := func() rune {
 		r, w := utf8.DecodeRuneInString(s[i:])
@@ -84,7 +86,7 @@ func lexLoom(file string, src []byte) ([]tok, error) {
 			adv()
 		case r == '\n':
 			adv()
-			out = append(out, tok{kind: kNewline, text: "\n", pos: here})
+			out = append(out, Tok{Kind: KNewline, Text: "\n", Pos: here})
 		case r == '/' && peek(1) == '/':
 			for i < len(s) && s[i] != '\n' {
 				adv()
@@ -115,7 +117,7 @@ func lexLoom(file string, src []byte) ([]tok, error) {
 			if !closed {
 				return nil, fmt.Errorf("%s: unterminated string (strings cannot span lines; use backticks `...` for multi-line content)", here)
 			}
-			out = append(out, tok{kind: kString, text: b.String(), pos: here})
+			out = append(out, Tok{Kind: KString, Text: b.String(), Pos: here})
 		case r == '`':
 			adv()
 			start := i
@@ -127,28 +129,28 @@ func lexLoom(file string, src []byte) ([]tok, error) {
 			}
 			body := s[start:i]
 			adv()
-			out = append(out, tok{kind: kRaw, text: dedent(body), pos: here})
+			out = append(out, Tok{Kind: KRaw, Text: dedent(body), Pos: here})
 		case r == '.':
 			adv()
-			out = append(out, tok{kind: kDot, text: ".", pos: here})
+			out = append(out, Tok{Kind: KDot, Text: ".", Pos: here})
 		case r == ',':
 			adv()
-			out = append(out, tok{kind: kComma, text: ",", pos: here})
+			out = append(out, Tok{Kind: KComma, Text: ",", Pos: here})
 		case r == ':':
 			adv()
-			out = append(out, tok{kind: kColon, text: ":", pos: here})
+			out = append(out, Tok{Kind: KColon, Text: ":", Pos: here})
 		case r == '(':
 			adv()
-			out = append(out, tok{kind: kLParen, text: "(", pos: here})
+			out = append(out, Tok{Kind: KLParen, Text: "(", Pos: here})
 		case r == ')':
 			adv()
-			out = append(out, tok{kind: kRParen, text: ")", pos: here})
+			out = append(out, Tok{Kind: KRParen, Text: ")", Pos: here})
 		case r == '{':
 			adv()
-			out = append(out, tok{kind: kLBrace, text: "{", pos: here})
+			out = append(out, Tok{Kind: KLBrace, Text: "{", Pos: here})
 		case r == '}':
 			adv()
-			out = append(out, tok{kind: kRBrace, text: "}", pos: here})
+			out = append(out, Tok{Kind: KRBrace, Text: "}", Pos: here})
 		case r == '_' || unicode.IsLetter(r):
 			start := i
 			for i < len(s) {
@@ -158,16 +160,16 @@ func lexLoom(file string, src []byte) ([]tok, error) {
 				}
 				adv()
 			}
-			out = append(out, tok{kind: kIdent, text: s[start:i], pos: here})
+			out = append(out, Tok{Kind: KIdent, Text: s[start:i], Pos: here})
 		default:
 			return nil, fmt.Errorf("%s: unexpected `%c` — names with spaces or punctuation must be quoted", here, r)
 		}
 		if len(out) > n {
-			out[n].off, out[n].end = startOff, i
+			out[n].Off, out[n].End = startOff, i
 		}
 	}
 	end := Pos{File: file, Line: line, Col: col}
-	out = append(out, tok{kNewline, "\n", end, len(s), len(s)}, tok{kEOF, "", end, len(s), len(s)})
+	out = append(out, Tok{KNewline, "\n", end, len(s), len(s)}, Tok{KEOF, "", end, len(s), len(s)})
 	return out, nil
 }
 

@@ -1,4 +1,4 @@
-package loom
+package lang
 
 import "fmt"
 

@@ -1,4 +1,4 @@
-package loom
+package lang
 
 // The template's intermediate form: what a template says, independent of how it is written.
 // objparse.go reads object syntax into it; the engine (weave.go) and the tools (list, anchors,

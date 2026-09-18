@@ -1,4 +1,4 @@
-package loom
+package lang
 
 // Variable injection: sources in our layer write {{@name}}, and the value comes from a variables file
 // (lm.e by default, another one with `-e`).
@@ -73,7 +73,7 @@ func NoVars() *Vars {
 // Expand substitutes the variables in a piece of our content. file and line / col are for error
 // messages: where the content came from, and the line and column of that file it starts at (1:1 for a whole file).
 func (v *Vars) Expand(src []byte, file string, line, col int) ([]byte, error) {
-	if !bytes.Contains(src, []byte("{{@")) || isBinary(src) {
+	if !bytes.Contains(src, []byte("{{@")) || IsBinary(src) {
 		return src, nil
 	}
 	var firstErr error
@@ -131,7 +131,7 @@ func posIn(src []byte, off int, file string, line, col int) string {
 }
 
 // isBinary reports whether b looks binary: a NUL in the first 8000 bytes means binary, so no substitution.
-func isBinary(b []byte) bool {
+func IsBinary(b []byte) bool {
 	n := len(b)
 	if n > 8000 {
 		n = 8000

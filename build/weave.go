@@ -1,4 +1,4 @@
-package loom
+package build
 
 // Weaving: take the warp copy as the base and thread the weft's content into it, statement by statement.
 //
@@ -8,6 +8,7 @@ package loom
 
 import (
 	"fmt"
+	"github.com/axfor/loom/lang"
 	"sort"
 	"strings"
 
@@ -21,7 +22,7 @@ type edit struct {
 }
 
 // Weave weaves one template and returns the product content.
-func Weave(c *Config, t *Template) (string, error) {
+func Weave(c *lang.Config, t *lang.Template) (string, error) {
 	from := t.From
 	if from == "" {
 		from = c.Warp
@@ -33,10 +34,10 @@ func Weave(c *Config, t *Template) (string, error) {
 		if s.Op != "merge" {
 			continue
 		}
-		if _, ok, err := c.read(from, weftRel(c, t, from, t.BasePath)); err != nil || !ok {
+		if _, ok, err := c.Read(from, weftRel(c, t, from, t.BasePath)); err != nil || !ok {
 			return "", fmt.Errorf("%s: layer %s has no %s to merge into", s.Rng, from, t.BasePath)
 		}
-		ours, ok, err := c.read(c.Weft, t.Target)
+		ours, ok, err := c.Read(c.Weft, t.Target)
 		if err != nil {
 			return "", err
 		}
@@ -49,7 +50,7 @@ func Weave(c *Config, t *Template) (string, error) {
 		return ours, nil
 	}
 
-	src, ok, err := c.read(from, weftRel(c, t, from, t.BasePath))
+	src, ok, err := c.Read(from, weftRel(c, t, from, t.BasePath))
 	if err != nil {
 		return "", fmt.Errorf("%s: %v", t.Path, err)
 	}
@@ -127,7 +128,7 @@ type nestCtx struct {
 // earlier line numbers from being shifted by earlier insertions. But when two statements target the
 // same anchor, reverse order would flip their relative order — so equal positions are sorted in
 // reverse template order, and once applied they end up in template order again.
-func apply(c *Config, t *Template, stmts []Stmt, tree ast.Tree, rel string, nest *nestCtx) error {
+func apply(c *lang.Config, t *lang.Template, stmts []lang.Stmt, tree ast.Tree, rel string, nest *nestCtx) error {
 	var edits []edit
 	plain := t.Type == "text" || t.Type == "json"
 	if nest != nil {
@@ -239,7 +240,7 @@ func apply(c *Config, t *Template, stmts []Stmt, tree ast.Tree, rel string, nest
 			if s.File != "" {
 				fmRel = s.File
 			}
-			other, ok, err := c.read(s.Layer, fmRel)
+			other, ok, err := c.Read(s.Layer, fmRel)
 			if err != nil {
 				return fmt.Errorf("%s: %v", s.Rng, err)
 			}
@@ -276,7 +277,7 @@ func apply(c *Config, t *Template, stmts []Stmt, tree ast.Tree, rel string, nest
 // of the previous one — up to the next heading of the same or higher level; the last segment takes its
 // own section (up to the next heading), the same as a single name.
 // The same subsection name appearing once under each of several sections is common; the path says which one.
-func locate(tree ast.Tree, kind string, within []Seg, anchor string, ident bool, s Stmt) ([2]int, string, error) {
+func locate(tree ast.Tree, kind string, within []lang.Seg, anchor string, ident bool, s lang.Stmt) ([2]int, string, error) {
 	if len(within) == 0 {
 		name := anchor
 		if ident {
@@ -295,7 +296,7 @@ func locate(tree ast.Tree, kind string, within []Seg, anchor string, ident bool,
 	nodes := ast.Addressable(tree, "heading")
 	lo, hi := 0, len(tree.Lines())
 	var path []string
-	pick := func(seg Seg) (int, error) {
+	pick := func(seg lang.Seg) (int, error) {
 		var hits []int
 		for k, n := range nodes {
 			if n.Line >= lo && n.Line < hi && (n.Name == seg.Name || (seg.Ident && identMatch(n.Name, seg.Name))) {
@@ -336,7 +337,7 @@ func locate(tree ast.Tree, kind string, within []Seg, anchor string, ident bool,
 		lo, hi = n.Line+1, end
 		path = append(path, n.Name)
 	}
-	k, err := pick(Seg{anchor, ident})
+	k, err := pick(lang.Seg{Name: anchor, Ident: ident})
 	if err != nil {
 		return [2]int{}, "", err
 	}
@@ -348,7 +349,7 @@ func locate(tree ast.Tree, kind string, within []Seg, anchor string, ident bool,
 }
 
 // oneIn finds the unique node in the tree; when none is found it suggests the closest name.
-func oneIn(tree ast.Tree, s Stmt, kind, anchor string) ([2]int, error) {
+func oneIn(tree ast.Tree, s lang.Stmt, kind, anchor string) ([2]int, error) {
 	hits := tree.Find(kind, anchor)
 	if len(hits) == 0 {
 		if near := nearestName(tree, kind, anchor); near != "" {
@@ -360,7 +361,7 @@ func oneIn(tree ast.Tree, s Stmt, kind, anchor string) ([2]int, error) {
 
 // resolveIdent resolves an identifier-form name (_ matches a space or an underscore) to the real name in the tree.
 // More than one match is an error — no guessing; it must be rewritten in string form.
-func resolveIdent(tree ast.Tree, kind, ident string, at Pos) (string, error) {
+func resolveIdent(tree ast.Tree, kind, ident string, at lang.Pos) (string, error) {
 	names := ast.Addressable(tree, kind)
 	var hits []string
 	seen := map[string]bool{}
@@ -411,7 +412,7 @@ func nearestName(tree ast.Tree, kind, want string) string {
 	best, bestD := "", -1
 	limit := len([]rune(want))/3 + 2
 	for _, n := range ast.Addressable(tree, kind) {
-		d := editDistance(strings.ToLower(n.Name), strings.ToLower(want))
+		d := lang.EditDistance(strings.ToLower(n.Name), strings.ToLower(want))
 		if d <= limit && (bestD < 0 || d < bestD) {
 			best, bestD = n.Name, d
 		}
@@ -419,7 +420,7 @@ func nearestName(tree ast.Tree, kind, want string) string {
 	return best
 }
 
-func one(s Stmt, hits [][2]int, kind, anchor string) ([2]int, error) {
+func one(s lang.Stmt, hits [][2]int, kind, anchor string) ([2]int, error) {
 	if len(hits) == 0 {
 		return [2]int{}, fmt.Errorf("%s: anchor not found: %s %q — "+
 			"upstream most likely changed here; not a malfunction, but a signal to take a look", s.Rng, kind, anchor)
@@ -431,7 +432,7 @@ func one(s Stmt, hits [][2]int, kind, anchor string) ([2]int, error) {
 	return hits[0], nil
 }
 
-func payloads(c *Config, t *Template, refs []Ref, rel string, nest *nestCtx) (string, error) {
+func payloads(c *lang.Config, t *lang.Template, refs []lang.Ref, rel string, nest *nestCtx) (string, error) {
 	var parts []string
 	for _, r := range refs {
 		p, err := payload(c, t, r, rel, nest)
@@ -443,20 +444,20 @@ func payloads(c *Config, t *Template, refs []Ref, rel string, nest *nestCtx) (st
 	return strings.Join(parts, "\n"), nil
 }
 
-func isMarked(c *Config, t *Template, refs []Ref, body string) bool {
+func isMarked(c *lang.Config, t *lang.Template, refs []lang.Ref, body string) bool {
 	if len(refs) == 0 {
 		return false
 	}
 	return refMarked(c, t, refs[0], body)
 }
 
-func refMarked(c *Config, t *Template, r Ref, body string) bool {
-	m, ok := c.marksFor(r.Layer, t.Type)
+func refMarked(c *lang.Config, t *lang.Template, r lang.Ref, body string) bool {
+	m, ok := c.MarksFor(r.Layer, t.Type)
 	return ok && strings.HasPrefix(body, m.Begin)
 }
 
 // payload evaluates one content source.
-func payload(c *Config, t *Template, r Ref, rel string, nest *nestCtx) (string, error) {
+func payload(c *lang.Config, t *lang.Template, r lang.Ref, rel string, nest *nestCtx) (string, error) {
 	if r.IsLit {
 		// A literal belongs to our layer: wrap it in marks like the rest of our content, or the
 		// "byte-identical to upstream once marks are stripped" check fails.
@@ -487,7 +488,7 @@ func payload(c *Config, t *Template, r Ref, rel string, nest *nestCtx) (string, 
 		return "", fmt.Errorf("%s: `%s.%s` needs an anchor: write %s.%s[\"...\"]", r.Rng, r.Layer, r.Kind, r.Layer, r.Kind)
 	}
 	a := refTree(t, r.Kind, src, useNest)
-	span, _, err := locate(a, r.Kind, r.Within, r.Anchor, r.Ident, Stmt{Rng: r.Rng})
+	span, _, err := locate(a, r.Kind, r.Within, r.Anchor, r.Ident, lang.Stmt{Rng: r.Rng})
 	if err != nil {
 		return "", err
 	}
@@ -497,12 +498,12 @@ func payload(c *Config, t *Template, r Ref, rel string, nest *nestCtx) (string, 
 // refSource gets the text a content source lives in: which file to read it from, and in a nested
 // context only the nested body. Weaving and list share it — the name list reports must be the one
 // weaving actually looks up.
-func refSource(c *Config, t *Template, r Ref, rel string, nest *nestCtx) (string, *nestCtx, error) {
+func refSource(c *lang.Config, t *lang.Template, r lang.Ref, rel string, nest *nestCtx) (string, *nestCtx, error) {
 	srcRel := weftRel(c, t, r.Layer, rel)
 	if r.File != "" {
 		srcRel = r.File
 	}
-	src, ok, err := c.read(r.Layer, srcRel)
+	src, ok, err := c.Read(r.Layer, srcRel)
 	if err != nil {
 		return "", nil, fmt.Errorf("%s: %v", r.Rng, err)
 	}
@@ -526,7 +527,7 @@ func refSource(c *Config, t *Template, r Ref, rel string, nest *nestCtx) (string
 }
 
 // refTree picks a tree for the source text based on the node kind.
-func refTree(t *Template, kind, src string, useNest *nestCtx) ast.Tree {
+func refTree(t *lang.Template, kind, src string, useNest *nestCtx) ast.Tree {
 	for _, tn := range ast.Types {
 		if ast.Has(ast.Kinds(tn), kind) && (useNest == nil || tn != t.Type) {
 			return ast.New(tn, src)
@@ -538,11 +539,11 @@ func refTree(t *Template, kind, src string, useNest *nestCtx) ast.Tree {
 // weftRel is the file a layer's content is read from: the product path by default; when the template
 // sets source, the weft layer reads from source instead.
 // Only the weft changes: the warp always reads by product path (or by the upstream original name given with rename).
-func weftRel(c *Config, t *Template, layer, rel string) string {
+func weftRel(c *lang.Config, t *lang.Template, layer, rel string) string {
 	if t.Source == "" || rel != t.Target {
 		return rel
 	}
-	if l, ok := c.layer(layer); ok && l.Role == "weft" {
+	if l, ok := c.Layer(layer); ok && l.Role == "weft" {
 		return t.Source
 	}
 	return rel
@@ -550,8 +551,8 @@ func weftRel(c *Config, t *Template, layer, rel string) string {
 
 // mark wraps weft content in marks — "100% of the warp preserved" is verified by stripping the marks
 // and comparing byte for byte.
-func mark(c *Config, t *Template, layer, v string) string {
-	m, ok := c.marksFor(layer, t.Type)
+func mark(c *lang.Config, t *lang.Template, layer, v string) string {
+	m, ok := c.MarksFor(layer, t.Type)
 	if !ok || strings.TrimSpace(v) == "" {
 		return v
 	}
@@ -593,7 +594,7 @@ func unquote(v string) (string, bool) {
 // Upstream's value is read from upstream's file, not from the product being built, so it is still
 // there after set(self.frontmatter) replaced the block. Joining is idempotent: a value that already
 // contains the other half is not doubled.
-func applyValue(c *Config, t *Template, tree ast.Tree, s Stmt) error {
+func applyValue(c *lang.Config, t *lang.Template, tree ast.Tree, s lang.Stmt) error {
 	typ := t.Type
 	if s.Kind == "fmkey" {
 		typ = "markdown"
@@ -604,12 +605,12 @@ func applyValue(c *Config, t *Template, tree ast.Tree, s Stmt) error {
 		rel := weftRel(c, t, s.SetRef.Layer, t.Target)
 		srcTyp := t.Type
 		if s.SetRef.File != "" {
-			rel, srcTyp = s.SetRef.File, TypeOf(s.SetRef.File)
+			rel, srcTyp = s.SetRef.File, lang.TypeOf(s.SetRef.File)
 		}
 		if s.SetRef.Kind == "fmkey" {
 			srcTyp = "markdown"
 		}
-		src, ok, err := c.read(s.SetRef.Layer, rel)
+		src, ok, err := c.Read(s.SetRef.Layer, rel)
 		if err != nil {
 			return fmt.Errorf("%s: %v", s.Rng, err)
 		}
@@ -636,7 +637,7 @@ func applyValue(c *Config, t *Template, tree ast.Tree, s Stmt) error {
 		if from == "" {
 			from = c.Warp
 		}
-		up, _, err := c.read(from, t.BasePath)
+		up, _, err := c.Read(from, t.BasePath)
 		if err != nil {
 			return fmt.Errorf("%s: %v", s.Rng, err)
 		}

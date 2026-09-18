@@ -1,23 +1,23 @@
-package loom_test
+package build_test
 
 import (
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/axfor/loom"
+	"github.com/axfor/loom/lang"
 )
 
 // regRepo is a repository whose json products are merged as a registry: a table of event -> handlers,
 // where an entry's identity is the script it calls.
-func regRepo(t *testing.T, files map[string]string) (*loom.Config, string) {
+func regRepo(t *testing.T, files map[string]string) (*lang.Config, string) {
 	t.Helper()
 	dir := t.TempDir()
-	mustWrite(t, filepath.Join(dir, "loom.lm"), "base \"up\"\nself \"me\"\n")
+	mustWrite(t, filepath.Join(dir, "build.lm"), "base \"up\"\nself \"me\"\n")
 	for p, s := range files {
 		mustWrite(t, filepath.Join(dir, filepath.FromSlash(p)), s)
 	}
-	c, err := loom.LoadConfig(filepath.Join(dir, "loom.lm"))
+	c, err := lang.LoadConfig(filepath.Join(dir, "build.lm"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestRegistryMerge(t *testing.T) {
 			`"PreToolUse":[{"matcher":"Write|Edit","hooks":[` + entry("ours.sh") + `]}]}}`,
 		"me/hooks/hooks.lm": "base.merge(self)\n",
 	})
-	if _, err := build(t, c, filepath.Join(dir, "out")); err != nil {
+	if _, err := buildTree(t, c, filepath.Join(dir, "out")); err != nil {
 		t.Fatal(err)
 	}
 	got := readFile(t, filepath.Join(dir, "out", "hooks", "hooks.json"))
@@ -57,8 +57,8 @@ func TestRegistryMerge(t *testing.T) {
 // line is told what to do instead of being merged by a rule it does not name.
 func TestRegistrySettingIsGone(t *testing.T) {
 	dir := t.TempDir()
-	mustWrite(t, filepath.Join(dir, "loom.lm"), "base \"up\"\nself \"me\"\nregistry \"hooks\" \"hooks/(x)\"\n")
-	_, err := loom.LoadConfig(filepath.Join(dir, "loom.lm"))
+	mustWrite(t, filepath.Join(dir, "build.lm"), "base \"up\"\nself \"me\"\nregistry \"hooks\" \"hooks/(x)\"\n")
+	_, err := lang.LoadConfig(filepath.Join(dir, "build.lm"))
 	if err == nil || !strings.Contains(err.Error(), "base.merge(self)") {
 		t.Errorf("want the line refused with what to do instead, got: %v", err)
 	}
@@ -72,14 +72,14 @@ func TestStatementsInAJsonTemplateAreRefused(t *testing.T) {
 		"me/hooks/hooks.json": `{"hooks":{"SessionStart":[{"hooks":[` + entry("ours.sh") + `]}]}}`,
 		"me/hooks/hooks.lm":   "base.merge(self)\nbase.SessionStart.after(`x`)\n",
 	})
-	_, err := build(t, c, filepath.Join(dir, "out"))
+	_, err := buildTree(t, c, filepath.Join(dir, "out"))
 	if err == nil || !strings.Contains(err.Error(), "base.merge(self)") {
 		t.Fatalf("want an error naming the one statement a registry takes, got: %v", err)
 	}
 
 	// and an empty template is refused too: it would be the only way to ask for this, and it says nothing
 	mustWrite(t, filepath.Join(dir, "me", "hooks", "hooks.lm"), "// merged somehow?\n")
-	if _, err := build(t, c, filepath.Join(dir, "out")); err == nil || !strings.Contains(err.Error(), "base.merge(self)") {
+	if _, err := buildTree(t, c, filepath.Join(dir, "out")); err == nil || !strings.Contains(err.Error(), "base.merge(self)") {
 		t.Fatalf("want the same error for a template with no statement, got: %v", err)
 	}
 }
@@ -94,7 +94,7 @@ func TestSameHandlerUnderTwoMatchers(t *testing.T) {
 			`{"matcher":"Bash","hooks":[` + entry("gate.sh") + `]}]}}`,
 		"me/hooks/hooks.lm": "base.merge(self)\n",
 	})
-	if _, err := build(t, c, filepath.Join(dir, "out")); err != nil {
+	if _, err := buildTree(t, c, filepath.Join(dir, "out")); err != nil {
 		t.Fatalf("two matchers for one handler must be allowed: %v", err)
 	}
 	got := readFile(t, filepath.Join(dir, "out", "hooks", "hooks.json"))

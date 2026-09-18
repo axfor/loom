@@ -1,4 +1,4 @@
-package loom
+package build
 
 // A json product is both layers' file together: upstream's registrations and ours.
 //
@@ -14,6 +14,7 @@ package loom
 
 import (
 	"fmt"
+	"github.com/axfor/loom/lang"
 	"regexp"
 	"sort"
 	"strings"
@@ -24,16 +25,16 @@ import (
 // script names a handler: a file a registration calls.
 var script = regexp.MustCompile(`[A-Za-z0-9_.-]+\.(?:sh|bash|js|mjs|cjs|ts|py|rb|pl)\b`)
 
-func mergeRegistry(c *Config, t *Template) (string, error) {
+func mergeRegistry(c *lang.Config, t *lang.Template) (string, error) {
 	from := t.From
 	if from == "" {
 		from = c.Warp
 	}
-	upSrc, _, err := c.read(from, t.BasePath)
+	upSrc, _, err := c.Read(from, t.BasePath)
 	if err != nil {
 		return "", err
 	}
-	wfSrc, _, err := c.read(c.Weft, t.Target)
+	wfSrc, _, err := c.Read(c.Weft, t.Target)
 	if err != nil {
 		return "", err
 	}

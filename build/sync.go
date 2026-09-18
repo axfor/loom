@@ -1,9 +1,10 @@
-package loom
+package build
 
 import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/axfor/loom/lang"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -34,7 +35,7 @@ type SyncReport struct {
 // Sync replaces the upstream layer with the tree at from and merges upstream's changes into the
 // files of merge templates. from is taken as it is: leave out what should not be upstream (.git and
 // the like) before calling.
-func Sync(c *Config, from string) (*SyncReport, error) {
+func Sync(c *lang.Config, from string) (*SyncReport, error) {
 	if c.Warp == "" || c.Weft == "" {
 		return nil, fmt.Errorf("sync needs both base and self in loom.lm")
 	}
@@ -62,12 +63,12 @@ func Sync(c *Config, from string) (*SyncReport, error) {
 	}
 	var merges []merge
 	var unresolved []string
-	tpls, err := Templates(c)
+	tpls, err := lang.Templates(c)
 	if err != nil {
 		return nil, err
 	}
 	for _, p := range tpls {
-		t, err := LoadTemplate(c, p)
+		t, err := lang.LoadTemplate(c, p)
 		if err != nil {
 			return nil, fmt.Errorf("fix the templates before syncing, the old upstream is needed to merge: %v", err)
 		}
@@ -79,7 +80,7 @@ func Sync(c *Config, from string) (*SyncReport, error) {
 			m.old, _ = os.ReadFile(filepath.Join(upRoot, m.base))
 			m.mine, _ = os.ReadFile(m.ours)
 			if hasConflictMarkers(string(m.mine)) {
-				unresolved = append(unresolved, rel(c, m.ours))
+				unresolved = append(unresolved, lang.Rel(c, m.ours))
 			}
 			merges = append(merges, m)
 		}
@@ -111,7 +112,7 @@ func Sync(c *Config, from string) (*SyncReport, error) {
 	}
 
 	for _, m := range merges {
-		ours := rel(c, m.ours)
+		ours := lang.Rel(c, m.ours)
 		now, err := os.ReadFile(filepath.Join(upRoot, m.base))
 		switch {
 		case errors.Is(err, fs.ErrNotExist):

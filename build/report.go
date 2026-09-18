@@ -1,4 +1,4 @@
-package loom
+package build
 
 // Build report: our layer versus upstream. What was extended, overridden or dropped, and whether
 // any upstream content was lost.
@@ -14,6 +14,7 @@ package loom
 
 import (
 	"fmt"
+	"github.com/axfor/loom/lang"
 	"io"
 	"sort"
 	"strings"
@@ -46,14 +47,14 @@ type ReportLine struct {
 }
 
 // account records a woven template in the report and checks that no upstream section was lost.
-func account(c *Config, t *Template, out string, r *Report) []error {
+func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 	var errs []error
 	whole := t.From != "" && t.From != c.Warp
 	merged := false
 	var inserted []string
-	var drops, replaces []Stmt
-	var walk func(ss []Stmt)
-	walk = func(ss []Stmt) {
+	var drops, replaces []lang.Stmt
+	var walk func(ss []lang.Stmt)
+	walk = func(ss []lang.Stmt) {
 		for _, s := range ss {
 			switch s.Op {
 			case "merge":
@@ -80,7 +81,7 @@ func account(c *Config, t *Template, out string, r *Report) []error {
 	// Our frontmatter must reach the product too: a key only in our file, left out because the template
 	// neither sets nor starts / appends a frontmatter key, would disappear with nothing to say so.
 	if t.Type == "markdown" && !whole && !merged && c.Weft != "" {
-		if ours, ok, _ := c.read(c.Weft, weftRel(c, t, c.Weft, t.Target)); ok {
+		if ours, ok, _ := c.Read(c.Weft, weftRel(c, t, c.Weft, t.Target)); ok {
 			for _, k := range frontmatterKeys(ours) {
 				// Both sides are read as weaving writes them, so an escaped quote compares equal.
 				want, _ := keyValue("markdown", ours, k)
@@ -103,7 +104,7 @@ func account(c *Config, t *Template, out string, r *Report) []error {
 		}
 	}
 
-	up, upOK, _ := c.read(c.Warp, t.BasePath)
+	up, upOK, _ := c.Read(c.Warp, t.BasePath)
 	var upTree ast.Tree
 	kind := ""
 	switch t.Type {
@@ -116,7 +117,7 @@ func account(c *Config, t *Template, out string, r *Report) []error {
 		upTree = ast.New(t.Type, up)
 	}
 	// realName maps a name written as an identifier to its real name in upstream
-	realName := func(s Stmt) string {
+	realName := func(s lang.Stmt) string {
 		if (s.Ident || len(s.Within) > 0) && upTree != nil {
 			if _, n, err := locate(upTree, s.Kind, s.Within, s.Anchor, s.Ident, s); err == nil {
 				return n
@@ -154,7 +155,7 @@ func account(c *Config, t *Template, out string, r *Report) []error {
 
 	// Strip our marks and count how often each name appears in the product
 	outText := out
-	if m, ok := c.marksFor(c.Weft, t.Type); ok && c.Weft != "" {
+	if m, ok := c.MarksFor(c.Weft, t.Type); ok && c.Weft != "" {
 		outText = stripMarked(out, m)
 		// This is why the language exists: for an insert-only template, the body with marks stripped
 		// must be byte-identical to upstream. It is checked on every build instead of by a separate
@@ -188,7 +189,7 @@ func account(c *Config, t *Template, out string, r *Report) []error {
 
 	// Nodes accounted for by drop / replace, keyed by position in upstream: several sections may share a name, and this records which one
 	coveredAt := map[int]bool{}
-	nodeLines := func(s Stmt) []int {
+	nodeLines := func(s lang.Stmt) []int {
 		if len(s.Within) > 0 {
 			if span, _, err := locate(upTree, kind, s.Within, s.Anchor, s.Ident, s); err == nil {
 				return []int{span[0]}
@@ -201,7 +202,7 @@ func account(c *Config, t *Template, out string, r *Report) []error {
 		}
 		return lines
 	}
-	accounted := append(append([]Stmt{}, drops...), replaces...)
+	accounted := append(append([]lang.Stmt{}, drops...), replaces...)
 	for _, s := range accounted {
 		if s.Kind == kind {
 			for _, l := range nodeLines(s) {
@@ -262,14 +263,14 @@ func account(c *Config, t *Template, out string, r *Report) []error {
 				what = "function"
 			}
 			errs = append(errs, fmt.Errorf("%s: upstream content lost: in %s, %s %q is not in the product and no drop / replace gives a reason. "+
-				"Weave it in, or write: base.%s.drop(reason: \"...\")", t.Path, t.Target, what, name, nameText(name)))
+				"Weave it in, or write: base.%s.drop(reason: \"...\")", t.Path, t.Target, what, name, lang.NameText(name)))
 		}
 	}
 	return errs
 }
 
 // refName is what the report calls a content source.
-func refName(r Ref) string {
+func refName(r lang.Ref) string {
 	switch {
 	case r.IsLit:
 		return "literal"
@@ -282,7 +283,7 @@ func refName(r Ref) string {
 }
 
 // stripMarked removes marked blocks (marks included); what remains is the upstream part.
-func stripMarked(s string, m Marks) string {
+func stripMarked(s string, m lang.Marks) string {
 	var out []string
 	skip := false
 	for _, l := range strings.Split(s, "\n") {

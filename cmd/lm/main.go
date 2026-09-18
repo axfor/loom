@@ -13,7 +13,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/axfor/loom"
+	"github.com/axfor/loom/build"
+	"github.com/axfor/loom/lang"
 )
 
 const usage = `lm — weave two source layers into one product
@@ -38,7 +39,7 @@ Usage:
   lm view                   generate a derived view annotated with anchors
   lm version                print the version, platform and Go version
 
-Settings are read from the nearest loom.lm (searching up from the current directory).
+Settings are read from the nearest build.lm (searching up from the current directory).
 `
 
 func main() {
@@ -65,11 +66,11 @@ func run(cmd string, args []string) error {
 	if err != nil {
 		return err
 	}
-	cfgPath, err := loom.FindConfig(wd)
+	cfgPath, err := lang.FindConfig(wd)
 	if err != nil {
 		return err
 	}
-	c, err := loom.LoadConfig(cfgPath)
+	c, err := lang.LoadConfig(cfgPath)
 	if err != nil {
 		return err
 	}
@@ -77,7 +78,7 @@ func run(cmd string, args []string) error {
 	switch cmd {
 	case "weave":
 		fs := flag.NewFlagSet("weave", flag.ContinueOnError)
-		envFlag := fs.String("e", "", "variables file (default: lm.e next to loom.lm)")
+		envFlag := fs.String("e", "", "variables file (default: lm.e next to build.lm)")
 		stdinFlag := fs.Bool("stdin", false, "read the template text from stdin; the path still names the product")
 		if err := fs.Parse(args); err != nil {
 			return err
@@ -97,8 +98,8 @@ func run(cmd string, args []string) error {
 
 	case "build", "check":
 		fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
-		envFlag := fs.String("e", "", "variables file (default: lm.e next to loom.lm)")
-		outFlag := fs.String("o", "", "output directory (default: output in loom.lm)")
+		envFlag := fs.String("e", "", "variables file (default: lm.e next to build.lm)")
+		outFlag := fs.String("o", "", "output directory (default: output in build.lm)")
 		reportFlag := fs.String("report", "", "write the full build report to this file (markdown)")
 		if err := fs.Parse(args); err != nil {
 			return err
@@ -114,14 +115,14 @@ func run(cmd string, args []string) error {
 			outDir = filepath.Join(c.Root, c.Output)
 		}
 		if cmd == "build" && outDir == "" {
-			return fmt.Errorf("no output directory — pass -o, or write output \"...\" in loom.lm")
+			return fmt.Errorf("no output directory — pass -o, or write output \"...\" in build.lm")
 		}
-		plan, err := loom.PlanBuild(c, cmd == "build")
+		plan, err := build.PlanBuild(c, cmd == "build")
 		if err != nil {
 			return err
 		}
 		if cmd == "build" {
-			if err := loom.WriteBuild(c, plan, outDir); err != nil {
+			if err := build.WriteBuild(c, plan, outDir); err != nil {
 				return err
 			}
 		}
@@ -135,7 +136,7 @@ func run(cmd string, args []string) error {
 			// With -o, check also answers "would lm build change this output directory?". Only on request:
 			// while sources are being edited the output is behind by design, and a check of the sources
 			// (a lint step before building, say) must not fail for that.
-			problems, err := loom.StaleOutputs(c, plan, outDir)
+			problems, err := build.StaleOutputs(c, plan, outDir)
 			if err != nil {
 				return err
 			}
@@ -156,7 +157,7 @@ func run(cmd string, args []string) error {
 		if len(args) != 1 {
 			return fmt.Errorf("usage: lm sync <new-upstream-dir>")
 		}
-		r, err := loom.Sync(c, args[0])
+		r, err := build.Sync(c, args[0])
 		if r != nil {
 			printSync(r)
 		}
@@ -170,18 +171,18 @@ func run(cmd string, args []string) error {
 
 	case "list":
 		if len(args) == 1 && args[0] == "-tsv" {
-			return loom.ListTSV(c, os.Stdout)
+			return build.ListTSV(c, os.Stdout)
 		}
-		return loom.List(c, os.Stdout)
+		return build.List(c, os.Stdout)
 	case "anchors":
-		return loom.ListAnchors(c, os.Stdout)
+		return build.ListAnchors(c, os.Stdout)
 	case "view":
-		return loom.AnchoredView(c, os.Stdout)
+		return build.AnchoredView(c, os.Stdout)
 	}
 	return fmt.Errorf("unknown subcommand `%s`\n%s", cmd, usage)
 }
 
-func printSync(r *loom.SyncReport) {
+func printSync(r *build.SyncReport) {
 	fmt.Printf("upstream    %4d added · %d changed · %d removed\n", len(r.Added), len(r.Changed), len(r.Removed))
 	list := func(title string, paths []string, note string) {
 		if len(paths) == 0 {
@@ -198,17 +199,17 @@ func printSync(r *loom.SyncReport) {
 }
 
 // loadVars reads only the file given with -e (no fallback to lm.e); without -e it reads lm.e next to
-// loom.lm, and no such file means no variables.
-func loadVars(c *loom.Config, file string) error {
+// build.lm, and no such file means no variables.
+func loadVars(c *lang.Config, file string) error {
 	if file == "" {
-		p := filepath.Join(c.Root, loom.VarsName)
+		p := filepath.Join(c.Root, lang.VarsName)
 		if _, err := os.Stat(p); err != nil {
-			c.Vars = loom.NoVars()
+			c.Vars = lang.NoVars()
 			return nil
 		}
 		file = p
 	}
-	v, err := loom.LoadVars(file)
+	v, err := lang.LoadVars(file)
 	if err != nil {
 		return err
 	}
@@ -216,20 +217,20 @@ func loadVars(c *loom.Config, file string) error {
 	return nil
 }
 
-func weaveFile(c *loom.Config, path string, stdin bool) (string, error) {
-	var t *loom.Template
+func weaveFile(c *lang.Config, path string, stdin bool) (string, error) {
+	var t *lang.Template
 	var err error
 	if stdin {
 		var src []byte
 		if src, err = io.ReadAll(os.Stdin); err != nil {
 			return "", err
 		}
-		t, err = loom.LoadTemplateSource(c, path, src)
+		t, err = lang.LoadTemplateSource(c, path, src)
 	} else {
-		t, err = loom.LoadTemplate(c, path)
+		t, err = lang.LoadTemplate(c, path)
 	}
 	if err != nil {
 		return "", err
 	}
-	return loom.Weave(c, t)
+	return build.Weave(c, t)
 }
