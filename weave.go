@@ -66,7 +66,7 @@ func Weave(c *Config, t *Template) (string, error) {
 			if len(t.Stmts) > 0 {
 				at = t.Stmts[0].Rng.String()
 			}
-			return "", fmt.Errorf("%s: %s is a registry (registry in loom.lm): the product is upstream's entries plus ours, ours winning where both register the same handler — the template is exactly `base.merge(self)`",
+			return "", fmt.Errorf("%s: %s is a registry: the product is upstream's entries plus ours, ours replacing the upstream entry that calls the same scripts — the template is exactly `base.merge(self)`",
 				at, t.Target)
 		}
 		return mergeRegistry(c, t)

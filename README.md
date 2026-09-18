@@ -117,9 +117,6 @@ mirror    ".gemini/commands" "commands"
 
 // write the list of product files here
 manifest  ".build-manifest"
-
-// json registries: merge entries by an identity pulled out with a regex
-registry  "hooks" "hooks/([A-Za-z0-9._-]+\.(?:sh|js|py))"
 ```
 
 | Setting | Meaning |
@@ -132,7 +129,6 @@ registry  "hooks" "hooks/([A-Za-z0-9._-]+\.(?:sh|js|py))"
 | `take` | upstream paths that go into the product; `*`, `?`, `[...]` match within a path segment, `**` matches any number of directories; may repeat |
 | `mirror` | after building, copy every product file under the first directory to the second; may repeat |
 | `manifest` | write a list of all product files to this path in the output directory |
-| `registry` | merge rule for json registries: group name and identity regex |
 
 Upstream files are not taken by default. An upstream repository usually carries things that only
 serve its own development (evaluation fixtures, CI settings). What was not taken is listed in the
@@ -374,24 +370,27 @@ our edits would be kept but upstream's change to those files would not come in.
 
 ### Registries
 
-A registry is a json file that maps an event to the handlers it calls — a hooks file, say. `registry`
-in the settings names the group and how an entry's identity is pulled out of it (usually the handler
-it calls), and a json product is then built from both layers:
+A json file is usually a registry: a table saying which handler runs on which event, like a hooks
+file. A json product is built from both layers, and its template says exactly that:
 
 ```
 // mine/hooks/hooks.lm
 base.merge(self)
 ```
 
-Upstream's entries go into the product, ours replace the ones registering the same handler, and ours
-alone are added. Upstream registering a new handler of its own therefore arrives on its own.
+The objects are merged key by key. In a list, an entry of ours takes the place of the upstream entry
+that **calls the same scripts**, and our other entries are added. So our version of a handler wins,
+and a handler upstream adds of its own arrives on its own. Nothing is configured: a registration is
+recognised by the handler it names (`hooks/run.sh` in the command it runs).
 
-The point of the identity is what must not happen: a naive union registers the same handler twice.
-The file stays valid json and the handler simply runs twice — which usually breaks it, quietly. The
-build counts the entries and fails when they do not add up.
+What that is for is the thing that must not happen: registering the same handler twice. Upstream and
+our layer word it differently (upstream wraps the script in a fallback, we call it directly), so a
+plain union keeps both — the file stays valid json and the handler simply runs twice, which usually
+breaks it, quietly. The build fails when an entry of ours is missing from the product, and when the
+same handler ends up registered twice.
 
-A registry is merged whole, so its template is exactly that one statement: weaving statements have no
-part in it, and the build refuses them rather than ignore them.
+A registry is merged whole, so its template is that one statement: weaving statements have no part in
+it, and the build refuses them rather than ignore them.
 
 ---
 

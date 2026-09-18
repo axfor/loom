@@ -1,24 +1,30 @@
 package loom
 
-// Registry merge: the product is an "event -> handler" table, and a node is **one registration entry**,
-// whose identity is extracted from the entry by a regexp in the settings (usually the name of the script called).
+// A json product is both layers' file together: upstream's registrations and ours.
 //
-// Warp entries go in as they are, a weft entry replaces the warp entry with the same identity, and
-// weft-only entries are appended.
-// Why not a naive union: the same handler would be registered twice — and a registry with duplicate
-// registrations often just breaks, quietly: the file is still valid JSON, only the behavior doubles.
+// The objects are merged key by key. Where both layers have the same list, an element of ours takes
+// the place of the upstream element that **calls the same scripts**, and our other elements are
+// added. Nothing has to be configured for that: a registration is recognised by the handler it names.
+//
+// Why identity and not a plain union: upstream and our layer often register the same handler with
+// different wording (upstream wraps it in a fallback, we call it directly). A union then registers it
+// twice — the file stays valid json and the handler simply runs twice, which usually breaks it,
+// quietly. And why not "ours replaces upstream's file": upstream registering a new handler of its own
+// would then never arrive, with nothing to say so.
 
 import (
 	"fmt"
+	"regexp"
+	"sort"
+	"strings"
 
 	"github.com/axfor/loom/ast"
 )
 
+// script names a handler: a file a registration calls.
+var script = regexp.MustCompile(`[A-Za-z0-9_.-]+\.(?:sh|bash|js|mjs|cjs|ts|py|rb|pl)\b`)
+
 func mergeRegistry(c *Config, t *Template) (string, error) {
-	if c.RegGroup == "" || c.RegID == nil {
-		return "", fmt.Errorf("%s: type = \"json\" needs a registry block in loom.lm"+
-			" (group + id_pattern) — without knowing what the identity is, duplicates cannot be removed", t.Path)
-	}
 	from := t.From
 	if from == "" {
 		from = c.Warp
@@ -40,111 +46,165 @@ func mergeRegistry(c *Config, t *Template) (string, error) {
 		return "", fmt.Errorf("%s: %v", t.Target, err)
 	}
 
-	// (event, identity) pairs the weft already registers
-	taken := map[[2]string]bool{}
-	forEachEntry(c, wf, func(ev, id string, _ *ast.Value) {
-		taken[[2]string{ev, id}] = true
-	})
+	merged := mergeValue(up, wf)
 
-	merged := ast.NewObject()
-	group := ast.NewObject()
-	merged.Set(c.RegGroup, group)
-	kept := 0
-
-	if ug, ok := up.Get(c.RegGroup); ok && ug.Kind == ast.Object {
-		for _, ev := range ug.Keys {
-			for _, g := range ug.Props[ev].Elems {
-				hs, ok := g.Get("hooks")
-				if !ok || hs.Kind != ast.Array {
-					continue
-				}
-				kf := ast.NewArray()
-				for _, h := range hs.Elems {
-					if taken[[2]string{ev, entryID(c, h)}] {
-						continue
-					}
-					kf.Elems = append(kf.Elems, h)
-				}
-				if len(kf.Elems) == 0 {
-					continue
-				}
-				ng := g.Clone()
-				ng.Set("hooks", kf)
-				appendTo(group, ev, ng)
-				kept += len(kf.Elems)
-			}
-		}
+	// Why check: when the merge goes wrong the product is still valid json, just an entry short or
+	// over — and a handler that is not registered is the same as one that does not work, while one
+	// registered twice runs twice. Neither says anything on its own.
+	if miss := missing(wf, merged); len(miss) > 0 {
+		return "", fmt.Errorf("%s: our registrations are not all in the product (%s) — this is a bug in the merge, not something the template can fix",
+			t.Path, strings.Join(miss, ", "))
 	}
-	if wg, ok := wf.Get(c.RegGroup); ok && wg.Kind == ast.Object {
-		for _, ev := range wg.Keys {
-			for _, g := range wg.Props[ev].Elems {
-				appendTo(group, ev, g)
-			}
-		}
-	}
-
-	// Why count: when the merge goes wrong the product is still valid JSON, just a few entries short or over —
-	// and a gate that is not registered is the same as a gate that does not work, and neither raises an error.
-	if got, want := countEntries(merged, c), countEntries(wf, c)+kept; got != want {
-		return "", fmt.Errorf("%s: entry count after merge does not add up (ours %d + upstream kept %d != %d)",
-			t.Path, countEntries(wf, c), kept, got)
+	if dup := duplicates(merged); len(dup) > 0 {
+		return "", fmt.Errorf("%s: %s would register the same handler twice (%s)", t.Path, t.Target, strings.Join(dup, ", "))
 	}
 	return merged.Marshal() + "\n", nil
 }
 
-func appendTo(group *ast.Value, ev string, g *ast.Value) {
-	arr, ok := group.Get(ev)
-	if !ok {
-		arr = ast.NewArray()
-		group.Set(ev, arr)
-	}
-	arr.Elems = append(arr.Elems, g)
-}
-
-func entryID(c *Config, h *ast.Value) string {
-	cmd, ok := h.Get("command")
-	if !ok || cmd.Kind != ast.String {
-		return ""
-	}
-	m := c.RegID.FindStringSubmatch(cmd.Str)
-	if m == nil || len(m) < 2 {
-		return ""
-	}
-	return m[1]
-}
-
-func forEachEntry(c *Config, root *ast.Value, fn func(ev, id string, h *ast.Value)) {
-	g, ok := root.Get(c.RegGroup)
-	if !ok || g.Kind != ast.Object {
-		return
-	}
-	for _, ev := range g.Keys {
-		for _, grp := range g.Props[ev].Elems {
-			hs, ok := grp.Get("hooks")
-			if !ok || hs.Kind != ast.Array {
-				continue
+// mergeValue merges ours onto upstream's: objects key by key, lists by what each element calls,
+// anything else is ours.
+func mergeValue(up, ours *ast.Value) *ast.Value {
+	switch {
+	case up == nil:
+		return ours
+	case ours == nil:
+		return up
+	case up.Kind == ast.Object && ours.Kind == ast.Object:
+		out := ast.NewObject()
+		for _, k := range up.Keys {
+			if o, ok := ours.Get(k); ok {
+				out.Set(k, mergeValue(up.Props[k], o))
+			} else {
+				out.Set(k, up.Props[k])
 			}
-			for _, h := range hs.Elems {
-				if id := entryID(c, h); id != "" {
-					fn(ev, id, h)
+		}
+		for _, k := range ours.Keys {
+			if _, ok := up.Get(k); !ok {
+				out.Set(k, ours.Props[k])
+			}
+		}
+		return out
+	case up.Kind == ast.Array && ours.Kind == ast.Array:
+		taken := map[string]bool{}
+		for _, e := range ours.Elems {
+			taken[identity(e)] = true
+		}
+		out := ast.NewArray()
+		for _, e := range up.Elems {
+			if !taken[identity(e)] {
+				out.Elems = append(out.Elems, e)
+			}
+		}
+		out.Elems = append(out.Elems, ours.Elems...)
+		return out
+	}
+	return ours
+}
+
+// identity is what makes two registrations the same one: the handlers they call. An element that
+// calls none is only itself.
+func identity(v *ast.Value) string {
+	if h := handlers(v); len(h) > 0 {
+		return strings.Join(h, " ")
+	}
+	return v.Marshal()
+}
+
+// handlers lists the scripts a value names, without repeats, in order.
+func handlers(v *ast.Value) []string {
+	set := map[string]bool{}
+	var walk func(*ast.Value)
+	walk = func(v *ast.Value) {
+		if v == nil {
+			return
+		}
+		switch v.Kind {
+		case ast.String:
+			for _, m := range script.FindAllString(v.Str, -1) {
+				set[m[strings.LastIndexByte(m, '/')+1:]] = true
+			}
+		case ast.Object:
+			for _, k := range v.Keys {
+				walk(v.Props[k])
+			}
+		case ast.Array:
+			for _, e := range v.Elems {
+				walk(e)
+			}
+		}
+	}
+	walk(v)
+	out := make([]string, 0, len(set))
+	for s := range set {
+		out = append(out, s)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// missing lists the registrations of ours that the product does not hold, by the path they sit at.
+func missing(ours, product *ast.Value) []string {
+	var out []string
+	var walk func(at string, o, p *ast.Value)
+	walk = func(at string, o, p *ast.Value) {
+		if o == nil {
+			return
+		}
+		switch o.Kind {
+		case ast.Object:
+			for _, k := range o.Keys {
+				pc, _ := p.Get(k)
+				if pc == nil {
+					out = append(out, at+"/"+k)
+					continue
+				}
+				walk(at+"/"+k, o.Props[k], pc)
+			}
+		case ast.Array:
+			have := map[string]bool{}
+			if p != nil && p.Kind == ast.Array {
+				for _, e := range p.Elems {
+					have[identity(e)] = true
+				}
+			}
+			for _, e := range o.Elems {
+				if !have[identity(e)] {
+					out = append(out, at+"/"+identity(e))
 				}
 			}
 		}
 	}
+	walk("", ours, product)
+	return out
 }
 
-func countEntries(root *ast.Value, c *Config) int {
-	n := 0
-	g, ok := root.Get(c.RegGroup)
-	if !ok || g.Kind != ast.Object {
-		return 0
-	}
-	for _, ev := range g.Keys {
-		for _, grp := range g.Props[ev].Elems {
-			if hs, ok := grp.Get("hooks"); ok && hs.Kind == ast.Array {
-				n += len(hs.Elems)
+// duplicates lists handlers registered more than once in the same list.
+func duplicates(v *ast.Value) []string {
+	var out []string
+	var walk func(*ast.Value)
+	walk = func(v *ast.Value) {
+		if v == nil {
+			return
+		}
+		switch v.Kind {
+		case ast.Object:
+			for _, k := range v.Keys {
+				walk(v.Props[k])
+			}
+		case ast.Array:
+			seen := map[string]bool{}
+			for _, e := range v.Elems {
+				id := identity(e)
+				if len(handlers(e)) > 0 {
+					if seen[id] {
+						out = append(out, id)
+					}
+					seen[id] = true
+				}
+				walk(e)
 			}
 		}
 	}
-	return n
+	walk(v)
+	return out
 }

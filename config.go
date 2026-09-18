@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 )
 
@@ -40,12 +39,6 @@ type Config struct {
 	Templates string
 	Output    string // output directory (default output of lm build)
 	Anchored  string
-
-	// registry: the merge strategy for json products — a node is one element of the container array, and
-	// its identity is extracted from the element by a regexp. A naive union registers the same entry twice,
-	// and a registry with duplicate registrations often just breaks.
-	RegGroup string
-	RegID    *regexp.Regexp
 
 	// How the whole tree builds (lm build): which upstream files go into the product as they are, which
 	// directories are mirrored whole, and where the product manifest is written

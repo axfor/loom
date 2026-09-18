@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 )
 
@@ -139,13 +138,9 @@ func parseSettings(path string, src []byte) (*Config, error) {
 			}
 			c.Mirrors = append(c.Mirrors, [2]string{cleanRel(as[0].text), cleanRel(as[1].text)})
 		case "registry":
-			if len(as) != 2 || as[0].kind != kString || as[1].kind != kString {
-				return nil, fmt.Errorf("%s: `registry` takes a group name and an identity regex: registry \"hooks\" \"hooks/(...)\"", first.pos)
-			}
-			c.RegGroup = as[0].text
-			if c.RegID, err = regexp.Compile(as[1].text); err != nil {
-				return nil, fmt.Errorf("%s: invalid identity regex: %v", as[1].pos, err)
-			}
+			// There is nothing left to configure: a json product is both layers' registrations together,
+			// and an element of ours takes the place of the upstream one calling the same scripts.
+			return nil, fmt.Errorf("%s: `registry` is not a setting any more — a json product is built from both layers, ours replacing the upstream registration that calls the same scripts; write base.merge(self) in its template and delete this line", first.pos)
 		}
 	}
 	if c.Warp == "" {

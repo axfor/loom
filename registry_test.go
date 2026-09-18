@@ -13,8 +13,7 @@ import (
 func regRepo(t *testing.T, files map[string]string) (*loom.Config, string) {
 	t.Helper()
 	dir := t.TempDir()
-	mustWrite(t, filepath.Join(dir, "loom.lm"),
-		"base \"up\"\nself \"me\"\nregistry \"hooks\" \"hooks/([A-Za-z0-9._-]+\\.sh)\"\n")
+	mustWrite(t, filepath.Join(dir, "loom.lm"), "base \"up\"\nself \"me\"\n")
 	for p, s := range files {
 		mustWrite(t, filepath.Join(dir, filepath.FromSlash(p)), s)
 	}
@@ -54,20 +53,14 @@ func TestRegistryMerge(t *testing.T) {
 	}
 }
 
-// Without a registry block there is no way to tell what an entry's identity is, so duplicates could
-// not be removed: that must be said, not guessed at.
-func TestRegistryNeedsSettings(t *testing.T) {
+// The registry setting is gone: there is nothing to configure, and a repository still carrying the
+// line is told what to do instead of being merged by a rule it does not name.
+func TestRegistrySettingIsGone(t *testing.T) {
 	dir := t.TempDir()
-	mustWrite(t, filepath.Join(dir, "loom.lm"), "base \"up\"\nself \"me\"\n")
-	mustWrite(t, filepath.Join(dir, "up", "hooks.json"), `{"hooks":{}}`)
-	mustWrite(t, filepath.Join(dir, "me", "hooks.json"), `{"hooks":{}}`)
-	mustWrite(t, filepath.Join(dir, "me", "hooks.lm"), "base.merge(self)\n")
-	c, err := loom.LoadConfig(filepath.Join(dir, "loom.lm"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := build(t, c, filepath.Join(dir, "out")); err == nil || !strings.Contains(err.Error(), "registry") {
-		t.Errorf("want an error asking for the registry block, got: %v", err)
+	mustWrite(t, filepath.Join(dir, "loom.lm"), "base \"up\"\nself \"me\"\nregistry \"hooks\" \"hooks/(x)\"\n")
+	_, err := loom.LoadConfig(filepath.Join(dir, "loom.lm"))
+	if err == nil || !strings.Contains(err.Error(), "base.merge(self)") {
+		t.Errorf("want the line refused with what to do instead, got: %v", err)
 	}
 }
 
