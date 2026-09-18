@@ -6,9 +6,9 @@
 //   base / self / cmd                     the object          → its file
 //   base.Install / base."How it compares" a node              → that heading (key, function...) upstream
 //   base."Example 2"."Phase 1"            a section path      → that subsection, under that parent
-//   "Install XSDD" inside .after(...)       content by name     → that heading in our file
+//   "Install XSDD" inside .after(...)    content by name     → that heading in our file
 //   self.frontmatter / cmd.body           a part of a file    → where that part starts
-//   "description" inside .join(...)         a key               → that key in our file
+//   self.frontmatter.description          a key's value       → that key in our file
 //
 // The result says what was clicked (origin: the whole token, so a string with spaces is one
 // link) and where it leads (the node's first line, the name on it, and where the node ends).
