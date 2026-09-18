@@ -557,6 +557,21 @@ func hasConflictMarkers(s string) bool {
 	return begin && end
 }
 
+// unquote takes a value out of its quotes. Only the quotes that wrap a whole value on one line are
+// its quotes, and a \" inside such a value belongs to the file's syntax; anywhere else a quote is
+// part of the text — `says "go"` is a plain YAML scalar and keeps both.
+func unquote(v string) (string, bool) {
+	v = strings.TrimSpace(v)
+	if len(v) < 2 || strings.Contains(v, "\n") || !strings.HasPrefix(v, `"`) || !strings.HasSuffix(v, `"`) {
+		return v, false
+	}
+	in := v[1 : len(v)-1]
+	if strings.Contains(strings.ReplaceAll(in, `\"`, ""), `"`) {
+		return v, false // two quoted words, not one quoted value
+	}
+	return strings.ReplaceAll(in, `\"`, `"`), true
+}
+
 // applyValue writes a key's value: ours (set), ours before upstream's (start) or after it (append).
 // Upstream's value is read from upstream's file, not from the product being built, so it is still
 // there after set(self.frontmatter) replaced the block. Joining is idempotent: a value that already
@@ -591,11 +606,12 @@ func applyValue(c *Config, t *Template, tree ast.Tree, s Stmt) error {
 		ours = v
 	}
 	// A quoted value stays quoted: unquoting it would change what the file says (a colon or a leading
-	// * makes it something other than a plain scalar).
-	if q := strings.TrimSpace(ours); !s.SetRef.IsLit && strings.HasPrefix(q, `"`) && strings.HasSuffix(q, `"`) && len(q) > 1 {
-		quoted = true
+	// * makes it something other than a plain scalar). A literal is content as written.
+	if s.SetRef.IsLit {
+		ours = strings.TrimSpace(ours)
+	} else {
+		ours, quoted = unquote(ours)
 	}
-	ours = strings.Trim(strings.TrimSpace(ours), `"`)
 
 	val := ours
 	if s.Mode != "set" {
@@ -611,10 +627,8 @@ func applyValue(c *Config, t *Template, tree ast.Tree, s Stmt) error {
 		if !ok {
 			return fmt.Errorf("%s: upstream has no key %q to %s ours to — to add the key, use set", s.Rng, s.SetKey, s.Mode)
 		}
-		if q := strings.TrimSpace(uv); strings.HasPrefix(q, `"`) && strings.HasSuffix(q, `"`) && len(q) > 1 {
-			quoted = true
-		}
-		uv = strings.Trim(strings.TrimSpace(uv), `"`)
+		uv, ok = unquote(uv)
+		quoted = quoted || ok
 		// A multi-line value (a toml """ block holding markdown) needs a blank line between the halves:
 		// on one line the two documents run together.
 		sep := " "

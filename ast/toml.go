@@ -88,7 +88,7 @@ func (t *Toml) SetBody(key, val string) bool {
 			repl := strings.Split(val, "\n")
 			t.lines = append(t.lines[:n.start+1], append(append([]string{}, repl...), t.lines[n.end-1:]...)...)
 		} else {
-			t.lines[n.start] = n.key + ` = "` + val + `"`
+			t.lines[n.start] = n.key + ` = "` + strings.ReplaceAll(val, `"`, `\"`) + `"`
 		}
 		t.reparse()
 		return true

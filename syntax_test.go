@@ -386,6 +386,35 @@ func TestQuotedFrontmatterValueStaysQuoted(t *testing.T) {
 	_ = dir
 }
 
+// Quotes inside a value are content: only the quotes that wrap a whole value are its quotes, and
+// the \" inside a quoted one belongs to the file's syntax, not to the text.
+func TestQuotesInsideAValueAreContent(t *testing.T) {
+	c, dir := objRepo(t, map[string]string{
+		"upstream/q.md": "---\nname: q\ndescription: Use it when they say \"go\"\n---\n\n## A\n\nup\n",
+		"mine/q.md":     "---\nname: q\ndescription: Ours, they say \"now\"\n---\n\n## B\n\nme\n",
+	})
+	out, err := weaveObj(t, c, dir, "q.md", "base.frontmatter.description.start(self.frontmatter.description)\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `description: Ours, they say "now" Use it when they say "go"`) {
+		t.Errorf("an unquoted value keeps the quotes it ends with:\n%s", out)
+	}
+
+	c, dir = objRepo(t, map[string]string{
+		"upstream/c.toml": "description = \"Up says \\\"go\\\"\"\n",
+		"mine/c.toml":     "description = \"Ours says \\\"now\\\"\"\n",
+	})
+	out, err = weaveObj(t, c, dir, "c.toml", "base.description.start(self.description)\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `description = "Ours says \"now\" Up says \"go\""`) {
+		t.Errorf("an escaped quote survives the round trip:\n%s", out)
+	}
+	_ = dir
+}
+
 // A multi-line value (a toml """ block holding markdown) is joined by a blank line, not a space:
 // one line would run two documents together.
 func TestValueJoinSeparator(t *testing.T) {
