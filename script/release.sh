@@ -28,6 +28,15 @@ if [ "v$ext" != "$version" ]; then
   exit 1
 fi
 
+# The Windows archive needs zip, and finding that out halfway through leaves a half-built dist/.
+command -v zip >/dev/null 2>&1 || { echo "⛔ zip is needed for the Windows archive: install it and rerun" >&2; exit 1; }
+
+# A release built from a dirty tree is not the tag it claims to be. In CI the tree is a fresh
+# checkout; locally this is the one thing worth saying out loud.
+if command -v git >/dev/null 2>&1 && [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+  echo "⚠ the working tree has uncommitted changes — this build is not exactly $version" >&2
+fi
+
 rm -rf "$dist"
 mkdir -p "$dist"
 
