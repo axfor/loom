@@ -606,14 +606,20 @@ func applyValue(c *Config, t *Template, tree ast.Tree, s Stmt) error {
 			return fmt.Errorf("%s: upstream has no key %q to %s ours to — to add the key, use set", s.Rng, s.SetKey, s.Mode)
 		}
 		uv = strings.Trim(strings.TrimSpace(uv), `"`)
+		// A multi-line value (a toml """ block holding markdown) needs a blank line between the halves:
+		// on one line the two documents run together.
+		sep := " "
+		if strings.Contains(ours, "\n") || strings.Contains(uv, "\n") {
+			sep = "\n\n"
+		}
 		switch {
 		case uv == "" || strings.Contains(ours, uv):
 		case ours == "" || strings.Contains(uv, ours):
 			val = uv
 		case s.Mode == "start":
-			val = ours + " " + uv
+			val = ours + sep + uv
 		default:
-			val = uv + " " + ours
+			val = uv + sep + ours
 		}
 	}
 

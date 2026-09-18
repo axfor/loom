@@ -362,6 +362,23 @@ func TestFrontmatterKeyValues(t *testing.T) {
 	}
 }
 
+// A multi-line value (a toml """ block holding markdown) is joined by a blank line, not a space:
+// one line would run two documents together.
+func TestValueJoinSeparator(t *testing.T) {
+	c, dir := objRepo(t, map[string]string{
+		"upstream/p.toml": "prompt = \"\"\"\n## Up\n\nup\n\"\"\"\n",
+		"mine/p.toml":     "prompt = \"\"\"\n## Ours\n\nme\n\"\"\"\n",
+	})
+	out, err := weaveObj(t, c, dir, "p.toml", "base.prompt.start(self.prompt)\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "## Ours\n\nme\n\n## Up") {
+		t.Errorf("a multi-line value must be joined by a blank line:\n%s", out)
+	}
+	_ = dir
+}
+
 // A toml key takes the same methods: base.description.start(self.description).
 func TestTomlKeyValues(t *testing.T) {
 	c, dir := objRepo(t, map[string]string{

@@ -139,3 +139,35 @@ func TestSync(t *testing.T) {
 		t.Errorf("the build must refuse a file with conflict markers, got: %v", err)
 	}
 }
+
+// Sync refuses a staging directory with no files: a failed copy would otherwise empty the upstream
+// layer and only fail at the build. It also survives upstream turning a file into a directory.
+func TestSyncRefusesEmptyAndFollowsShape(t *testing.T) {
+	c, dir := besideRepo(t, map[string]string{
+		"up/run.sh": upRun,
+		"up/doc.md": "## A\n",
+		"me/run.sh": meRun,
+		"me/run.lm": "base.merge(self)\n",
+	})
+	empty := t.TempDir()
+	if _, err := loom.Sync(c, empty); err == nil || !strings.Contains(err.Error(), "no files") {
+		t.Errorf("an empty upstream must be refused, got: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "up", "run.sh")); err != nil {
+		t.Errorf("the upstream layer must be untouched: %v", err)
+	}
+
+	// upstream turns doc.md into a directory and run.sh stays a file
+	next := t.TempDir()
+	mustWrite(t, filepath.Join(next, "run.sh"), upRun)
+	mustWrite(t, filepath.Join(next, "doc.md", "inner.md"), "## B\n")
+	if _, err := loom.Sync(c, next); err != nil {
+		t.Fatalf("a file that became a directory upstream: %v", err)
+	}
+	if st, err := os.Stat(filepath.Join(dir, "up", "doc.md")); err != nil || !st.IsDir() {
+		t.Errorf("doc.md must now be a directory: %v", err)
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, "up", "doc.md", "inner.md")); err != nil || string(b) != "## B\n" {
+		t.Errorf("its file must be there: %q %v", b, err)
+	}
+}

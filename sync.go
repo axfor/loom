@@ -81,6 +81,21 @@ func Sync(c *Config, from string) (*SyncReport, error) {
 		}
 	}
 
+	// A staging directory with no files would empty the upstream layer, and the build would only fail
+	// afterwards. A copy that produced nothing is a failed copy, not a new upstream.
+	n := 0
+	if err := filepath.WalkDir(src, func(_ string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			n++
+		}
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	if n == 0 {
+		return nil, fmt.Errorf("%s holds no files — refusing to empty the upstream layer", src)
+	}
+
 	r := &SyncReport{}
 	if err := mirror(src, upRoot, r); err != nil {
 		return r, err
@@ -140,6 +155,11 @@ func mirror(src, dst string, r *SyncReport) error {
 		rp, _ := filepath.Rel(src, p)
 		seen[rp] = true
 		to := filepath.Join(dst, rp)
+		// Upstream may have turned a file into a directory, or the other way round: a path in the way is
+		// removed, or MkdirAll fails on it and the sync stops halfway.
+		if err := clearWay(dst, rp); err != nil {
+			return err
+		}
 		old, oldErr := os.Lstat(to)
 		if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
 			return err
@@ -207,6 +227,25 @@ func mirror(src, dst string, r *SyncReport) error {
 	sort.Sort(sort.Reverse(sort.StringSlice(dirs))) // deepest first
 	for _, d := range dirs {
 		os.Remove(d) // only empty directories go
+	}
+	return nil
+}
+
+// clearWay removes anything at dst/rp that is not the kind of thing about to be written there: a file
+// where a directory has to go, or a directory where a file has to go.
+func clearWay(dst, rp string) error {
+	parts := strings.Split(filepath.ToSlash(rp), "/")
+	at := dst
+	for i, part := range parts {
+		at = filepath.Join(at, part)
+		st, err := os.Lstat(at)
+		if err != nil {
+			return nil // nothing in the way from here on
+		}
+		wantDir := i < len(parts)-1
+		if st.IsDir() != wantDir {
+			return os.RemoveAll(at)
+		}
 	}
 	return nil
 }
