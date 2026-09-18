@@ -82,9 +82,12 @@ func account(c *Config, t *Template, out string, r *Report) []error {
 	if t.Type == "markdown" && !whole && !merged && c.Weft != "" {
 		if ours, ok, _ := c.read(c.Weft, weftRel(c, t, c.Weft, t.Target)); ok {
 			for _, k := range frontmatterKeys(ours) {
+				// Both sides are read as weaving writes them, so an escaped quote compares equal.
 				want, _ := keyValue("markdown", ours, k)
 				got, found := keyValue("markdown", out, k)
-				if !found || !strings.Contains(got, strings.Trim(strings.TrimSpace(want), `"`)) {
+				mine, _ := unquote(want)
+				theirs, _ := unquote(got)
+				if !found || !strings.Contains(theirs, mine) {
 					errs = append(errs, fmt.Errorf("%s: our frontmatter key %q is not in the product %s — base.frontmatter.set(self.frontmatter) takes all of ours, base.frontmatter.%s.start(self.frontmatter.%s) puts ours before upstream's",
 						t.Path, k, t.Target, k, k))
 				}

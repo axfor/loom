@@ -443,3 +443,23 @@ func TestTomlKeyValues(t *testing.T) {
 		t.Errorf("got:\n%s (%v)", out, err)
 	}
 }
+
+// The completeness check must read a value the same way weaving writes it: our key is in the product
+// even when quotes inside it were escaped on the way in.
+func TestCompletenessReadsEscapedValues(t *testing.T) {
+	c, dir := objRepo(t, map[string]string{
+		"upstream/e.md": "---\nname: e\ndescription: \"Up: the upstream half\"\n---\n\n## A\n\nup\n",
+		"mine/e.md":     "---\nname: e\ndescription: Ours, they say \"now\"\n---\n\n## B\n\nme\n",
+	})
+	out, err := weaveObj(t, c, dir, "e.md", "base.frontmatter.description.start(self.frontmatter.description)\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `description: "Ours, they say \"now\" Up: the upstream half"`) {
+		t.Errorf("the value quotes ours and escapes the quotes inside it:\n%s", out)
+	}
+	// The fixture files of objRepo have complaints of their own; this is about the key.
+	if _, err := loom.PlanBuild(c, false); err != nil && strings.Contains(err.Error(), "frontmatter key") {
+		t.Errorf("our key is in the product, so the build must not refuse it: %v", err)
+	}
+}
