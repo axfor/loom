@@ -57,6 +57,14 @@ async function main() {
   const none = await weave(null, tpl, unsaved);
   ok(none.error && none.error.includes('go install'), 'no lm says how to install it', none);
 
+  // An lm that exits before reading its stdin — one too old for -stdin, or a repository with no
+  // loom.lm — breaks the pipe while the template is still being written. That must come back as an
+  // error, not an uncaught EPIPE that leaves the preview waiting for ever.
+  write('bin/gone', '#!/bin/sh\nexit 1\n');
+  fs.chmodSync(path.join(root, 'bin', 'gone'), 0o755);
+  const gone = await weave(path.join(root, 'bin', 'gone'), tpl, 'base.append("x")\n'.repeat(200000));
+  ok(gone.error && gone.error.includes('exited with 1'), 'an lm that never reads stdin is an error', gone);
+
   ok(findLm('/opt/lm', {}) === '/opt/lm', 'a configured path wins');
   ok(findLm('', { PATH: path.dirname(lm) }) === lm, 'lm on PATH is found');
   ok(findLm('', { PATH: '', GOBIN: path.dirname(lm) }) === lm, "Go's install directory is the fallback");

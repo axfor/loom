@@ -48,6 +48,8 @@ function weave(lm, templatePath, text, timeoutMs = 10000) {
     const timer = setTimeout(() => child.kill(), timeoutMs);
     child.stdout.on('data', (d) => (out += d));
     child.stderr.on('data', (d) => (err += d));
+    // An lm that exits before reading the template breaks the pipe mid-write; its own exit says why.
+    child.stdin.on('error', () => {});
     child.on('error', (e) => {
       clearTimeout(timer);
       resolve({ error: `cannot run ${lm}: ${e.message}` });
