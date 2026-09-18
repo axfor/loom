@@ -2,7 +2,7 @@
   "name": "loom-lang",
   "displayName": "Loom",
   "description": "Loom for VS Code: syntax highlighting for .lm templates and settings, .e variable files and {{@name}} placeholders; the compiler's own errors underlined as you type; completion of nodes, methods, our sections and import paths; a live preview of the product a template builds; the whole tree as one unified diff against upstream; go to definition from a template to the upstream or our file and node it names.",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "publisher": "axfor",
   "icon": "icons/loom.png",
   "license": "Apache-2.0",
