@@ -536,8 +536,8 @@ The extension is the `loom-lang-<version>.vsix` of the same release: in VS Code,
 Building a release is one command, and it publishes nothing:
 
 ```
-make release V=v0.7.1     lm for five platforms + the extension + SHA256SUMS, into dist/
-git tag v0.7.1 && git push origin v0.7.1    publishes it (the workflow builds and attaches dist/)
+make release V=v1.0.0     lm for five platforms + the extension + SHA256SUMS, into dist/
+git tag v1.0.0 && git push origin v1.0.0    publishes it (the workflow builds and attaches dist/)
 ```
 
 ---
