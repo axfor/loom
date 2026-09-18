@@ -1,7 +1,7 @@
 {
   "name": "loom-lang",
   "displayName": "Loom",
-  "description": "Loom for VS Code: syntax highlighting for .lm templates and settings, .e variable files and {{@name}} placeholders; the compiler's own errors underlined as you type; completion of nodes, methods, our sections and import paths; a live preview of the product a template builds; the whole tree as one unified diff against upstream; go to definition from a template to the upstream or our file and node it names.",
+  "description": "Loom for VS Code: syntax highlighting for .lm templates and settings, .e variable files and {{@name}} placeholders; the compiler's own errors underlined as you type; completion of nodes, methods, our sections and import paths; a live preview of the product a template builds; a unified diff of the template's product against upstream; go to definition from a template to the upstream or our file and node it names.",
   "version": "1.0.3",
   "publisher": "axfor",
   "icon": "icons/loom.png",
@@ -21,7 +21,8 @@
     "onLanguage:loom-env",
     "onCommand:loom.showPreview",
     "onCommand:loom.showReview",
-    "onCommand:loom.showPatch"
+    "onCommand:loom.showPatch",
+    "onCommand:loom.showTreePatch"
   ],
   "main": "./extension.js",
   "contributes": {
@@ -115,6 +116,11 @@
         "title": "Show Patch Against Upstream",
         "category": "Loom",
         "icon": "$(git-compare)"
+      },
+      {
+        "command": "loom.showTreePatch",
+        "title": "Show Patch Against Upstream: Whole Tree",
+        "category": "Loom"
       }
     ],
     "menus": {
@@ -146,6 +152,10 @@
         },
         {
           "command": "loom.showPatch",
+          "when": "resourceExtname == .lm && resourceFilename != loom.lm"
+        },
+        {
+          "command": "loom.showTreePatch",
           "when": "resourceExtname == .lm && resourceFilename != loom.lm"
         }
       ]

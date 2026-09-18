@@ -656,8 +656,8 @@ anchors with upstream headings directly.
 
 `editors/vscode` is a VS Code extension: syntax highlighting for templates, settings, variables
 files and `{{@name}}` placeholders; the compiler's own errors underlined as you type; completion of
-nodes, methods, our sections and import paths; a live preview of the product a template builds; the
-whole tree as one unified diff against upstream, with the edits a `base.merge(self)` file carries
+nodes, methods, our sections and import paths; a live preview of the product a template builds; a
+unified diff of that product against upstream, with the edits a `base.merge(self)` file carries
 marked as such; and go to definition from a template to the upstream or our file and section it
 names. `make vs` runs its tests and packages it.
 

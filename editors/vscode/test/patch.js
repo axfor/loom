@@ -7,7 +7,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { bar, script, split, treePatch, treeRoot, unified } = require('../lib/patch');
+const { bar, filePatch, script, split, treePatch, treeRoot, unified } = require('../lib/patch');
 
 let pass = 0;
 let fail = 0;
@@ -177,6 +177,28 @@ async function tree() {
   ok(/run\.js.*\(merge\)/.test(r.text), 'and the summary says so', r.text.split('\n').find((l) => l.includes('run.js')));
   ok(r.text.includes('lm sync carries onto each new upstream'), 'with a line saying what a merge diff means');
   ok(r.text.includes('+  ours();'), 'the merge diff is the edits we carry');
+
+  // The button's own path: one template, addressed by the template file the editor has open.
+  const one = await filePatch(lm, path.join(root, 'me', 'doc.lm'));
+  ok(!one.error && one.files.length === 1, 'a template patches on its own', one.error || one.files);
+  ok(one.files[0].target === 'doc.md', 'and only itself', one.files);
+  ok(!one.text.includes('run.js'), 'the other templates of the tree are not in it');
+  ok(one.text.startsWith('doc.md · 5 insertions(+), 0 deletions(-)'), 'one file gets a header of its own', one.text.split('\n')[0]);
+  ok(one.text.includes('+## Ours') && one.text.includes('--- upstream/doc.md'), 'with the diff under it');
+
+  const oneMerge = await filePatch(lm, path.join(root, 'me', 'run.lm'));
+  ok(oneMerge.files.length === 1 && oneMerge.files[0].merge === true, 'a merge template patches on its own too', oneMerge.error || oneMerge.files);
+  ok(oneMerge.text.includes('lm sync carries onto each new upstream'), 'and still says what a merge diff is');
+
+  // A template that changes nothing must say so rather than hand back an empty document.
+  write('me/nothing.md', '');
+  write('up/nothing.md', 'untouched\n');
+  write('me/nothing.lm', '// nothing to weave in\n');
+  const quiet = await filePatch(lm, path.join(root, 'me', 'nothing.lm'));
+  ok(!quiet.error && /adds nothing to it/.test(quiet.text), 'a template that changes nothing says so', quiet);
+
+  const notATemplate = await filePatch(lm, path.join(root, 'loom.lm'));
+  ok(notATemplate.error && /builds nothing lm knows about/.test(notATemplate.error), 'loom.lm is not a template', notATemplate);
 
   // A template that does not weave must not silently drop out of the patch.
   write('me/doc.lm', 'base.Nowhere.after("Ours")\n');

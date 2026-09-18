@@ -9,7 +9,7 @@ const { completions } = require('./lib/completion');
 const { findLm, productName, upstreamFile, weave } = require('./lib/preview');
 const { hover } = require('./lib/hover');
 const { commandFor, diagnose } = require('./lib/diagnostics');
-const { treePatch, treeRoot } = require('./lib/patch');
+const { filePatch, treePatch, treeRoot } = require('./lib/patch');
 const { signature } = require('./lib/signature');
 
 // The hover shown while Cmd/Ctrl is held previews the target range when it spans fewer than
@@ -80,13 +80,14 @@ class Previews {
   }
 }
 
-// The patch is one read-only document for the whole tree: every template's upstream file against
-// the product lm weaves from it, as a unified diff. The path ends in .diff so VS Code colours it,
-// and the query is the tree's root, so one tree has one patch however it was opened.
+// A patch is a read-only document holding a unified diff of upstream against the product. The
+// button shows the template in front of you, as the preview and the review do; the whole tree is
+// the same thing over every template, and the authority says which of the two a document is. The
+// path ends in .diff so VS Code colours it.
 //
-// It is built from the files on disk — unlike the preview, which follows the editor's text. A patch
-// covering a whole tree while one of its templates says something else in an unsaved buffer would
-// be a patch of nothing that exists.
+// Both are built from the files on disk — unlike the preview, which follows the editor's text. lm
+// weaves from a saved template here, so a patch of an unsaved buffer would describe a product that
+// does not exist yet.
 class Patches {
   constructor() {
     this.changed = new vscode.EventEmitter();
@@ -95,13 +96,18 @@ class Patches {
     this.timer = null;
   }
 
-  uriFor(from) {
-    return vscode.Uri.from({ scheme: PATCH, path: '/Loom patch.diff', query: treeRoot(from) || from });
+  uriFor(template) {
+    return vscode.Uri.from({ scheme: PATCH, authority: 'file', path: `/Patch · ${productName(template)}.diff`, query: template });
+  }
+
+  treeUriFor(from) {
+    return vscode.Uri.from({ scheme: PATCH, authority: 'tree', path: '/Loom patch.diff', query: treeRoot(from) || from });
   }
 
   async provideTextDocumentContent(uri) {
     this.open.add(uri.toString());
-    const r = await treePatch(findLm(vscode.workspace.getConfiguration('loom').get('path')), uri.query);
+    const lm = findLm(vscode.workspace.getConfiguration('loom').get('path'));
+    const r = uri.authority === 'tree' ? await treePatch(lm, uri.query) : await filePatch(lm, uri.query);
     return r.error !== undefined ? `⛔ ${r.error}\n` : r.text;
   }
 
@@ -180,6 +186,24 @@ class Linter {
   }
 }
 
+// patchTarget is the file a patch command was invoked for: the one the menu names, else the one in
+// the editor. A tree has to be found above it, or there is nothing to compare with upstream.
+function patchTarget(uri) {
+  const editor = vscode.window.activeTextEditor;
+  const target = uri instanceof vscode.Uri ? uri : editor && editor.document.uri;
+  if (!target || target.scheme !== 'file') return null;
+  if (!treeRoot(target.fsPath)) {
+    vscode.window.showInformationMessage('No loom.lm above this file — there is no tree to compare with upstream.');
+    return null;
+  }
+  return target;
+}
+
+async function openPatch(uri) {
+  const doc = await vscode.workspace.openTextDocument(uri);
+  await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preview: true, preserveFocus: true });
+}
+
 function activate(context) {
   const previews = new Previews();
   const patches = new Patches();
@@ -217,17 +241,17 @@ function activate(context) {
       await vscode.commands.executeCommand('vscode.diff', vscode.Uri.file(upstream), previews.uriFor(target.fsPath),
         `${name}: upstream ↔ product`, { viewColumn: vscode.ViewColumn.Beside, preview: true, preserveFocus: true });
     }),
-    // patch: the whole tree as a unified diff, upstream against the product, in one document
+    // patch: this template's upstream file against the product it builds, as a unified diff
     vscode.commands.registerCommand('loom.showPatch', async (uri) => {
-      const editor = vscode.window.activeTextEditor;
-      const target = uri instanceof vscode.Uri ? uri : editor && editor.document.uri;
-      if (!target || target.scheme !== 'file') return;
-      if (!treeRoot(target.fsPath)) {
-        vscode.window.showInformationMessage('No loom.lm above this file — there is no tree to compare with upstream.');
-        return;
-      }
-      const doc = await vscode.workspace.openTextDocument(patches.uriFor(target.fsPath));
-      await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preview: true, preserveFocus: true });
+      const target = patchTarget(uri);
+      if (!target || !target.fsPath.endsWith('.lm')) return;
+      await openPatch(patches.uriFor(target.fsPath));
+    }),
+    // the same over every template of the tree, in one document
+    vscode.commands.registerCommand('loom.showTreePatch', async (uri) => {
+      const target = patchTarget(uri);
+      if (!target) return;
+      await openPatch(patches.treeUriFor(target.fsPath));
     }),
     // the template as typed, unsaved; any saved file, since upstream and our files feed the product
     vscode.workspace.onDidChangeTextDocument((e) => {

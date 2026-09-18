@@ -1,6 +1,6 @@
 # Loom for VS Code
 
-Syntax highlighting, diagnostics, completion, a live preview, a whole-tree patch and go to definition for the Loom language. For the syntax, see the [Loom README](../../README.md#reference).
+Syntax highlighting, diagnostics, completion, a live preview, a patch against upstream and go to definition for the Loom language. For the syntax, see the [Loom README](../../README.md#reference).
 
 ## Highlighting
 
@@ -50,17 +50,12 @@ is the `loom.path` setting, else `lm` on `PATH`, else Go's install directory (`~
 
 ## Patch
 
-The third button opens the whole tree as one unified diff — the `+` / `-` form `git diff` prints —
-upstream on the left of every pair, the product lm weaves on the right:
+The third button shows the template in front of you as a unified diff — the `+` / `-` form
+`git diff` prints — upstream on one side, the product it builds on the other:
 
 ```
-Loom patch · 2 files changed, 11 insertions(+), 0 deletions(-)
-upstream → product · woven from /w/project, nothing written
-
- doc.md       | 5 +++++
- hooks/run.js | 6 ++++++  (merge)
-
-(merge) our file is the product: the diff is the edits lm sync carries onto each new upstream.
+doc.md · 5 insertions(+), 0 deletions(-)  +++++
+upstream → product · woven by lm, nothing written
 
 diff --loom upstream/doc.md product/doc.md
 --- upstream/doc.md
@@ -77,23 +72,28 @@ diff --loom upstream/doc.md product/doc.md
  ## Process
 ```
 
-Where the Review button compares one file side by side, this is every template at once, compact
-enough to read in one pass and plain enough to paste into a review or send upstream.
+Where Review puts the two files side by side, this is the same comparison as a patch: only the
+changed lines with their context, compact enough to take in at a glance and plain enough to paste
+into a review. **Loom · Show Patch Against Upstream: Whole Tree** in the command palette runs it
+over every template of the tree at once, with a `git diff --stat` summary in front.
 
-**A merge template is marked `(merge)`, and that is the point of the view.** For
-`base.merge(self)` on a script or a `.js` file, our file *is* the product: the patch is the edits we
-carry, the ones `lm sync` re-applies to each new upstream with a three-way merge. They exist nowhere
-in the repository as a file — the difference is the only place they live, and this is where you read
-it. For a json registry the product is computed from both layers instead, so its diff is what the
-merge produced.
+**A merge template says so, and that is where the view earns its place.** For `base.merge(self)` on
+a script or a `.js` file, our file *is* the product: the patch is the edits we carry, the ones
+`lm sync` re-applies to each new upstream with a three-way merge. They exist nowhere in the
+repository as a file — the difference is the only place they live, and this is where you read it.
+For a json registry the product is computed from both layers instead, so its diff is what the merge
+produced.
 
-The patch is built from the files **on disk**, not from unsaved buffers: it covers a whole tree, and
-one template saying something else in an editor would make it a patch of nothing that exists. It is
+A template that adds nothing to upstream says that, rather than opening an empty document, and so
+does one whose product is only ours with no upstream file to compare against.
+
+The patch is built from the files **on disk**, not from the unsaved buffer: lm weaves from the saved
+template, so a patch of an unsaved edit would describe a product that does not exist yet. It is
 rebuilt when any file is saved or changes on disk.
 
-Templates are woven with `lm weave`, one at a time — never `lm build`, which completes anchors and
-writes them back into the templates. Opening a view must not edit your sources. A template that
-fails to weave is listed with its error rather than quietly left out.
+Templates are woven with `lm weave` — never `lm build`, which completes anchors and writes them back
+into the templates. Opening a view must not edit your sources. A template that fails to weave is
+reported with its error rather than quietly left out.
 
 ## Diagnostics
 
@@ -224,7 +224,7 @@ npm test        # inside editors/vscode; make vs runs it first
 - `test/wordpattern.js`: runs VS Code's own word-finding algorithm over every position of every string and name in long template lines
 - `test/preview.js`: builds `lm` from this repository and weaves a template from editor text that differs from the file on disk, including a compile error
 - `test/nesting.js`: nesting is on and folded by default, with patterns for both template names, and the extension writes no settings
-- `test/patch.js`: diffs 76 file pairs with both the diff engine and `git diff --no-index`, and the hunks must come out identical — 16 written by hand (insertions, deletions, hunks that merge, a missing final newline) and 60 pseudo-random; then builds `lm` and checks the whole-tree patch over a woven template and a merged one
+- `test/patch.js`: diffs 76 file pairs with both the diff engine and `git diff --no-index`, and the hunks must come out identical — 16 written by hand (insertions, deletions, hunks that merge, a missing final newline) and 60 pseudo-random; then builds `lm` and checks both the one-template patch the button shows and the whole-tree one, over a woven template and a merged one
 - `test/diagnostics.js`: parses lm's output on its own — positions, nested positions, duplicates, unused variables — then builds `lm` and checks the errors a deliberately broken tree really produces
 
 The logic lives in `lib/` and does not depend on VS Code: `loom.js` reads templates and finds nodes with the compiler's rules,

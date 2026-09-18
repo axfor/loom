@@ -271,35 +271,88 @@ function bar(added, removed, widest, width) {
 // A merge template is marked: there the product is our own file, so the diff is not what a template
 // inserts but the edits we carry — the ones lm sync re-applies to each new upstream. They exist
 // nowhere else as a file, which is the reason this view is worth having.
-async function treePatch(lm, from, timeoutMs = 20000) {
-  if (!lm) return { error: 'lm is not installed: go install github.com/axfor/loom/cmd/lm@latest, or set loom.path' };
-  const cfg = configFor(from);
-  if (!cfg) return { error: 'no loom.lm above this file — nothing to compare with upstream' };
-
-  const listed = await listTemplates(lm, cfg.root, timeoutMs);
-  if (listed.error) return { error: listed.error };
-
-  const woven = await pool(listed.entries, (e) => weaveOne(lm, cfg.root, e.template, timeoutMs));
-
+// diffEntries weaves each template and diffs it against the upstream file it is built on.
+async function diffEntries(lm, cfg, entries, timeoutMs) {
+  const woven = await pool(entries, (e) => weaveOne(lm, cfg.root, e.template, timeoutMs));
   const files = [];
-  for (let i = 0; i < listed.entries.length; i++) {
-    const e = listed.entries[i];
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
     const r = woven[i];
-    const upstream = path.join(cfg.root, cfg.base, e.path);
-    const before = loom.readText(upstream);
     if (r.error) {
       files.push({ target: e.target, error: r.error, added: 0, removed: 0, text: '' });
       continue;
     }
     // A template whose base is our own layer weaves onto no upstream file; there is nothing to
     // compare it with, and the added files are not what this view is about.
-    if (before === null) continue;
-    const d = unified(before, r.product, `upstream/${e.path}`, `product/${e.target}`);
+    const upstream = loom.readText(path.join(cfg.root, cfg.base, e.path));
+    if (upstream === null) continue;
+    const d = unified(upstream, r.product, `upstream/${e.path}`, `product/${e.target}`);
     if (d.text === '') continue;
     files.push({ target: e.target, merge: !!e.merge, added: d.added, removed: d.removed, text: d.text });
   }
+  return files;
+}
 
+// filePatch renders one template: the upstream file it is built on against the product lm weaves
+// from it. This is what the editor's patch button shows — the template in front of you, the way
+// the preview and the review are also about the one file.
+async function filePatch(lm, template, timeoutMs = 20000) {
+  const started = await start(lm, template, timeoutMs);
+  if (started.error) return { error: started.error };
+  const { cfg, entries } = started;
+
+  const mine = entries.filter((e) => path.resolve(cfg.root, e.template) === path.resolve(template));
+  if (mine.length === 0) {
+    return { error: `${path.basename(template)} builds nothing lm knows about — a patch compares a template's product with upstream` };
+  }
+
+  const files = await diffEntries(lm, cfg, mine, timeoutMs);
+  if (files.length === 1 && !files[0].error) return { text: renderOne(files[0]), files };
+  if (files.length === 0) {
+    const e = mine[0];
+    const upstream = loom.readText(path.join(cfg.root, cfg.base, e.path));
+    return {
+      files,
+      text: upstream === null
+        ? `${e.target} is only ours — there is no upstream file to compare it with.\n`
+        : `${e.target} is upstream's file unchanged: the template adds nothing to it.\n`,
+    };
+  }
   return { text: render(files, cfg.root), files };
+}
+
+// treePatch renders every template in the tree, one after another.
+async function treePatch(lm, from, timeoutMs = 20000) {
+  const started = await start(lm, from, timeoutMs);
+  if (started.error) return { error: started.error };
+  const files = await diffEntries(lm, started.cfg, started.entries, timeoutMs);
+  return { text: render(files, started.cfg.root), files };
+}
+
+// start is what both need before anything can be diffed: an lm to run, the tree the path belongs
+// to, and what that tree's templates build.
+async function start(lm, from, timeoutMs) {
+  if (!lm) return { error: 'lm is not installed: go install github.com/axfor/loom/cmd/lm@latest, or set loom.path' };
+  const cfg = configFor(from);
+  if (!cfg) return { error: 'no loom.lm above this file — nothing to compare with upstream' };
+  const listed = await listTemplates(lm, cfg.root, timeoutMs);
+  if (listed.error) return { error: listed.error };
+  return { cfg, entries: listed.entries };
+}
+
+// renderOne is the header for a single template: the summary line of a whole-tree patch would only
+// repeat the one row of its own histogram.
+function renderOne(f) {
+  const head = [
+    `${f.target} · ${plural(f.added, 'insertion')}(+), ${plural(f.removed, 'deletion')}(-)`
+    + `  ${bar(f.added, f.removed, f.added + f.removed, 40)}`,
+    'upstream → product · woven by lm, nothing written',
+  ];
+  if (f.merge) {
+    head.push('', 'merge: our file is the product, so this is the edits lm sync carries onto each new upstream.');
+  }
+  head.push('', '');
+  return head.join('\n') + f.text;
 }
 
 function render(files, root) {
@@ -354,6 +407,7 @@ function treeRoot(from) {
   return cfg && cfg.root;
 }
 
+module.exports.filePatch = filePatch;
 module.exports.treePatch = treePatch;
 module.exports.treeRoot = treeRoot;
 module.exports.bar = bar;
