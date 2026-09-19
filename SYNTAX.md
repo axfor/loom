@@ -10,11 +10,11 @@
 // xsdd/skills/testing/SKILL.lm
 // 产物是 skills/testing/SKILL.md
 
-base.frontmatter["description"].start(self.frontmatter["description"])
+base.frontmatter.description.start(self.frontmatter.description)
 
-base["Overview"].after(self["Where this fits"])
+base.Overview.after(self."Where this fits")
 
-base["Verification"].before:
+base.Verification.before:
     ## 自检清单
 
     跑 `lm check` 确认：
@@ -23,7 +23,7 @@ base["Verification"].before:
     lm check -o ../plugins/XSDD
     ```
 
-base["How it compares"].drop(reason: "上游在和别的项目比，与我们无关")
+base."How it compares".drop(reason: "上游在和别的项目比，与我们无关")
 
 base.append(self.body)
 ```
@@ -34,16 +34,36 @@ base.append(self.body)
 
 ## 1. 一条总规则
 
-> **方括号是选择，点号是语言。**
+> **点号取名字，方括号筛谓词。**
 
-方括号里是**文档里的东西**：作者写的名字、谓词。
-点号后面是**语言的词**：部件类别、位置、操作、轴。数量有限，可补全，可类型检查。
+分隔符永远是点号。名字本身是标识符就直接写，拼不出来就加引号——但**始终是点号**。方括号只有一个用途：谓词。
 
+```go
+base.Overview                       标识符，直接写
+base.frontmatter.description        键名也一样
+base."How Skills Work"              有空格，加引号
+base."1. Clone the repository"      数字开头带标点，加引号
+base.sections[level == 2]           方括号 = 谓词，不是名字
 ```
-base["Overview"].after(...)
-     ^^^^^^^^^^  ^^^^^
-     文档的数据   语言的词
+
+点号后面还可以是**语言的词**——类别、位置、操作、轴，固定一张表。
+
+### 点号是原样匹配，没有任何替换
+
+这是和今天最大的区别。今天 `base.How_Skills_Work` 里的下划线**代表空格**，还配了一条「两个名字撞车时改用引号」的规则。
+
+新规则里 **`.foo` 就是名字 `foo`，一个字符都不差**。没有下划线魔法，也就没有撞名规则。
+
+### 和语言的词撞了怎么办
+
+文档里真有一节叫 `sections`、或一个键叫 `after` 时：
+
+```go
+base.sections        语言的词：全部节
+base."sections"      加引号 = 文档里那个叫 sections 的部分
 ```
+
+**不加引号时先按语言的词查，查不到才当名字；加了引号就一定是名字。** 所以撞名永远有解，而且解法只有一个。
 
 ---
 
@@ -75,7 +95,7 @@ base["Overview"].after(...)
 `base` 指向别处时显式改：
 
 ```go
-base = up["old/NAME.md"]        // 上游改过路径
+base = up."old/NAME.md"        // 上游改过路径
 ```
 
 ---
@@ -84,21 +104,33 @@ base = up["old/NAME.md"]        // 上游改过路径
 
 ### 4.1 按名字：取一个
 
-```go
-base["Overview"]
-base["Quick Start (Any Agent)"]
-self["1. clone 仓库"]
-```
-
-名字就是作者写的那串字——标题、函数名、键名。**没有第二种写法**：没有标识符形式，没有下划线代空格。
-
-嵌套按层加方括号：
+名字就是作者写的那串字——标题、函数名、键名。能当标识符写就用点号：
 
 ```go
-base["Example 2"]["Phase 1"]        // 在 Example 2 那一章里找 Phase 1
-base.frontmatter["description"]     // frontmatter 是语言的词，description 是数据
-base["a"]["b"]                      // json / toml 的路径
+base.Overview                       标题是 Overview
+base.frontmatter.description        键是 description
+base.boot                           shell 函数 boot
+self.安装说明                        任何文字都行，标识符不限 ASCII
 ```
+
+拼不出来的加引号——**仍然是点号**：
+
+```go
+base."Quick Start (Any Agent)"      有空格和括号
+base."1. clone 仓库"                 数字开头
+base."argument-hint"                有连字符
+```
+
+两种写法可以混着接：
+
+```go
+base."Example 2"."Phase 1"          两段都有空格
+base."Example 2".Notes              章名要引号，节名恰好是标识符
+base.servers.github.url             json / toml 的路径
+base."mcp-servers".github.url       第一段有连字符
+```
+
+**点号是原样匹配**：`.Phase_1` 找的是名字 `Phase_1`，不是 `Phase 1`。名字里真有空格就只能加引号。
 
 ### 4.2 按谓词：取一组
 
@@ -137,10 +169,10 @@ base.keys[value == ""]
 在一个选择上继续走：
 
 ```go
-base["Overview"].children      子部分
-base["Overview"].next          下一个同级
-base["Overview"].prev          上一个同级
-base["Overview"].parent        所属的上级
+base.Overview.children      子部分
+base.Overview.next          下一个同级
+base.Overview.prev          上一个同级
+base.Overview.parent        所属的上级
 base.sections.first            第一个
 base.sections.last             最后一个
 ```
@@ -162,8 +194,8 @@ base.sections[name ~ "^Step "].demote()     每个 Step 节都降一级
 部分的**边界**也是地址，它们的长度为零：
 
 ```go
-base["Overview"].after      Overview 之后
-base["Overview"].before     之前
+base.Overview.after      Overview 之后
+base.Overview.before     之前
 base.start                  文档开头
 base.end                    文档结尾
 ```
@@ -171,9 +203,9 @@ base.end                    文档结尾
 ### 5.2 写就是在地址上加括号
 
 ```go
-base["Overview"].after(self["Where this fits"])
-base.start(self["Read this first"])
-base.end(self["Appendix"])
+base.Overview.after(self."Where this fits")
+base.start(self."Read this first")
+base.end(self.Appendix)
 ```
 
 `base.append(x)` 是 `base.end(x)` 的别名，因为读起来更顺。
@@ -183,7 +215,7 @@ base.end(self["Appendix"])
 值里面是另一种文档时，用 `as` 打开，之后照常寻址：
 
 ```go
-base["prompt"].as(markdown)["Steps"].after(self["我们的步骤"])
+base.prompt.as(markdown).Steps.after(self.我们的步骤)
 ```
 
 ---
@@ -193,10 +225,10 @@ base["prompt"].as(markdown)["Steps"].after(self["我们的步骤"])
 ### 6.1 引用
 
 ```go
-base["Overview"].after(self["Where this fits"])     我们文件的一个部分
+base.Overview.after(self."Where this fits")     我们文件的一个部分
 base.append(self.body)                              我们文件的正文
 base.append(self.frontmatter)                       整个 frontmatter
-base["X"].after(a, b, c)                            多个，按序
+base."X".after(a, b, c)                            多个，按序
 ```
 
 ### 6.2 块
@@ -204,7 +236,7 @@ base["X"].after(a, b, c)                            多个，按序
 冒号 + 换行 + 缩进。**缩进是定界符，所以内容里不需要任何转义**：
 
 ```go
-base["Overview"].after:
+base.Overview.after:
     ## Where this fits
 
     跑 `lm build`，或者：
@@ -242,7 +274,7 @@ base["Overview"].after:
 | `地址.split(在哪)` / `.join()` | 拆 / 并 | 除边界标记外逐字节不变 |
 
 ```go
-base["Troubleshooting"].move(base.sections.last.after)
+base.Troubleshooting.move(base.sections.last.after)
 base.sections[name ~ "^Step "].demote()
 ```
 
@@ -257,15 +289,15 @@ base.sections[name ~ "^Step "].demote()
 | `地址.unwrap(reason: "...")` | 去掉包裹层 |
 
 ```go
-base["How it compares"].drop(reason: "上游在和别的项目比，与我们无关")
+base."How it compares".drop(reason: "上游在和别的项目比，与我们无关")
 ```
 
 ### 7.4 值
 
 ```go
-base.frontmatter["description"].set(self.frontmatter["description"])
-base.frontmatter["description"].start(self.frontmatter["description"])   我们的 + 上游的
-base.frontmatter["description"].end(self.frontmatter["description"])     上游的 + 我们的
+base.frontmatter.description.set(self.frontmatter.description)
+base.frontmatter.description.start(self.frontmatter.description)   我们的 + 上游的
+base.frontmatter.description.end(self.frontmatter.description)     上游的 + 我们的
 ```
 
 ### 7.5 投影（产出新文档，来源不动）
@@ -320,16 +352,16 @@ return self   // reason: 上游那份和我们的会跑两遍
 每个地址都有类型：**（种类，类别）**。
 
 ```
-base["Overview"]          markdown / section
+base.Overview          markdown / section
 self.boot                 shell / function
-base.frontmatter["x"]     markdown / fmkey
-base["prompt"].as(markdown)   markdown / document
+base.frontmatter."x"     markdown / fmkey
+base.prompt.as(markdown)   markdown / document
 ```
 
 写操作要求**内容的类型与落点相符**，不符在解析期就报错：
 
 ```go
-base["Overview"].after(self.boot)
+base.Overview.after(self.boot)
                        ~~~~~~~~~ shell/function 写不进 markdown/section
 ```
 
@@ -348,8 +380,9 @@ return     = "return" target [ "//" reason ] ;
 
 target     = root { selector | "." word } ;
 root       = "base" | "self" ;
-selector   = "[" ( string | predicate ) "]" ;
-word       = class | axis | place | op | "as" "(" kind ")" ;
+selector   = "." ( string | predicate ) "" ;
+word       = class | axis | place | op | "as" "(" kind ")" | name ;
+name       = ident ;   (* 文档里的名字，原样匹配；与上面几类撞名时报错 *)
 
 class      = "sections" | "lines" | "functions" | "markers"
            | "keys" | "values" | "frontmatter" | "body" ;
@@ -361,7 +394,7 @@ op         = "wrap" | "replace" | "drop" | "unwrap" | "set"
 
 predicate  = pterm { ( "&&" | "||" ) pterm } ;
 pterm      = [ "!" ] ( "level" cmp int | "name" ( "==" | "~" ) string
-           | "empty" | "calls" string | "has" "[" string "]" | "(" predicate ")" ) ;
+           | "empty" | "calls" string | "has" "." string "" | "(" predicate ")" ) ;
 cmp        = "==" | "!=" | "<" | "<=" | ">" | ">=" ;
 
 args       = arg { "," arg } ;
@@ -410,14 +443,14 @@ kind       = "markdown" | "shell" | "toml" | "json" | "text" ;
 
 | 今天 | 全新 |
 |---|---|
-| `base.How_Skills_Work.after("X")` | `base["How Skills Work"].after(self["X"])` |
-| `base."How it compares".drop(reason: "r")` | `base["How it compares"].drop(reason: "r")` |
+| `base.How_Skills_Work.after("X")` | `base."How Skills Work".after(self."X")`（下划线不再代表空格） |
+| `base."How it compares".drop(reason: "r")` | `base."How it compares".drop(reason: "r")` |
 | `base.merge(self)`（文本 / shell） | `return self  // reason: ...` |
 | `base.merge(self)`（json registry） | `base.merge(self)` —— 不变，它是另一件事 |
 | `base.replace(self, reason: "r")` | `return self  // reason: r` |
-| `base.frontmatter.description.start(x)` | `base.frontmatter["description"].start(x)` |
-| `base.prompt.as(markdown).Steps` | `base["prompt"].as(markdown)["Steps"]` |
-| 标识符形式 + 字符串形式 + 撞名规则 | 只有方括号 |
+| `base.frontmatter.description.start(x)` | 不变 |
+| `base.prompt.as(markdown).Steps` | `base.prompt.as(markdown).Steps` |
+| 标识符形式（下划线代空格）+ 撞名规则 | 点号原样匹配，拼不出时加引号 |
 | 16 行逐节翻译 | `base.sections.align(self.sections)` |
 
 ---
@@ -434,11 +467,11 @@ kind       = "markdown" | "shell" | "toml" | "json" | "text" ;
 
 // ── 选择：按名字 ─────────────────────────────────────────────
 
-base["Overview"]                        一个节
-base["Quick Start (Any Agent)"]         名字里有标点，照写
-base["Example 2"]["Phase 1"]            嵌套：在 Example 2 那一章里找
-base.frontmatter["description"]         frontmatter 是语言的词，键名是数据
-base["servers"]["github"]["url"]        json / toml 的路径，逐层方括号
+base.Overview                        一个节
+base."Quick Start (Any Agent)"         名字里有标点，照写
+base."Example 2"."Phase 1"            嵌套：在 Example 2 那一章里找
+base.frontmatter.description         frontmatter 是语言的词，键名是数据
+base.servers.github.url        json / toml 的路径，逐层点号
 
 
 // ── 选择：按类别（取全部） ───────────────────────────────────
@@ -470,10 +503,10 @@ base.sections[!(level == 1 || empty)]                   括号
 
 // ── 选择：轴 ─────────────────────────────────────────────────
 
-base["Overview"].children               子部分
-base["Overview"].next                   下一个同级
-base["Overview"].prev                   上一个同级
-base["Overview"].parent                 所属的上级
+base.Overview.children               子部分
+base.Overview.next                   下一个同级
+base.Overview.prev                   上一个同级
+base.Overview.parent                 所属的上级
 base.sections.first                     第一个
 base.sections.last                      最后一个
 base.sections[level == 2].first.children   轴可以接着走
@@ -481,15 +514,15 @@ base.sections[level == 2].first.children   轴可以接着走
 
 // ── 打开一层 ─────────────────────────────────────────────────
 
-base["prompt"].as(markdown)                    值里是 markdown
-base["prompt"].as(markdown)["Steps"]           打开后照常寻址
-base["script"].as(shell).functions[calls "rm"] 打开后照常选择
+base.prompt.as(markdown)                    值里是 markdown
+base.prompt.as(markdown).Steps           打开后照常寻址
+base.script.as(shell).functions[calls "rm"] 打开后照常选择
 
 
 // ── 派生地址（长度为零的跨度） ───────────────────────────────
 
-base["Overview"].after                  该节之后
-base["Overview"].before                 之前
+base.Overview.after                  该节之后
+base.Overview.before                 之前
 base.start                              文档开头
 base.end                                文档结尾
 
@@ -499,18 +532,18 @@ base.end                                文档结尾
 
 // ── 放置：上游 100% 保留 ─────────────────────────────────────
 
-base["Overview"].after(self["Where this fits"])         引用我们的一个节
-base["Overview"].before(self["前言"])
-base.start(self["Read this first"])
-base.end(self["Appendix"])
-base.append(self["Appendix"])                           end 的别名
-base["Overview"].after(self["A"], self["B"], self["C"]) 多个，按序
-base["Overview"].wrap(self["开头"], self["结尾"])        两端各一次
+base.Overview.after(self."Where this fits")         引用我们的一个节
+base.Overview.before(self.前言)
+base.start(self."Read this first")
+base.end(self.Appendix)
+base.append(self.Appendix)                           end 的别名
+base.Overview.after(self.A, self.B, self.C) 多个，按序
+base.Overview.wrap(self.开头, self.结尾)        两端各一次
 
 base.append(self.body)                                  我们的正文
 base.append(self.frontmatter)                           整个 frontmatter
 
-base["Overview"].after:                                 块：缩进定界
+base.Overview.after:                                 块：缩进定界
     ## 直接写在这里
 
     反引号 `lm build`、代码块都只是普通文本：
@@ -524,26 +557,26 @@ base["Overview"].after:                                 块：缩进定界
 
 // ── 结构变换：保证比放置还强 ─────────────────────────────────
 
-base["Troubleshooting"].move(base.sections.last.after)   移动：字节多重集不变
-base["A"].swap(base["B"])                                互换
+base.Troubleshooting.move(base.sections.last.after)   移动：字节多重集不变
+base.A.swap(base.B)                                互换
 base.sections[name ~ "^Step "].demote()                  一组：每个都降一级
-base["Overview"].promote()                               升一级
-base["Setup"].split(base["Setup"].children.first)        在某处拆开
-base["Setup"].join()                                     与下一个并起来
+base.Overview.promote()                               升一级
+base.Setup.split(base.Setup.children.first)        在某处拆开
+base.Setup.join()                                     与下一个并起来
 
 
 // ── 改写：降低保证量，必须给理由 ─────────────────────────────
 
-base["How it compares"].drop(reason: "上游在和别的项目比，与我们无关")
-base["Install"].replace(self["安装"], reason: "上游的装法在内网不通")
-base["Notes"].unwrap(reason: "这层包裹在产物里没有意义")
+base."How it compares".drop(reason: "上游在和别的项目比，与我们无关")
+base.Install.replace(self.安装, reason: "上游的装法在内网不通")
+base.Notes.unwrap(reason: "这层包裹在产物里没有意义")
 
 
 // ── 值 ───────────────────────────────────────────────────────
 
-base.frontmatter["description"].set(self.frontmatter["description"])    换成我们的
-base.frontmatter["description"].start(self.frontmatter["description"])  我们的 + 上游的
-base.frontmatter["description"].end(self.frontmatter["description"])    上游的 + 我们的
+base.frontmatter.description.set(self.frontmatter.description)    换成我们的
+base.frontmatter.description.start(self.frontmatter.description)  我们的 + 上游的
+base.frontmatter.description.end(self.frontmatter.description)    上游的 + 我们的
 
 
 // ── 投影：产出新文档，来源不动 ───────────────────────────────
@@ -588,7 +621,7 @@ return self   // reason: 两份 AGENTS 会被 agent 同时读到，必须只有�
 | `op` 改写类 | `replace` `drop` `unwrap` |
 | `op` 值 | `set` `start` `end` |
 | `op` 其他 | `project` `align` `merge` |
-| `arg` 引用 | `self["X"]` `self.body` `self.frontmatter` |
+| `arg` 引用 | `self."X"` `self.body` `self.frontmatter` |
 | `arg` 多个 | `after(a, b, c)` |
 | `arg` `reason:` | 「改写」三条 |
 | `block` | 「块」与两处 `project` |
@@ -666,16 +699,16 @@ description: 先写会失败的测试。
 **`xsdd/skills/testing/SKILL.lm`**
 
 ```go
-base.frontmatter["description"].start(self.frontmatter["description"])
+base.frontmatter.description.start(self.frontmatter.description)
 
-base["Overview"].after(self["Where this fits"])
+base.Overview.after(self."Where this fits")
 
-base["Verification"].before:
+base.Verification.before:
     ## 自检清单
 
     跑 `lm check` 确认产物是最新的。
 
-base["How it compares"].drop(reason: "上游在和别的项目比，与我们无关")
+base."How it compares".drop(reason: "上游在和别的项目比，与我们无关")
 ```
 
 **产物 `../plugins/XSDD/skills/testing/SKILL.md`**
