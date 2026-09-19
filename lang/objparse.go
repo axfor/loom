@@ -22,6 +22,10 @@ import (
 	"strings"
 )
 
+// DefaultKind is the node kind a bare name refers to, in engine terms: build asks the same
+// question when it works out which nodes of a file can be named at all.
+func DefaultKind(typ string) string { return defaultKind[typ] }
+
 // defaultKind is the node kind a bare name refers to (in engine terms).
 var defaultKind = map[string]string{
 	"markdown": "heading",

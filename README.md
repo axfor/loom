@@ -768,7 +768,12 @@ lm build -e inner.e    uses inner.e only
 
 Our file has a section that no template statement mentions. It would not be in the product, and
 nothing would say so. `lm build` places it next to its neighbour in our file and writes the change
-back into the template:
+back into the template.
+
+It works for **markdown sections and shell functions** — the two kinds the build already accounts
+for by name, and so the two whose place it can work out. Elsewhere order carries no meaning (a toml
+key's neighbour says nothing about where a new key belongs), and inferring one would be inventing
+an order upstream never had; a key of ours that the product does not have is reported instead.
 
 - after the nearest preceding section that the template does place, in the same statement
   (`base.Install.after("Install XSDD")` becomes `base.Install.after("Install XSDD", "Proxy settings")`);
@@ -786,7 +791,9 @@ base."Example 2".after{
 ```
 
 If there is no neighbour to follow, or the neighbour is placed by `replace`, the build fails: Loom does
-not guess. `lm check` reports missing anchors as errors and writes nothing.
+not guess. `lm check` reports missing anchors as errors and writes nothing. Where *nothing* of ours
+can follow anything of upstream's — our headings are a translation, say — the `body` setting answers
+that once for the tree.
 
 ---
 

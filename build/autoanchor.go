@@ -59,7 +59,11 @@ var errWholeBody = errors.New("our body goes in whole")
 // placeOurs works out where each section of ours belongs, by the upstream section it follows or
 // precedes. What it cannot place it names, and leaves the decision to the caller.
 func placeOurs(c *lang.Config, t *lang.Template) ([]anchorGap, []string, error) {
-	if t.Type != "markdown" || c.Weft == "" || (t.From != "" && t.From != c.Warp) {
+	// Markdown sections and shell functions: the two kinds the build already accounts for by name,
+	// and so the two whose places it can work out. Elsewhere a node has no neighbour to follow —
+	// a toml key's order carries no meaning — and inferring one would be inventing an order.
+	kind := lang.DefaultKind(t.Type)
+	if (t.Type != "markdown" && t.Type != "shell") || c.Weft == "" || (t.From != "" && t.From != c.Warp) {
 		return nil, nil, nil
 	}
 	for _, s := range t.Stmts {
@@ -71,8 +75,8 @@ func placeOurs(c *lang.Config, t *lang.Template) ([]anchorGap, []string, error) 
 	if err != nil || !ok {
 		return nil, nil, err
 	}
-	tree := ast.NewMarkdown(src)
-	nodes := ast.Addressable(tree, "heading")
+	tree := ast.New(t.Type, src)
+	nodes := ast.Addressable(tree, kind)
 	if len(nodes) == 0 {
 		return nil, nil, nil
 	}
@@ -94,8 +98,8 @@ func placeOurs(c *lang.Config, t *lang.Template) ([]anchorGap, []string, error) 
 			switch r.Kind {
 			case "body", "all":
 				return nil, nil, nil // the whole file is woven in
-			case "heading":
-				span, _, err := locate(tree, "heading", r.Within, r.Anchor, r.Ident, lang.Stmt{Rng: r.Rng})
+			case kind:
+				span, _, err := locate(tree, kind, r.Within, r.Anchor, r.Ident, lang.Stmt{Rng: r.Rng})
 				if err != nil {
 					return nil, nil, nil // weaving reports this error
 				}

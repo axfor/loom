@@ -724,3 +724,45 @@ func TestInsertOnlyIsCheckedForEveryType(t *testing.T) {
 		t.Fatalf("writing a value is not an insert, and must not trip the byte check: %v", err)
 	}
 }
+
+// Anchor completion worked for markdown only, so a function of ours that no template placed simply
+// was not in the product — no error, no warning, and the report still said upstream was whole,
+// which it was. Ours was the part that went missing.
+func TestAnchorCompletionForShell(t *testing.T) {
+	dir := t.TempDir()
+	tpl := filepath.Join(dir, "me", "r.sh.lm")
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark shell \"# XS:BEGIN\" \"# XS:END\"\n")
+	mustWrite(t, filepath.Join(dir, "up", "r.sh"), "#!/bin/sh\nmain() {\n  echo up\n}\n")
+	mustWrite(t, filepath.Join(dir, "me", "r.sh"), "one() {\n  echo a\n}\ntwo() {\n  echo b\n}\n")
+	mustWrite(t, tpl, "base.main.after(self.one)\n")
+
+	c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := build.PlanBuild(c, true)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	// two follows one in our file, and one is woven in, so two goes with it.
+	if got := readFile(t, tpl); got != "base.main.after(self.one, \"two\")\n" {
+		t.Errorf("the anchor was not completed: %q", got)
+	}
+	var product string
+	for _, o := range plan.Outputs {
+		if o.Rel == "r.sh" {
+			product = string(o.Data)
+		}
+	}
+	if !strings.Contains(product, "two() {") {
+		t.Errorf("our second function is still not in the product:\n%s", product)
+	}
+
+	// Running again writes nothing more.
+	if _, err := build.PlanBuild(c, true); err != nil {
+		t.Fatalf("second build: %v", err)
+	}
+	if again := readFile(t, tpl); again != "base.main.after(self.one, \"two\")\n" {
+		t.Errorf("a second build changed the template again: %q", again)
+	}
+}
