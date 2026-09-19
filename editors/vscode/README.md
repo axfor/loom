@@ -55,11 +55,11 @@ The third button shows the template in front of you as a unified diff — the `+
 
 ```
 doc.md · 5 insertions(+), 0 deletions(-)  +++++
-upstream → product · woven by lm, nothing written
+upstream → ../dist · woven by lm, nothing written
 
-diff --loom upstream/doc.md product/doc.md
+diff --loom upstream/doc.md ../dist/doc.md
 --- upstream/doc.md
-+++ product/doc.md
++++ ../dist/doc.md
 @@ -2,6 +2,11 @@
  
  Upstream overview text.
@@ -71,6 +71,10 @@ diff --loom upstream/doc.md product/doc.md
 +<!-- MINE:END -->
  ## Process
 ```
+
+Both sides are named by `loom.lm`, relative to the tree root, the way git writes paths relative to
+the repository: the left is the file in the `base` layer, which you can open, and the right is where
+`output` says `lm build` writes the product — or the product's own path when no output is set.
 
 Where Review puts the two files side by side, this is the same comparison as a patch: only the
 changed lines with their context, compact enough to take in at a glance and plain enough to paste

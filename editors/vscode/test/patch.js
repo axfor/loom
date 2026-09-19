@@ -168,7 +168,8 @@ async function tree() {
   ok(viaRoot.text === r.text, 'a tree has one patch, whichever path inside it asked for one');
   ok(r.files.length === 2, 'both templates appear', r.files && r.files.map((f) => f.target));
   ok(/2 files changed, 6 insertions\(\+\), 0 deletions\(-\)/.test(r.text), 'the summary counts every file', r.text.split('\n')[0]);
-  ok(r.text.includes('diff --loom upstream/doc.md product/doc.md'), 'each file has a header naming both sides');
+  ok(r.text.includes('diff --loom up/doc.md doc.md'), 'each file is named by the real layer directories, not the words upstream and product', r.text.split('\n').find((l) => l.startsWith('diff ')));
+  ok(!/upstream\/|product\//.test(r.text), 'no invented directory appears anywhere in the patch');
   ok(r.text.includes('+<!-- B -->') && r.text.includes('+## Ours'), 'our inserted content is on + lines');
   ok(r.text.includes('  up()') && !r.text.includes('-  up()'), 'upstream lines it kept are context, not deletions');
 
@@ -184,7 +185,8 @@ async function tree() {
   ok(one.files[0].target === 'doc.md', 'and only itself', one.files);
   ok(!one.text.includes('run.js'), 'the other templates of the tree are not in it');
   ok(one.text.startsWith('doc.md · 5 insertions(+), 0 deletions(-)'), 'one file gets a header of its own', one.text.split('\n')[0]);
-  ok(one.text.includes('+## Ours') && one.text.includes('--- upstream/doc.md'), 'with the diff under it');
+  ok(one.text.includes('+## Ours') && one.text.includes('--- up/doc.md'), 'with the diff under it', one.text);
+  ok(one.text.includes('up → the product'), 'and a header naming the layers it runs between', one.text.split('\n')[1]);
 
   const oneMerge = await filePatch(lm, path.join(root, 'me', 'run.lm'));
   ok(oneMerge.files.length === 1 && oneMerge.files[0].merge === true, 'a merge template patches on its own too', oneMerge.error || oneMerge.files);
@@ -196,6 +198,13 @@ async function tree() {
   write('me/nothing.lm', '// nothing to weave in\n');
   const quiet = await filePatch(lm, path.join(root, 'me', 'nothing.lm'));
   ok(!quiet.error && /adds nothing to it/.test(quiet.text), 'a template that changes nothing says so', quiet);
+
+  // With an output directory the right side is where lm build writes, not a made-up name.
+  write('loom.lm', 'base "up"\nself "me"\noutput "../dist"\nmark markdown "<!-- B -->" "<!-- E -->"\n');
+  const out = await filePatch(lm, path.join(root, 'me', 'doc.lm'));
+  ok(out.text.includes('diff --loom up/doc.md ../dist/doc.md'), 'the product side is the configured output path', out.text.split('\n').find((l) => l.startsWith('diff ')));
+  ok(out.text.includes('up → ../dist'), 'and the header says which directories', out.text.split('\n')[1]);
+  write('loom.lm', 'base "up"\nself "me"\nmark markdown "<!-- B -->" "<!-- E -->"\n');
 
   const notATemplate = await filePatch(lm, path.join(root, 'loom.lm'));
   ok(notATemplate.error && /builds nothing lm knows about/.test(notATemplate.error), 'loom.lm is not a template', notATemplate);

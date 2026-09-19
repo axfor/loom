@@ -271,6 +271,19 @@ function bar(added, removed, widest, width) {
 // A merge template is marked: there the product is our own file, so the diff is not what a template
 // inserts but the edits we carry — the ones lm sync re-applies to each new upstream. They exist
 // nowhere else as a file, which is the reason this view is worth having.
+// A patch names real places, not the words "upstream" and "product": the left side is the file in
+// the base layer, which you can open, and the right side is where lm build writes the product.
+// Both are written relative to the tree root, as git writes paths relative to the repository.
+function upstreamLabel(cfg, e) {
+  return path.posix.join(cfg.base, e.path);
+}
+
+// Without an output setting there is no directory to name, and the product path alone is the
+// honest answer: it is what `lm build -o dir` would write under whichever dir it is given.
+function productLabel(cfg, e) {
+  return cfg.output ? path.posix.join(cfg.output, e.target) : e.target;
+}
+
 // diffEntries weaves each template and diffs it against the upstream file it is built on.
 async function diffEntries(lm, cfg, entries, timeoutMs) {
   const woven = await pool(entries, (e) => weaveOne(lm, cfg.root, e.template, timeoutMs));
@@ -286,7 +299,7 @@ async function diffEntries(lm, cfg, entries, timeoutMs) {
     // compare it with, and the added files are not what this view is about.
     const upstream = loom.readText(path.join(cfg.root, cfg.base, e.path));
     if (upstream === null) continue;
-    const d = unified(upstream, r.product, `upstream/${e.path}`, `product/${e.target}`);
+    const d = unified(upstream, r.product, upstreamLabel(cfg, e), productLabel(cfg, e));
     if (d.text === '') continue;
     files.push({ target: e.target, merge: !!e.merge, added: d.added, removed: d.removed, text: d.text });
   }
@@ -307,7 +320,7 @@ async function filePatch(lm, template, timeoutMs = 20000) {
   }
 
   const files = await diffEntries(lm, cfg, mine, timeoutMs);
-  if (files.length === 1 && !files[0].error) return { text: renderOne(files[0]), files };
+  if (files.length === 1 && !files[0].error) return { text: renderOne(files[0], cfg), files };
   if (files.length === 0) {
     const e = mine[0];
     const upstream = loom.readText(path.join(cfg.root, cfg.base, e.path));
@@ -318,7 +331,7 @@ async function filePatch(lm, template, timeoutMs = 20000) {
         : `${e.target} is upstream's file unchanged: the template adds nothing to it.\n`,
     };
   }
-  return { text: render(files, cfg.root), files };
+  return { text: render(files, cfg), files };
 }
 
 // treePatch renders every template in the tree, one after another.
@@ -326,7 +339,7 @@ async function treePatch(lm, from, timeoutMs = 20000) {
   const started = await start(lm, from, timeoutMs);
   if (started.error) return { error: started.error };
   const files = await diffEntries(lm, started.cfg, started.entries, timeoutMs);
-  return { text: render(files, started.cfg.root), files };
+  return { text: render(files, started.cfg), files };
 }
 
 // start is what both need before anything can be diffed: an lm to run, the tree the path belongs
@@ -342,11 +355,11 @@ async function start(lm, from, timeoutMs) {
 
 // renderOne is the header for a single template: the summary line of a whole-tree patch would only
 // repeat the one row of its own histogram.
-function renderOne(f) {
+function renderOne(f, cfg) {
   const head = [
     `${f.target} · ${plural(f.added, 'insertion')}(+), ${plural(f.removed, 'deletion')}(-)`
     + `  ${bar(f.added, f.removed, f.added + f.removed, 40)}`,
-    'upstream → product · woven by lm, nothing written',
+    `${direction(cfg)} · woven by lm, nothing written`,
   ];
   if (f.merge) {
     head.push('', 'merge: our file is the product, so this is the edits lm sync carries onto each new upstream.');
@@ -355,7 +368,12 @@ function renderOne(f) {
   return head.join('\n') + f.text;
 }
 
-function render(files, root) {
+// direction names the two layers the patch runs between, by the directories loom.lm gives them.
+function direction(cfg) {
+  return `${cfg.base} → ${cfg.output || 'the product'}`;
+}
+
+function render(files, cfg) {
   const changed = files.filter((f) => !f.error);
   const broken = files.filter((f) => f.error);
   const added = changed.reduce((n, f) => n + f.added, 0);
@@ -364,7 +382,7 @@ function render(files, root) {
   const head = [
     `Loom patch · ${plural(changed.length, 'file')} changed, `
     + `${plural(added, 'insertion')}(+), ${plural(removed, 'deletion')}(-)`,
-    `upstream → product · woven from ${root}, nothing written`,
+    `${direction(cfg)} · woven from ${cfg.root}, nothing written`,
     '',
   ];
 
