@@ -31,6 +31,15 @@ const METHOD_DOCS = {
   set: 'take ours: the whole frontmatter, or a key\'s value',
   merge: 'our file is upstream plus our edits; lm sync merges each new upstream into it',
   as: "view the key's value as another type",
+  move: 'put the node somewhere else; its own bytes do not change',
+  promote: 'take the heading up one level',
+  demote: 'take the heading down one level',
+  wrap: 'insert before and after in one statement',
+  swap: 'trade places with another node',
+  unwrap: 'take the heading out and lift what was under it; needs reason:',
+  split: 'cut the section in two at a node inside it',
+  join: 'run this section and the next together; needs reason:',
+  project: "derive content from upstream's shape, not its words",
 };
 
 const SNIPPETS = {
@@ -43,6 +52,15 @@ const SNIPPETS = {
   set: 'set($1)',
   merge: 'merge(self)',
   as: 'as($1)',
+  move: 'move(after: base.$1)',
+  promote: 'promote()',
+  demote: 'demote()',
+  wrap: 'wrap($1, $2)',
+  swap: 'swap(base.$1)',
+  unwrap: 'unwrap(reason: "$1")',
+  split: 'split($1, "$2")',
+  join: 'join(reason: "$1")',
+  project: 'project(`$1`)',
 };
 
 const SETTINGS = [
@@ -219,6 +237,9 @@ function stepItems(cx, chain, index, range, quoted) {
         out.push(item(seg, 'node', { detail: `${src.where}:${n.line + 1}`, ...write([seg]), range }));
       }
     } else if (r.node.kind === 'heading') {
+      for (const [a, why] of [['children', 'the sections one level down'], ['next', 'the next section at this level'], ['prev', 'the one before'], ['parent', 'the section this one sits in']]) {
+        out.push(item(a, 'part', { detail: why, range, sortText: '3' }));
+      }
       // below a section, only its subsections: base."Example 2"."Phase 1"
       const sel = loom.findNode(text, r.node, r.view);
       if (sel) {
@@ -449,6 +470,10 @@ function statementItems(range) {
   return [
     item('base', 'object', { detail: 'the upstream file at this path; the only object a statement changes', insertText: 'base.', retrigger: true, range }),
     item('import', 'keyword', { detail: 'import [name] "path": another file of our layer', markdown: markdownFor('import'), insertText: 'import "$1"', snippet: true, retrigger: true, range }),
+    item('if', 'keyword', { detail: 'ask the document something, and write only if it holds', insertText: 'if base.has.${1:Name} {\n\t$0\n}', snippet: true, range }),
+    item('fn', 'keyword', { detail: 'group statements inside this file; inlined where it is called', insertText: 'fn ${1:name}() {\n\t$0\n}', snippet: true, range }),
+    item('return', 'keyword', { detail: 'return self: the product is our file; needs a reason', insertText: 'return self // reason: $1', snippet: true, range }),
+    item('Self', 'keyword', { detail: 'a resource section: our content, written in this file', insertText: '---\nSelf:\n    ```${1:markdown}\n    $0\n    ```', snippet: true, range }),
   ];
 }
 

@@ -250,7 +250,7 @@ func TestObjectSyntaxErrors(t *testing.T) {
 		{"changing something other than base", "self.Overview.after(\"Appendix\")", "is only a content source"},
 		{"no method call", "base.Overview", "does nothing"},
 		{"two statements on one line", "base.Overview.after(\"Appendix\") base.append(\"Appendix\")", "one statement per line"},
-		{"reason where none is allowed", "base.Overview.after(\"Appendix\", reason: \"x\")", "reason: is only for replace / drop"},
+		{"reason where none is allowed", "base.Overview.after(\"Appendix\", reason: \"x\")", "reason: is for replace / drop / unwrap / join"},
 		{"unterminated string", "base.Overview.after(\"Appendix)", "unterminated string"},
 		{"block without newline", "base.Overview.after{ \"Appendix\" }", "expected a newline after `{`"},
 		{"commas in a block", "base.Overview.after{\n  \"Appendix\",\n  \"Where this fits\"\n}", "without commas"},

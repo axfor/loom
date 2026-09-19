@@ -14,15 +14,15 @@
 const fs = require('fs');
 const path = require('path');
 
-const METHODS = new Set(['after', 'before', 'start', 'append', 'replace', 'drop', 'move', 'promote', 'demote', 'set', 'merge']);
+const METHODS = new Set(['after', 'before', 'start', 'append', 'replace', 'drop', 'move', 'promote', 'demote', 'set', 'merge', 'wrap', 'swap', 'unwrap', 'split', 'join']);
 const CONTENT_METHODS = new Set(['after', 'before', 'start', 'append', 'replace', 'set']);
 // The plural form selects a group and takes predicates instead of a name.
 const CLASS_CALLS = {
   markdown: { sections: 'heading', lines: 'line' },
   shell: { functions: 'function', markers: 'marker', lines: 'line' },
-  toml: { keys: 'key' },
-  yaml: { keys: 'key' },
-  json: { keys: 'path' },
+  toml: { keys: 'key', values: 'key' },
+  yaml: { keys: 'key', values: 'key' },
+  json: { keys: 'path', values: 'path' },
   text: { lines: 'line' },
 };
 const KIND_CALLS = {
@@ -204,6 +204,13 @@ function lex(text) {
       i++;
       continue;
     }
+    if (c === '-' && text.startsWith('---', i) && /(^|\n)[ \t]*$/.test(text.slice(0, i))) {
+      let j = i;
+      while (text[j] === '-') j++;
+      push('sep', i, j, '---');
+      i = j;
+      continue;
+    }
     if (c === '/' && text[i + 1] === '/') {
       while (i < text.length && text[i] !== '\n') i++;
       continue;
@@ -239,10 +246,11 @@ function lex(text) {
         // wrong and one ` in a line of prose puts the rest of the file out of step.
         let j = i + n;
         while (j < text.length && text[j] !== '\n') j++; // the language tag, if any
-        const fence = '`'.repeat(n);
-        let end = text.indexOf('\n' + fence, j);
-        while (end >= 0 && text[end + 1 + n] === '`') end = text.indexOf('\n' + fence, end + 1);
-        const stop = end < 0 ? text.length : end + 1 + n;
+        // The closing run may be indented: a resource section indents everything it holds.
+        const close = new RegExp(`\\n[ \\t]*\`{${n}}(?!\`)`);
+        const at = close.exec(text.slice(j));
+        const end = at ? j + at.index : -1;
+        const stop = end < 0 ? text.length : end + at[0].length;
         for (let k = i; k < stop; k++) {
           if (text[k] === '\n') {
             line++;
@@ -279,7 +287,14 @@ function lex(text) {
       i += m[0].length;
       continue;
     }
-    if ('.,:(){}'.includes(c)) push(c, i, i + 1);
+    // The added syntax's punctuation. Two-character ones first, so && is not two &.
+    const two = { '&&': 'and', '||': 'or', '==': 'eq', '!=': 'ne', '<=': 'le', '>=': 'ge' }[text.slice(i, i + 2)];
+    if (two) {
+      push(two, i, i + 2, text.slice(i, i + 2));
+      i += 2;
+      continue;
+    }
+    if ('.,:(){}[]=!<>~'.includes(c)) push(c, i, i + 1);
     i++;
   }
   push('eof', i, i);

@@ -100,7 +100,9 @@ const find = (items, label) => items.find((i) => i.label === label);
   const l = labels(at(md, 'base.Overview.|').items);
   ok(['after', 'before', 'replace', 'drop'].every((x) => l.includes(x)) && !l.includes('start') && !l.includes('set'), 'a section offers node methods', l);
   const l2 = labels(at(md, 'base."Example 2".|').items);
-  ok(l2[0] === 'Phase 1' && l2[1] === 'Phase 2' && l2.includes('after'), 'below a section: its subsections, then methods', l2);
+  // Axes first — they are the same four under every section — then this section's own, then methods.
+  ok(l2.slice(0, 4).join(',') === 'children,next,prev,parent', 'below a section: the axes come first', l2);
+  ok(l2[4] === 'Phase 1' && l2[5] === 'Phase 2' && l2.includes('after'), 'below a section: its subsections, then methods', l2);
   const l3 = labels(at(md, 'base.frontmatter.|').items);
   ok(l3.join(',') === 'name,description,set', 'frontmatter offers its keys and set', l3);
   const l3b = labels(at(md, 'base.frontmatter.description.|').items);
@@ -146,11 +148,11 @@ const find = (items, label) => items.find((i) => i.label === label);
 // ── statements, comments, literals ──
 {
   const l = labels(at(md, 'base.Overview.after("x")\n|').items);
-  ok(l.join(',') === 'base,import', 'a new line offers base and import', l);
+  ok(l.join(',') === 'base,import,if,fn,return,Self', 'a new line offers the objects and the words that start a statement', l);
   const l2 = labels(at(md, 'base.Overview.after{\n    "x"\n}\n|').items);
-  ok(l2.join(',') === 'base,import', 'after a closed block: a new statement', l2);
+  ok(l2.join(',') === 'base,import,if,fn,return,Self', 'after a closed block: a new statement', l2);
   const l3 = labels(at(md, 'base.Overview.after(\n|').items);
-  ok(l3.join(',') === 'base,import', '( does not continue on the next line', l3);
+  ok(l3.join(',') === 'base,import,if,fn,return,Self', '( does not continue on the next line', l3);
   const l4 = labels(at(md, '// base.|').items);
   ok(l4.length === 0, 'nothing is offered in a comment', l4);
   const l5 = labels(at(md, 'base.start(`\nbase.|\n`)').items);

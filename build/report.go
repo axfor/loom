@@ -34,6 +34,7 @@ type Report struct {
 	Overridden []ReportLine // ours replaces part or all of upstream
 	Dropped    []ReportLine // upstream nodes left out of the product on purpose
 	Moved      []ReportLine // upstream nodes put somewhere else, byte for byte
+	Skipped    []ReportLine // statements an `if` or a caught result kept from running
 	Added      []string     // files only in our layer
 	Untaken    []string     // files in upstream, not taken into the product
 	Anchored   []ReportLine // anchors completed during the build
@@ -57,6 +58,22 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 	var errs []error
 	whole := t.From != "" && t.From != c.Warp
 	merged := false
+
+	up, upOK, _ := c.Read(c.Warp, t.BasePath)
+
+	// The same resolution the weave did: an if took one branch there, and the report has to
+	// account for that branch and no other. Two lists would be a report about a build that did
+	// not happen.
+	stmts := t.Stmts
+	if upOK {
+		if tree := ast.New(t.Type, up); tree != nil {
+			if rr, err := resolve(c, t, tree); err == nil {
+				stmts = rr.stmts
+				r.Skipped = append(r.Skipped, rr.skipped...)
+			}
+		}
+	}
+
 	var inserted []string
 	var drops, replaces, moves, levels, values []lang.Stmt
 	var walk func(ss []lang.Stmt)
@@ -69,10 +86,16 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 				drops = append(drops, s)
 			case "replace":
 				replaces = append(replaces, s)
-			case "move":
+			case "move", "swap":
 				moves = append(moves, s)
 			case "promote", "demote":
 				levels = append(levels, s)
+			case "unwrap":
+				// The heading is gone from the product on purpose, which is a drop with a reason;
+				// what was under it is still there, and still accounted for by its own name.
+				drops = append(drops, s)
+			case "split":
+				inserted = append(inserted, s.Reason)
 			case "after", "before", "append", "prepend":
 				for _, ref := range s.Srcs {
 					inserted = append(inserted, refName(ref))
@@ -87,9 +110,7 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 			}
 		}
 	}
-	walk(t.Stmts)
-
-	up, upOK, _ := c.Read(c.Warp, t.BasePath)
+	walk(stmts)
 
 	// Our frontmatter must reach the product too: a key only in our file, left out because the template
 	// neither sets nor starts / appends a frontmatter key, would disappear with nothing to say so.
@@ -407,6 +428,11 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 	// so they must be accounted for too.
 	if kind == "heading" {
 		for _, s := range drops {
+			// unwrap keeps what was under the heading, one level up: its subsections are in the
+			// product, and each is still accounted for under its own name.
+			if s.Op == "unwrap" {
+				continue
+			}
 			for _, l := range nodeLines(s) {
 				for k, n := range upNames {
 					if n.Line != l {
@@ -571,6 +597,9 @@ func (r *Report) Print(w io.Writer) {
 	section("overridden       ", r.Overridden, "files ", "ours replaces part or all of upstream", -1)
 	section("dropped          ", r.Dropped, "places", "left out on purpose", -1)
 	section("restructured     ", r.Moved, "places", "moved or re-levelled, content unchanged", -1)
+	// A template that asks a question writes different things to different upstreams. That is not
+	// an error, but it is the one thing a reader cannot see by looking at the template alone.
+	section("skipped          ", r.Skipped, "places", "a question decided against it", -1)
 	fmt.Fprintf(w, "added             %4d files   only in our layer\n", len(r.Added))
 	fmt.Fprintf(w, "not taken         %4d files   in upstream, not listed in take\n", len(r.Untaken))
 	for i, p := range r.Untaken {

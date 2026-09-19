@@ -443,6 +443,11 @@ exactly one heading.
 | `drop` | node | leave the node out of the product on purpose | `reason:` |
 | `move` | node | put the node somewhere else in the same file | `after:` or `before:`, naming a node of upstream |
 | `promote` / `demote` | markdown section | take the heading up or down one level | none |
+| `wrap` | any node | insert before and after in one statement | none |
+| `swap` | any node | two nodes trade places | none |
+| `unwrap` | markdown section | the heading goes, what was under it comes up a level | yes |
+| `join` | markdown section | this section and the next run together | yes |
+| `split` | markdown section | a heading of ours cuts it in two | none |
 | `set` | `frontmatter` | take our whole frontmatter: `base.frontmatter.set(self.frontmatter)` | `self.frontmatter` |
 | `set` | key value | the value becomes ours: `base.frontmatter."argument-hint".set(self.frontmatter."argument-hint")`, `base.description.set(self.description)`; adds a frontmatter key upstream does not have | one value |
 | `merge` | `base` | the product is upstream's file and ours together. For a script ours is the product and `lm sync` carries the edits onto each new upstream ([Following upstream](#following-upstream)); for a json registry the entries are merged by identity, ours winning where both register the same handler ([Registries](#registries)) | `self` |
@@ -637,6 +642,140 @@ base.Setup."Step A".before(`## Setup, part two`)
 
 Everything upstream wrote is still there, in the same order, so the build still proves the file
 unchanged byte for byte.
+
+### Asking the document a question
+
+A template can ask before it writes. The question reads the document and writes nothing, so it is
+always safe:
+
+```
+if base.has.Overview {
+    base.Overview.after(self.notes)
+}
+
+if base.sections[level == 2].any {
+    base.start(base.sections[level == 2].project(`- {name}`))
+}
+```
+
+A write can also be caught instead of stopping the build. Catching is the only way a failure gets
+through, so it has to be written down — and a caught result that nothing reads is an error, or
+catching would be a synonym for swallowing:
+
+```
+ok = base.Overview.after(self.notes)
+if !ok {
+    return err.format("upstream dropped Overview: %s", ok)
+}
+```
+
+The result carries why, with the file and position. `err.format` only formats the message: nothing
+it produces can reach the product.
+
+The report says which way each question went, because that is the one thing a reader cannot see
+from the template alone:
+
+```
+skipped              1 places  a question decided against it
+  me/SKILL.md.lm                               SKILL.md skipped (base.has.Nope did not hold)
+```
+
+### Predicates
+
+A group can be picked with a predicate in brackets, and the terms compose with `&&`, `||` and `!`:
+
+| Asks | Written |
+|---|---|
+| how deep a heading sits | `level == 2`, also `!=` `<` `<=` `>` `>=` |
+| what it is called | `name == "Setup"`, `name ~ "^Step "` |
+| whether it holds anything | `empty` |
+| what a shell function calls | `calls "curl"` |
+| what a section contains | `has."Usage"` |
+
+```
+base.sections[level == 3 && name ~ "^Step "].demote()
+base.sections[empty].drop(reason: "upstream left the shells of sections it never wrote")
+```
+
+`.first` and `.last` take one out of a group.
+
+### Axes
+
+From a node to one the document relates to it:
+
+```
+base.Setup.children.demote()     the sections one level down
+base.Setup.next.promote()        the next section at this level
+base.Setup.prev                  the one before
+base."Step A".parent             the section this one sits in
+```
+
+Only markdown nests, so `children` and `parent` are its alone.
+
+### Grouping statements in a file
+
+`fn` groups statements; it is inlined where it is called, so there is no call at build time and no
+recursion:
+
+```
+fn bilingual(up, ours) {
+    up.after(ours)
+}
+
+bilingual(base.Overview, self.overview)
+bilingual(base.Usage, self.usage)
+```
+
+### Our content, written in the template
+
+Content short enough to read beside the statement that places it can live in the template, after a
+line of dashes. It is addressed exactly as a file of ours would be:
+
+````
+base.Overview.after(self.job)
+
+---
+Self:
+    ```markdown
+    ## job
+
+    Where it sits in the build.
+    ```
+````
+
+The fence's language tag is the kind. A section can hold one document of each kind, and a template
+can have several sections, named:
+
+````
+base.Overview.after(self.docs.job)
+base.description.start(self.cfg.toml.description)
+
+---
+Self as docs:
+    ```markdown
+    ## job
+
+    …
+    ```
+---
+Self as cfg:
+    ```toml
+    description = "ours"
+    ```
+````
+
+The address is `self[.section][.kind].part`, and both middle parts may be left out: the one
+document that holds the name is the one meant. None is an error that lists what there is, and two
+is an error that asks which — nothing is guessed.
+
+### Returning our file
+
+```
+return self // reason: upstream's and ours would both run
+```
+
+That is what a whole-file replace has always been, said in one line. It gives up every guarantee
+about upstream, so it needs a reason, and nothing may follow it.
 
 ### Following upstream
 

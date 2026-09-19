@@ -330,7 +330,7 @@ func TestMoveRefusals(t *testing.T) {
 		{"base.A.move(after: self.X)\n", "which is upstream"},
 		// A markdown section stops at the next heading, so no heading is ever inside another —
 		// the guard that a target must be outside the moved node is exercised on yaml below.
-		{"base.A.move(reason: \"x\")\n", "reason: is only for replace / drop"},
+		{"base.A.move(reason: \"x\")\n", "reason: is for replace / drop / unwrap / join"},
 	} {
 		write("me/doc.lm", c.tpl)
 		cfg, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))

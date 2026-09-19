@@ -16,10 +16,26 @@ import (
 type Kind int
 
 const (
-	KIdent  Kind = iota
-	KString      // "..."
-	KRaw         // `...`
-	KNumber      // 123
+	KIdent    Kind = iota
+	KString        // "..."
+	KRaw           // `...`
+	KNumber        // 123
+	KLBracket      // [
+	KRBracket      // ]
+	KAssign        // =
+	KBang          // !
+	KAnd           // &&
+	KOr            // ||
+	KEq            // ==
+	KNe            // !=
+	KLt            // <
+	KLe            // <=
+	KGt            // >
+	KGe            // >=
+	KMatch         // ~
+	KSep           // --- on its own line: the resource sections start here
+	KIndent        // the start of an indented block
+	KDedent        // its end
 	KDot
 	KComma
 	KColon
@@ -52,6 +68,12 @@ func (t Tok) String() string {
 		return "literal"
 	case KNumber:
 		return "`" + t.Text + "`"
+	case KSep:
+		return "`---`"
+	case KIndent:
+		return "an indented block"
+	case KDedent:
+		return "the end of an indented block"
 	case KNewline:
 		return "newline"
 	case KEOF:
@@ -91,6 +113,25 @@ func Lex(file string, src []byte) ([]Tok, error) {
 		case r == '\n':
 			adv()
 			out = append(out, Tok{Kind: KNewline, Text: "\n", Pos: here})
+		case r == '-' && peek(1) == '-' && peek(2) == '-' && atLineStart(s, i):
+			// A line of three or more dashes and nothing else: everything after it is resource
+			// sections. A dash is not punctuation anywhere in a statement, so nothing else can be
+			// mistaken for this.
+			j := i
+			for j < len(s) && s[j] == '-' {
+				j++
+			}
+			k := j
+			for k < len(s) && (s[k] == ' ' || s[k] == '\t' || s[k] == '\r') {
+				k++
+			}
+			if k < len(s) && s[k] != '\n' {
+				return nil, fmt.Errorf("%s: a line of dashes starts the resource sections and must hold nothing else", here)
+			}
+			for i < j {
+				adv()
+			}
+			out = append(out, Tok{Kind: KSep, Text: "---", Pos: here})
 		case r == '/' && peek(1) == '/':
 			for i < len(s) && s[i] != '\n' {
 				adv()
@@ -149,7 +190,7 @@ func Lex(file string, src []byte) ([]Tok, error) {
 				fence := strings.Repeat("`", n)
 				end := -1
 				for j := i; j < len(s); j++ {
-					if s[j] != '`' || (j > 0 && s[j-1] != '\n') {
+					if s[j] != '`' || !atLineStart(s, j) {
 						continue
 					}
 					k := j
@@ -185,6 +226,51 @@ func Lex(file string, src []byte) ([]Tok, error) {
 			body := s[start:i]
 			adv()
 			out = append(out, Tok{Kind: KRaw, Text: dedent(body), Pos: here})
+		case r == '[':
+			adv()
+			out = append(out, Tok{Kind: KLBracket, Text: "[", Pos: here})
+		case r == ']':
+			adv()
+			out = append(out, Tok{Kind: KRBracket, Text: "]", Pos: here})
+		case r == '~':
+			adv()
+			out = append(out, Tok{Kind: KMatch, Text: "~", Pos: here})
+		case r == '&' && peek(1) == '&':
+			adv()
+			adv()
+			out = append(out, Tok{Kind: KAnd, Text: "&&", Pos: here})
+		case r == '|' && peek(1) == '|':
+			adv()
+			adv()
+			out = append(out, Tok{Kind: KOr, Text: "||", Pos: here})
+		case r == '=' && peek(1) == '=':
+			adv()
+			adv()
+			out = append(out, Tok{Kind: KEq, Text: "==", Pos: here})
+		case r == '=':
+			adv()
+			out = append(out, Tok{Kind: KAssign, Text: "=", Pos: here})
+		case r == '!' && peek(1) == '=':
+			adv()
+			adv()
+			out = append(out, Tok{Kind: KNe, Text: "!=", Pos: here})
+		case r == '!':
+			adv()
+			out = append(out, Tok{Kind: KBang, Text: "!", Pos: here})
+		case r == '<' && peek(1) == '=':
+			adv()
+			adv()
+			out = append(out, Tok{Kind: KLe, Text: "<=", Pos: here})
+		case r == '<':
+			adv()
+			out = append(out, Tok{Kind: KLt, Text: "<", Pos: here})
+		case r == '>' && peek(1) == '=':
+			adv()
+			adv()
+			out = append(out, Tok{Kind: KGe, Text: ">=", Pos: here})
+		case r == '>':
+			adv()
+			out = append(out, Tok{Kind: KGt, Text: ">", Pos: here})
 		case r == '.':
 			adv()
 			out = append(out, Tok{Kind: KDot, Text: ".", Pos: here})
@@ -266,4 +352,19 @@ func dedent(s string) string {
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+// atLineStart reports whether only blanks separate s[i] from the start of its line. A fence may be
+// closed by an indented run of backticks, because a resource section indents everything it holds.
+func atLineStart(s string, i int) bool {
+	for k := i - 1; k >= 0; k-- {
+		switch s[k] {
+		case '\n':
+			return true
+		case ' ', '\t', '\r':
+		default:
+			return false
+		}
+	}
+	return true
 }

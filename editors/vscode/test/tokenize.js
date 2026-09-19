@@ -222,6 +222,21 @@ function expectNot(grammar, line, text, scope) {
   if (/string\.quoted\.other\.raw/.test(plain)) pass++;
   else { fail++; console.log('  ❌ an untagged fence is still a literal:', plain); }
 
+  // The added syntax: the words that are the language, its operators, and the line of dashes.
+  expect(lm, 'if base.has.Overview {', 'if', 'keyword.control.loom');
+  expect(lm, 'return err.format("%s", ok)', 'return', 'keyword.control.loom');
+  expect(lm, 'return err.format("%s", ok)', 'err', 'keyword.control.loom');
+  expect(lm, 'fn part(up, ours) {', 'fn', 'keyword.control.loom');
+  expect(lm, 'Self as notes:', 'Self', 'keyword.control.loom');
+  expect(lm, 'base.sections[level == 2].demote()', 'level', 'support.function.predicate.loom');
+  expect(lm, 'base.sections[level == 2].demote()', '==', 'keyword.operator.loom');
+  expect(lm, 'base.sections[name ~ "^S" && !empty].demote()', '&&', 'keyword.operator.loom');
+  expect(lm, 'base.sections[name ~ "^S" && !empty].demote()', 'empty', 'support.function.predicate.loom');
+  expect(lm, 'base.X.children.drop(reason: "r")', 'children', 'support.function.axis.loom');
+  expect(lm, 'base.X.unwrap(reason: "r")', 'unwrap', 'entity.name.function.method.loom');
+  expect(lm, 'base.X.swap(base.Y)', 'swap', 'entity.name.function.method.loom');
+  expect(lm, '---', '---', 'punctuation.definition.section.loom');
+
   // Predicates: match: and level: are named arguments too, and level: takes a number
   expect(lm, 'base.sections(match: "^Step ").demote()', 'match', 'variable.parameter.loom');
   expect(lm, 'base.sections(level: 3).demote()', 'level', 'variable.parameter.loom');

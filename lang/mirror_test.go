@@ -226,11 +226,19 @@ func TestEditorLexesTheSameWay(t *testing.T) {
 		"fence nested": "base.X.after(````markdown\nA ` then:\n```sh\necho hi\n```\n````)\nbase.Y.drop(reason: \"r\")\n",
 		"fence tagged": "base.X.after(```sh\necho `date`\n```)\n",
 		"unterminated": "base.X.after(```markdown\nstill typing\n",
+		"predicate":    "base.sections[level == 2 && name ~ \"^S\" || !empty].demote()\n",
+		"compare":      "base.sections[level != 3 && level < 4 && level >= 2].promote()\n",
+		"catch":        "ok = base.X.after(self.a)\nif !ok {\n\treturn err.format(\"%s\", ok)\n}\n",
+		"fn":           "fn part(up, ours) {\n\tup.after(ours)\n}\npart(base.X, self.a)\n",
+		"resources":    "base.X.after(self.job)\n---\nSelf as notes:\n    ```markdown\n    ## job\n    ```\n",
+		"axes":         "base.X.children.drop(reason: \"r\")\nbase.Y.next.promote()\n",
 		"empty":        "",
 	}
 	kinds := map[Kind]string{
 		KIdent: "id", KString: "str", KRaw: "raw", KNumber: "num", KDot: ".", KComma: ",",
 		KColon: ":", KLParen: "(", KRParen: ")", KLBrace: "{", KRBrace: "}", KNewline: "nl", KEOF: "eof",
+		KLBracket: "[", KRBracket: "]", KAssign: "=", KBang: "!", KAnd: "and", KOr: "or",
+		KEq: "eq", KNe: "ne", KLt: "<", KLe: "le", KGt: ">", KGe: "ge", KMatch: "~", KSep: "sep",
 	}
 
 	var names []string
@@ -249,7 +257,7 @@ func TestEditorLexesTheSameWay(t *testing.T) {
 		let src = ""; process.stdin.on("data", (d) => (src += d)).on("end", () => {
 			const cases = JSON.parse(src), out = {};
 			for (const [k, text] of Object.entries(cases)) {
-				out[k] = m.lex(text).map((t) => t.t + (t.v !== undefined && t.t !== "raw" ? ":" + t.v : ""));
+				out[k] = m.lex(text).map((t) => t.t + (["id", "str", "num"].includes(t.t) ? ":" + t.v : ""));
 			}
 			console.log(JSON.stringify(out));
 		});`)

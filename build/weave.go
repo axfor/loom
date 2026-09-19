@@ -84,8 +84,16 @@ func Weave(c *lang.Config, t *lang.Template) (string, error) {
 			t.Path, strings.Join(sh.Unclosed, ", "))
 	}
 
+	// Which statements run: an if picks a branch, a caught result may hold a failed write back,
+	// and a return stops the rest. Settled once, here, so the report can settle it the same way.
+	r, err := resolve(c, t, tree)
+	if err != nil {
+		return "", err
+	}
+	stmts := r.stmts
+
 	// in <key> as <type>: switch to a nested AST (the prompt in toml is markdown)
-	for _, s := range t.Stmts {
+	for _, s := range stmts {
 		if s.Op != "in" {
 			continue
 		}
@@ -100,13 +108,13 @@ func Weave(c *lang.Config, t *lang.Template) (string, error) {
 		tree.SetBody(s.Key, inner.Text())
 	}
 
-	if err := apply(c, t, t.Stmts, tree, t.Target, nil); err != nil {
+	if err := apply(c, t, stmts, tree, t.Target, nil); err != nil {
 		return "", err
 	}
 
 	// Key values run after apply: set(self.frontmatter) replaces the whole frontmatter block there, and a
 	// value written before it would be overwritten while the product still looks normal.
-	for _, s := range t.Stmts {
+	for _, s := range stmts {
 		if s.Op != "value" {
 			continue
 		}
@@ -283,6 +291,90 @@ func apply(c *lang.Config, t *lang.Template, stmts []lang.Stmt, tree ast.Tree, r
 				}
 				edits = append(edits, edit{span[0], span[1], lines, len(edits)})
 			}
+		case "unwrap":
+			// The heading line goes, and what was under it comes up a level so it keeps the shape
+			// it had. Everything else is spliced back as it was.
+			if t.From != "" && t.From != c.Warp {
+				continue
+			}
+			spans, err := targets(tree, s)
+			if err != nil {
+				return err
+			}
+			for _, span := range spans {
+				// A section ends at the next heading of any level, so what is under this one is
+				// the sections that follow it and sit deeper — they come up a level with it.
+				end := extent(tree, s.Kind, span)
+				lines := append([]string{}, tree.Lines()[span[0]:end]...)
+				g := reHeading.FindStringSubmatch(lines[0])
+				if g == nil {
+					return fmt.Errorf("%s: %s is not a heading", s.Rng, s.Anchor)
+				}
+				out := make([]string, 0, len(lines)-1)
+				for _, l := range lines[1:] {
+					if h := reHeading.FindStringSubmatch(l); h != nil && len(h[1]) > len(g[1]) {
+						l = l[1:]
+					}
+					out = append(out, l)
+				}
+				// The blank line the heading left behind goes with it.
+				for len(out) > 0 && strings.TrimSpace(out[0]) == "" {
+					out = out[1:]
+				}
+				edits = append(edits, edit{span[0], end, out, len(edits)})
+			}
+		case "swap":
+			// Two spans trade places. Written as two moves it would be two edits each resolved
+			// against a document the other has not changed yet; as one exchange the bytes of both
+			// are simply put where the other was, which is what the report then checks.
+			if t.From != "" && t.From != c.Warp {
+				continue
+			}
+			a, _, err := locate(tree, s.Kind, s.Within, s.Anchor, s.Ident, s)
+			if err != nil {
+				return err
+			}
+			b, _, err := locate(tree, s.Move.Kind, s.Move.Within, s.Move.Anchor, s.Move.Ident, s)
+			if err != nil {
+				return err
+			}
+			if a[0] == b[0] {
+				return fmt.Errorf("%s: swap takes a different node", s.Rng)
+			}
+			if a[0] > b[0] {
+				a, b = b, a
+			}
+			if a[1] > b[0] {
+				return fmt.Errorf("%s: these two overlap, so they cannot trade places", s.Rng)
+			}
+			edits = append(edits,
+				edit{a[0], a[1], append([]string{}, tree.Lines()[b[0]:b[1]]...), len(edits)},
+				edit{b[0], b[1], append([]string{}, tree.Lines()[a[0]:a[1]]...), len(edits) + 1})
+		case "split":
+			// A section runs to the next heading, so cutting one in two is putting a heading in
+			// the middle at the same depth. Nothing upstream wrote moves.
+			if t.From != "" && t.From != c.Warp {
+				continue
+			}
+			span, _, err := locate(tree, s.Kind, s.Within, s.Anchor, s.Ident, s)
+			if err != nil {
+				return err
+			}
+			g := reHeading.FindStringSubmatch(tree.Lines()[span[0]])
+			if g == nil {
+				return fmt.Errorf("%s: %s is not a heading", s.Rng, s.Anchor)
+			}
+			cut, _, err := locate(tree, s.Move.Kind, s.Move.Within, s.Move.Anchor, s.Move.Ident, s)
+			if err != nil {
+				return err
+			}
+			if cut[0] <= span[0] || cut[0] >= extent(tree, s.Kind, span) {
+				return fmt.Errorf("%s: the cut has to be inside %s", s.Rng, s.Anchor)
+			}
+			// The blank line a heading needs after it is ours too, so it goes inside the marks —
+			// otherwise stripping them would leave a line upstream never wrote.
+			head := mark(c, t, c.Weft, g[1]+" "+s.Reason+"\n")
+			edits = append(edits, edit{cut[0], cut[0], strings.Split(head, "\n"), len(edits)})
 		case "append", "prepend":
 			// Each item in the list is its own edit — exactly equivalent to writing several append statements.
 			for _, ref := range s.Srcs {
@@ -611,6 +703,11 @@ func payload(c *lang.Config, t *lang.Template, r lang.Ref, rel string, nest *nes
 // context only the nested body. Weaving and list share it — the name list reports must be the one
 // weaving actually looks up.
 func refSource(c *lang.Config, t *lang.Template, r lang.Ref, rel string, nest *nestCtx) (string, *nestCtx, error) {
+	// self may be the template's own resource sections rather than a file of ours.
+	if r.Layer == "self" && r.File == "" && len(t.Resources) > 0 {
+		src, err := inlineDoc(t, r)
+		return src, nil, err
+	}
 	srcRel := weftRel(c, t, r.Layer, rel)
 	if r.File != "" {
 		srcRel = r.File
@@ -728,12 +825,25 @@ func applyValue(c *lang.Config, t *lang.Template, tree ast.Tree, s lang.Stmt) er
 		if s.SetRef.Kind == "fmkey" {
 			srcTyp = "markdown"
 		}
-		src, ok, err := c.Read(s.SetRef.Layer, rel)
-		if err != nil {
-			return fmt.Errorf("%s: %v", s.Rng, err)
-		}
-		if !ok {
-			return fmt.Errorf("%s: layer %s has no %s", s.Rng, s.SetRef.Layer, rel)
+		var src string
+		if s.SetRef.Layer == "self" && s.SetRef.File == "" && len(t.Resources) > 0 {
+			var err error
+			if src, err = inlineDoc(t, s.SetRef); err != nil {
+				return err
+			}
+			if s.SetRef.ResKind != "" {
+				srcTyp = s.SetRef.ResKind
+			}
+		} else {
+			var ok bool
+			var err error
+			src, ok, err = c.Read(s.SetRef.Layer, rel)
+			if err != nil {
+				return fmt.Errorf("%s: %v", s.Rng, err)
+			}
+			if !ok {
+				return fmt.Errorf("%s: layer %s has no %s", s.Rng, s.SetRef.Layer, rel)
+			}
 		}
 		v, ok := keyValue(srcTyp, src, s.SetRef.Anchor)
 		if !ok {
@@ -847,9 +957,12 @@ func keyValue(typ, src, key string) (string, bool) {
 // silently did nothing is the kind of quiet the language exists to prevent.
 func targets(tree ast.Tree, s lang.Stmt) ([][2]int, error) {
 	if s.Select == nil {
-		span, _, err := locate(tree, s.Kind, s.Within, s.Anchor, s.Ident, s)
+		span, name, err := locate(tree, s.Kind, s.Within, s.Anchor, s.Ident, s)
 		if err != nil {
 			return nil, err
+		}
+		if s.Axis != "" {
+			return walkAxis(tree, s, name)
 		}
 		return [][2]int{span}, nil
 	}
@@ -860,11 +973,77 @@ func targets(tree ast.Tree, s lang.Stmt) ([][2]int, error) {
 	if len(found) == 0 {
 		return nil, fmt.Errorf("%s: the predicate matched nothing", s.Rng)
 	}
+	switch s.Axis {
+	case "first":
+		found = found[:1]
+	case "last":
+		found = found[len(found)-1:]
+	}
 	out := make([][2]int, 0, len(found))
 	for _, n := range found {
 		out = append(out, [2]int{n.Line, n.End})
 	}
 	return out, nil
+}
+
+// walkAxis steps from a node to the nodes the document relates it to. Only markdown nests, so
+// children and parent are its alone; next and prev are the neighbours in file order, which every
+// kind has.
+func walkAxis(tree ast.Tree, s lang.Stmt, name string) ([][2]int, error) {
+	nodes := ast.Addressable(tree, s.Kind)
+	at := -1
+	for i, n := range nodes {
+		if n.Name == name {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		return nil, fmt.Errorf("%s: %s %q is not one of this file's nodes, so there is nothing to step from", s.Rng, s.Kind, name)
+	}
+	nests := nodes[at].Level > 0
+	var out [][2]int
+	switch s.Axis {
+	case "next", "prev":
+		step := 1
+		if s.Axis == "prev" {
+			step = -1
+		}
+		for i := at + step; i >= 0 && i < len(nodes); i += step {
+			if nests && nodes[i].Level > nodes[at].Level {
+				continue // a child is below, not beside
+			}
+			if nests && nodes[i].Level < nodes[at].Level {
+				break // out of this section: there is no sibling that way
+			}
+			return [][2]int{{nodes[i].Line, nodes[i].End}}, nil
+		}
+		return nil, fmt.Errorf("%s: %q has no %s at its own level", s.Rng, name, s.Axis)
+	case "parent":
+		if !nests {
+			return nil, fmt.Errorf("%s: a %s does not sit inside another, so it has no parent", s.Rng, s.Kind)
+		}
+		for i := at - 1; i >= 0; i-- {
+			if nodes[i].Level < nodes[at].Level {
+				return [][2]int{{nodes[i].Line, nodes[i].End}}, nil
+			}
+		}
+		return nil, fmt.Errorf("%s: %q is at the top level and has no parent", s.Rng, name)
+	case "children":
+		if !nests {
+			return nil, fmt.Errorf("%s: a %s holds no nodes of its own, so it has no children", s.Rng, s.Kind)
+		}
+		for i := at + 1; i < len(nodes) && nodes[i].Level > nodes[at].Level; i++ {
+			if nodes[i].Level == nodes[at].Level+1 {
+				out = append(out, [2]int{nodes[i].Line, nodes[i].End})
+			}
+		}
+		if len(out) == 0 {
+			return nil, fmt.Errorf("%s: %q has nothing under it", s.Rng, name)
+		}
+		return out, nil
+	}
+	return nil, fmt.Errorf("%s: unknown axis %q", s.Rng, s.Axis)
 }
 
 // selected is every node a predicate allows, in file order. It is the one place the
@@ -890,6 +1069,15 @@ func selected(tree ast.Tree, sel *lang.Select) ([]ast.Named, error) {
 		}
 		if sel.Level != 0 && n.Level != sel.Level {
 			continue
+		}
+		if sel.Pred != nil {
+			ok, err := match(tree, sel.Pred, n)
+			if err != nil {
+				return nil, err
+			}
+			if !ok {
+				continue
+			}
 		}
 		if sel.Empty && strings.TrimSpace(strings.Join(tree.Lines()[n.Line+1:n.End], "")) != "" {
 			continue
@@ -932,4 +1120,105 @@ func project(c *lang.Config, t *lang.Template, r lang.Ref, rel string) (string, 
 		out = append(out, line)
 	}
 	return strings.Join(out, "\n"), nil
+}
+
+// inlineDoc picks the document a reference means out of the template's resource sections. Both
+// the section and the kind may be left out, and then the one document that holds the name is it —
+// nothing is guessed: none is an error that lists what there is, and two is an error that asks
+// which.
+func inlineDoc(t *lang.Template, r lang.Ref) (string, error) {
+	var docs []lang.ResourceDoc
+	var where []string
+	for _, res := range t.Resources {
+		if r.Res != "" && res.Name != r.Res {
+			continue
+		}
+		for _, d := range res.Docs {
+			if r.ResKind != "" && d.Kind != r.ResKind {
+				continue
+			}
+			docs = append(docs, d)
+			name := d.Kind
+			if res.Name != "" {
+				name = res.Name + "." + d.Kind
+			}
+			where = append(where, name)
+		}
+	}
+	if len(docs) == 0 {
+		return "", fmt.Errorf("%s: no document of ours to take this from", r.Rng)
+	}
+	if r.Anchor == "" || r.Kind == "body" || r.Kind == "all" {
+		if len(docs) > 1 {
+			return "", fmt.Errorf("%s: %d documents of ours could be meant (%s) — name the kind: self.%s...", r.Rng, len(docs), strings.Join(where, ", "), docs[0].Kind)
+		}
+		return docs[0].Text, nil
+	}
+	var hits []int
+	for i, d := range docs {
+		tree := ast.New(d.Kind, d.Text)
+		if tree == nil {
+			continue
+		}
+		if _, found := tree.BodyOf(r.Anchor); found {
+			hits = append(hits, i)
+			continue
+		}
+		if len(locateQuiet(tree, r)) > 0 {
+			hits = append(hits, i)
+		}
+	}
+	switch len(hits) {
+	case 1:
+		return docs[hits[0]].Text, nil
+	case 0:
+		return "", fmt.Errorf("%s: none of our documents (%s) has %q", r.Rng, strings.Join(where, ", "), r.Anchor)
+	}
+	var both []string
+	for _, i := range hits {
+		both = append(both, where[i])
+	}
+	return "", fmt.Errorf("%s: %q is in %s — name the kind: self.%s.%s", r.Rng, r.Anchor, strings.Join(both, " and "), docs[hits[0]].Kind, lang.NameText(r.Anchor))
+}
+
+// locateQuiet answers only whether a reference is findable, with no error to report.
+func locateQuiet(tree ast.Tree, r lang.Ref) [][2]int {
+	kind := r.Kind
+	if kind == "" {
+		kind = "heading"
+	}
+	name := r.Anchor
+	if r.Ident {
+		if real, err := resolveIdent(tree, kind, name, r.Rng); err == nil {
+			name = real
+		}
+	}
+	return tree.Find(kind, name)
+}
+
+// extent is how far a section reaches including what sits under it. A node ends at the next
+// heading of any level, so a section and its subsections are separate nodes; the operations that
+// treat a section as a container have to put them back together.
+func extent(tree ast.Tree, kind string, span [2]int) int {
+	nodes := ast.Addressable(tree, kind)
+	level := 0
+	for _, n := range nodes {
+		if n.Line == span[0] {
+			level = n.Level
+		}
+	}
+	if level == 0 {
+		return span[1]
+	}
+	end := span[1]
+	for _, n := range nodes {
+		if n.Line >= span[1] && n.Level > level {
+			end = n.End
+			continue
+		}
+		if n.Line >= span[1] && n.Level <= level {
+			break
+		}
+	}
+	return end
 }

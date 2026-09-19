@@ -15,6 +15,8 @@ type Ref struct {
 	IsLit   bool
 	File    string // file the content comes from (path in the layer); empty = product path
 	Ident   bool   // name is in identifier form: _ matches a space or an underscore
+	Res     string // resource section the content comes from (`Self as notes:`); "" = the plain one
+	ResKind string // which document inside it (markdown / toml / ...); "" = whichever holds the name
 	Within  []Seg  // section path: look under these headings (self."Parent"."Name")
 
 	// Project: content derived from upstream's own structure rather than taken from our
@@ -42,6 +44,7 @@ type Stmt struct {
 	Ident  bool   // the name is in identifier form: _ matches a space or an underscore
 	At     Pos    // where the name is written, so sync can rewrite it when upstream renames it
 	Within []Seg  // section path: look under these headings (base."Parent"."Name")
+	Axis   string // step from the named node to one related to it: children / next / prev / parent / first / last
 	Srcs   []Ref  // what to insert
 
 	As   string // in: the type to view the key's value as
@@ -57,6 +60,12 @@ type Stmt struct {
 	Move   *Move   // move: where the node goes
 	Select *Select // a group instead of one node: every match gets the same operation
 
+	// The constructs that cannot be settled before the document is in hand.
+	Assign string // the name this statement's result is caught in; empty = failure stops the build
+	Cond   *Cond  // if: what to ask
+	Else   []Stmt // if: the other branch
+	Errf   []Ref  // return err.format: the message and what goes into it
+
 	Rng Pos
 }
 
@@ -64,6 +73,7 @@ type Stmt struct {
 // itself; what makes it a statement is the operation applied to each node it found.
 type Select struct {
 	Kind  string
+	Pred  *Pred  // the predicate written in brackets; nil = the older named-argument form
 	Match string // regular expression the name must match; empty = any
 	Level int    // markdown heading level the node must be; 0 = any
 	Empty bool   // only nodes with nothing under them
@@ -90,10 +100,50 @@ type Template struct {
 	Source    string // whole-file replace: file of ours to use (default = Target)
 	UseReason string // whole-file replace: why
 	Stmts     []Stmt
+	Resources []Resource // documents written inline in the template, after the line of dashes
 }
 
 // Seg is one segment of a section path: a name, and whether it is in identifier form.
 type Seg struct {
 	Name  string
 	Ident bool
+}
+
+// Cond is what an `if` asks. Either a variable an earlier statement's result was caught in, or a
+// read-only question about the document — which is always safe, because asking writes nothing.
+type Cond struct {
+	Not  bool
+	Var  string  // `if !ok`
+	Kind string  // the node kind the question is about
+	Has  string  // `if base.has.Overview`
+	Sel  *Select // `if base.sections[level == 2].any`
+	Any  bool
+	Rng  Pos
+}
+
+// Resource is one `Self:` section: the documents written inline in the template.
+type Resource struct {
+	Name string // from `Self as notes:`; empty for the plain form
+	Docs []ResourceDoc
+	Rng  Pos
+}
+
+// ResourceDoc is one fenced document inside a resource section. The fence's language tag is the
+// kind, so nothing has to be declared twice.
+type ResourceDoc struct {
+	Kind string
+	Text string
+	Rng  Pos
+}
+
+// Pred is a predicate over a document's own structure: what a node is called, how deep it sits,
+// whether it holds anything, what a shell function calls, what a section contains. Deliberately
+// not an expression language — it can ask about the document and compute nothing.
+type Pred struct {
+	Op    string // "and" / "or" / "not"; empty for a leaf
+	Kids  []Pred
+	Field string // level / name / empty / calls / has
+	Cmp   string // == != < <= > >= ~
+	Str   string
+	Num   int
 }

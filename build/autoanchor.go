@@ -85,7 +85,22 @@ func placeOurs(c *lang.Config, t *lang.Template) ([]anchorGap, []string, error) 
 	// References in nested views use other coordinates and don't count. Nothing can follow a replace: it accepts only one content.
 	refs := map[int]lang.Ref{}
 	replaced := map[int]bool{}
-	for _, s := range t.Stmts {
+	// Both branches of an if count as placing what they mention: which one runs depends on
+	// upstream, and a section placed in either is one the author has already said where to put.
+	var stmts []lang.Stmt
+	var flatten func([]lang.Stmt)
+	flatten = func(ss []lang.Stmt) {
+		for _, s := range ss {
+			if s.Op == "if" {
+				flatten(s.Kids)
+				flatten(s.Else)
+				continue
+			}
+			stmts = append(stmts, s)
+		}
+	}
+	flatten(t.Stmts)
+	for _, s := range stmts {
 		switch s.Op {
 		case "after", "before", "replace", "append", "prepend":
 		default:

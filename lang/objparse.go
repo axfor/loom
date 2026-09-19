@@ -42,9 +42,9 @@ var defaultKind = map[string]string{
 var classCalls = map[string]map[string]string{
 	"markdown": {"sections": "heading", "lines": "line"},
 	"shell":    {"functions": "function", "markers": "marker", "lines": "line"},
-	"toml":     {"keys": "key"},
-	"yaml":     {"keys": "key"},
-	"json":     {"keys": "path"},
+	"toml":     {"keys": "key", "values": "key"},
+	"yaml":     {"keys": "key", "values": "key"},
+	"json":     {"keys": "path", "values": "path"},
 	"text":     {"lines": "line"},
 }
 
@@ -61,7 +61,13 @@ var kindCalls = map[string]map[string]string{
 // editMethods are the methods that change base.
 // groupMethods are the operations that mean the same thing done to every node a predicate
 // found. Anything that needs a target or a source of its own is not one of them.
-var groupMethods = []string{"drop", "promote", "demote"}
+var groupMethods = []string{"drop", "promote", "demote", "unwrap"}
+
+// axisWords walk from a node to another node related to it by the document's own structure.
+// reasonMethods change what upstream said, so each one has to say why.
+var reasonMethods = []string{"replace", "drop", "unwrap", "join"}
+
+var axisWords = []string{"children", "next", "prev", "parent", "first", "last"}
 
 // namedArgs is every argument name the language knows: reason: on an edit, after: / before: on a
 // move, match: / level: in a predicate. It is one list because it has to be mirrored exactly —
@@ -69,7 +75,7 @@ var groupMethods = []string{"drop", "promote", "demote"}
 // misspelled argument is worth a suggestion rather than a list to read.
 var namedArgs = []string{"reason", "after", "before", "match", "level"}
 
-var editMethods = []string{"after", "before", "start", "append", "replace", "drop", "move", "promote", "demote", "set", "merge"}
+var editMethods = []string{"after", "before", "start", "append", "replace", "drop", "move", "promote", "demote", "set", "merge", "wrap", "swap", "unwrap", "split", "join"}
 
 func typeWords() []string { return []string{"markdown", "toml", "yaml", "json", "shell", "text"} }
 
@@ -117,8 +123,9 @@ type oArg struct {
 
 type oStep struct {
 	name  string
-	str   bool // name written as a string: ."How it compares"
-	call  bool // has arguments: .after(...) / .after { ... }
+	pred  *oPred // a predicate written in brackets: sections[level == 2]
+	str   bool   // name written as a string: ."How it compares"
+	call  bool   // has arguments: .after(...) / .after { ... }
 	block bool
 	args  []oArg
 	pos   Pos
@@ -140,6 +147,10 @@ type oImport struct {
 type oparser struct {
 	toks []Tok
 	i    int
+	// A condition is followed by the if's own block, so while reading one a `{` is not a
+	// block-form call. Nothing else in the language has a brace that close to an expression.
+	noBlock bool
+	lines   []string // the source, for the one thing that is read from a comment: return's reason
 }
 
 func (p *oparser) peek() Tok { return p.toks[p.i] }
@@ -168,19 +179,28 @@ func (p *oparser) endOfStatement() error {
 }
 
 // parseObjects reads the imports and statements.
-func parseObjects(file string, src []byte) ([]oImport, []*oExpr, error) {
+func parseObjects(file string, src []byte) ([]oImport, []oNode, []oResource, error) {
 	toks, err := Lex(file, src)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	p := &oparser{toks: toks}
+	p := &oparser{toks: toks, lines: strings.Split(string(src), "\n")}
 	var imports []oImport
-	var stmts []*oExpr
+	var body []oNode
+	var resources []oResource
+	fns := map[string]*oFn{}
 	for {
 		p.skipNewlines()
 		t := p.peek()
 		if t.Kind == KEOF {
-			return imports, stmts, nil
+			break
+		}
+		if t.Kind == KSep {
+			p.next()
+			if resources, err = p.resources(); err != nil {
+				return nil, nil, nil, err
+			}
+			break
 		}
 		if t.Kind == KIdent && t.Text == "import" {
 			p.next()
@@ -189,26 +209,162 @@ func parseObjects(file string, src []byte) ([]oImport, []*oExpr, error) {
 				p.next()
 				im.name, im.named = n.Text, true
 			}
-			s := p.next()
-			if s.Kind != KString {
-				return nil, nil, fmt.Errorf("%s: import takes a quoted path: import cmd \"/.claude/commands/ship\"", s.Pos)
+			sp := p.next()
+			if sp.Kind != KString {
+				return nil, nil, nil, fmt.Errorf("%s: import takes a quoted path: import cmd \"/.claude/commands/ship\"", sp.Pos)
 			}
-			im.spec = s.Text
+			im.spec = sp.Text
 			if err := p.endOfStatement(); err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 			imports = append(imports, im)
 			continue
 		}
-		e, err := p.expr()
+		if t.Kind == KIdent && t.Text == "fn" {
+			name, f, err := p.fnDecl()
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			if _, dup := fns[name]; dup {
+				return nil, nil, nil, fmt.Errorf("%s: `%s` is defined twice", f.pos, name)
+			}
+			fns[name] = f
+			continue
+		}
+		n, err := p.node()
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
-		if err := p.endOfStatement(); err != nil {
-			return nil, nil, err
-		}
-		stmts = append(stmts, e)
+		body = append(body, n)
 	}
+	if body, err = inlineFns(body, fns, nil); err != nil {
+		return nil, nil, nil, err
+	}
+	return imports, body, resources, nil
+}
+
+// inlineFns replaces a call to a fn with the fn's own statements, its parameters standing for the
+// addresses passed in. A fn has no result and no recursion, so this is the whole of what calling
+// one means — and doing it here keeps the build a walk over statements rather than an interpreter
+// with a call stack.
+func inlineFns(body []oNode, fns map[string]*oFn, stack []string) ([]oNode, error) {
+	var out []oNode
+	for _, n := range body {
+		switch {
+		case n.ifN != nil:
+			then, err := inlineFns(n.ifN.then, fns, stack)
+			if err != nil {
+				return nil, err
+			}
+			els, err := inlineFns(n.ifN.els, fns, stack)
+			if err != nil {
+				return nil, err
+			}
+			cp := *n.ifN
+			cp.then, cp.els = then, els
+			n.ifN = &cp
+			out = append(out, n)
+		case n.expr != nil && n.assign == "" && len(n.expr.steps) == 0:
+			return nil, fmt.Errorf("%s: `%s` on its own does nothing — a statement writes somewhere", n.pos, n.expr.root)
+		case n.expr != nil && n.assign == "" && len(n.expr.steps) == 1 && n.expr.steps[0].call && fns[n.expr.root] == nil && isFnCallShape(n.expr):
+			// ident(...) with no object before it: a call to a fn that does not exist.
+			return nil, fmt.Errorf("%s: no fn named `%s` — a statement starts at base, self, or an imported name", n.pos, n.expr.root)
+		default:
+			out = append(out, n)
+		}
+	}
+	// A bare `name(...)` parses as root `name` with one call step; that is how a fn call looks.
+	var expanded []oNode
+	for _, n := range out {
+		f := callee(n, fns)
+		if f == nil {
+			expanded = append(expanded, n)
+			continue
+		}
+		name := n.expr.root
+		for _, s := range stack {
+			if s == name {
+				return nil, fmt.Errorf("%s: `%s` calls itself — a fn is inlined where it is called, so it cannot", n.pos, name)
+			}
+		}
+		args := n.expr.steps[0].args
+		if len(args) != len(f.params) {
+			return nil, fmt.Errorf("%s: `%s` takes %d argument(s), got %d", n.pos, name, len(f.params), len(args))
+		}
+		env := map[string]*oExpr{}
+		for k, prm := range f.params {
+			if args[k].val.kind != vExpr {
+				return nil, fmt.Errorf("%s: `%s` takes addresses, and %s is not one", args[k].pos, name, prm)
+			}
+			env[prm] = args[k].val.expr
+		}
+		inner, err := inlineFns(f.body, fns, append(stack, name))
+		if err != nil {
+			return nil, err
+		}
+		expanded = append(expanded, substNodes(inner, env)...)
+	}
+	return expanded, nil
+}
+
+// callee reports which fn a node calls, or nil when it is an ordinary statement.
+func callee(n oNode, fns map[string]*oFn) *oFn {
+	if n.expr == nil || n.assign != "" || !isFnCallShape(n.expr) {
+		return nil
+	}
+	return fns[n.expr.root]
+}
+
+func isFnCallShape(e *oExpr) bool {
+	return len(e.steps) == 1 && e.steps[0].call && e.steps[0].name == ""
+}
+
+func substNodes(body []oNode, env map[string]*oExpr) []oNode {
+	out := make([]oNode, 0, len(body))
+	for _, n := range body {
+		if n.expr != nil {
+			n.expr = substExpr(n.expr, env)
+		}
+		if n.ifN != nil {
+			cp := *n.ifN
+			cp.cond = substExpr(cp.cond, env)
+			cp.then, cp.els = substNodes(cp.then, env), substNodes(cp.els, env)
+			n.ifN = &cp
+		}
+		if n.ret != nil && n.ret.what != nil {
+			cp := *n.ret
+			cp.what = substExpr(cp.what, env)
+			n.ret = &cp
+		}
+		out = append(out, n)
+	}
+	return out
+}
+
+// substExpr puts the argument in the parameter's place, keeping whatever was written after it:
+// with up = base.Overview, `up.after(x)` is `base.Overview.after(x)`.
+func substExpr(e *oExpr, env map[string]*oExpr) *oExpr {
+	if e == nil {
+		return nil
+	}
+	cp := *e
+	cp.steps = make([]oStep, 0, len(e.steps))
+	for _, st := range e.steps {
+		if st.call {
+			st.args = append([]oArg(nil), st.args...)
+			for k := range st.args {
+				if st.args[k].val.kind == vExpr {
+					st.args[k].val.expr = substExpr(st.args[k].val.expr, env)
+				}
+			}
+		}
+		cp.steps = append(cp.steps, st)
+	}
+	if a, ok := env[e.root]; ok {
+		cp.root, cp.pos = a.root, a.pos
+		cp.steps = append(append([]oStep(nil), a.steps...), cp.steps...)
+	}
+	return &cp
 }
 
 func (p *oparser) expr() (*oExpr, error) {
@@ -217,7 +373,33 @@ func (p *oparser) expr() (*oExpr, error) {
 		return nil, fmt.Errorf("%s: expected an object (base / self / an imported name), got %s", t.Pos, t)
 	}
 	e := &oExpr{root: t.Text, pos: t.Pos}
-	for p.peek().Kind == KDot {
+	// name(...) with nothing before the parenthesis is a call to a fn defined in this file.
+	if p.peek().Kind == KLParen {
+		p.next()
+		args, err := p.parenArgs()
+		if err != nil {
+			return nil, err
+		}
+		e.steps = append(e.steps, oStep{call: true, args: args, pos: t.Pos})
+		return e, nil
+	}
+	for p.peek().Kind == KDot || p.peek().Kind == KLBracket {
+		if p.peek().Kind == KLBracket {
+			// A predicate belongs to the step before it: sections[level == 2].
+			if len(e.steps) == 0 {
+				return nil, fmt.Errorf("%s: a predicate picks from a group — say which one: base.sections[...]", p.peek().Pos)
+			}
+			pr, err := p.predicate()
+			if err != nil {
+				return nil, err
+			}
+			last := &e.steps[len(e.steps)-1]
+			if last.pred != nil {
+				return nil, fmt.Errorf("%s: two predicates on one group — join them with && instead", pr.pos)
+			}
+			last.pred = pr
+			continue
+		}
 		p.next()
 		n := p.next()
 		switch n.Kind {
@@ -234,6 +416,10 @@ func (p *oparser) expr() (*oExpr, error) {
 				}
 				st.call, st.args = true, args
 			case KLBrace:
+				if p.noBlock {
+					e.steps = append(e.steps, st)
+					return e, nil
+				}
 				b := p.next()
 				args, err := p.blockArgs(b.Pos)
 				if err != nil {
@@ -356,13 +542,18 @@ func (p *oparser) value() (oValue, error) {
 type Resolver func(layer, spec, fromDir string) (string, error)
 
 type object struct {
-	layer string // "base" / "self"
-	file  string // path in the layer; empty for self = product path
-	typ   string
+	layer  string // "base" / "self"
+	file   string // path in the layer; empty for self = product path
+	typ    string
+	inline bool // self comes from the template's own resource sections
 }
 
 type interp struct {
 	t       *Template
+	sink    *[]Stmt        // where statements go: the template, or the branch of an if being read
+	vars    map[string]Pos // results caught in a name, and where
+	used    map[string]bool
+	rebased bool
 	objects map[string]object
 }
 
@@ -370,12 +561,12 @@ type interp struct {
 // (derived from the template path). When resolve is nil, import paths are used as layer
 // paths unchanged (for tests).
 func ParseTemplateSyntax(file, target string, src []byte, resolve Resolver) (*Template, error) {
-	imports, stmts, err := parseObjects(file, src)
+	imports, body, resources, err := parseObjects(file, src)
 	if err != nil {
 		return nil, err
 	}
 	t := &Template{Path: file, Target: target, Type: TypeOf(target), BasePath: target}
-	in := &interp{t: t, objects: map[string]object{
+	in := &interp{t: t, vars: map[string]Pos{}, used: map[string]bool{}, objects: map[string]object{
 		"base": {layer: "base", file: target, typ: TypeOf(target)},
 		"self": {layer: "self", typ: TypeOf(target)},
 	}}
@@ -411,9 +602,18 @@ func ParseTemplateSyntax(file, target string, src []byte, resolve Resolver) (*Te
 			t.BasePath = rel
 		}
 	}
-	for _, e := range stmts {
-		if err := in.statement(e); err != nil {
-			return nil, err
+	if t.Resources, err = readResources(resources); err != nil {
+		return nil, err
+	}
+	if len(t.Resources) > 0 {
+		in.objects["self"] = object{layer: "self", typ: TypeOf(target), inline: true}
+	}
+	if t.Stmts, err = in.nodes(body); err != nil {
+		return nil, err
+	}
+	for name, at := range in.vars {
+		if !in.used[name] {
+			return nil, fmt.Errorf("%s: `%s` catches a result that nothing reads — catching is what lets a failure through, so it has to be looked at: if !%s { ... }", at, name, name)
 		}
 	}
 	if err := checkMergeAlone(t); err != nil {
@@ -447,6 +647,7 @@ type receiver struct {
 	within []Seg
 	typ    string
 	sel    *Select // non-nil = a group, not one node
+	axis   string  // a step to a related node: children / next / prev / parent / first / last
 	viewOf string  // non-empty = inside an as(...) view: the key name
 	viewAs string
 	pos    Pos
@@ -501,12 +702,26 @@ func (in *interp) select_(r *receiver, st oStep) error {
 	}
 	if r.node {
 		// A predicate picks from the whole file, so it cannot hang off a node already chosen.
-		if st.call && classCalls[r.typ][st.name] != "" {
+		if (st.call || st.pred != nil) && classCalls[r.typ][st.name] != "" {
 			return fmt.Errorf("%s: %s selects from the whole file, so it comes first: base.%s(...)", st.pos, st.name, st.name)
 		}
 		// A frontmatter key is a node of its own: base.frontmatter.description
 		if r.kind == "frontmatter" && !st.call {
 			r.kind, r.anchor, r.ident, r.pos = "fmkey", st.name, false, st.pos
+			return nil
+		}
+		// An axis walks from here to a node the document itself relates to this one.
+		if !st.call && !st.str && contains(axisWords, st.name) {
+			if r.axis != "" {
+				return fmt.Errorf("%s: one step at a time — %s follows %s, so write them as separate statements", st.pos, st.name, r.axis)
+			}
+			if r.sel == nil && (st.name == "first" || st.name == "last") {
+				return fmt.Errorf("%s: %s picks from a group: base.sections[...].%s", st.pos, st.name, st.name)
+			}
+			if r.sel != nil && st.name != "first" && st.name != "last" {
+				return fmt.Errorf("%s: %s walks from one node; a group has first and last", st.pos, st.name)
+			}
+			r.axis, r.pos = st.name, st.pos
 			return nil
 		}
 		// Key path: base.jobs.test — yaml and json address a nested key by the dotted path of
@@ -524,8 +739,20 @@ func (in *interp) select_(r *receiver, st oStep) error {
 		return nil
 	}
 	switch {
-	case st.call && classCalls[r.typ][st.name] != "":
-		sel, err := in.predicate(st, classCalls[r.typ][st.name])
+	case (st.call || st.pred != nil) && classCalls[r.typ][st.name] != "":
+		kind := classCalls[r.typ][st.name]
+		if st.pred != nil {
+			if st.call && len(st.args) > 0 {
+				return fmt.Errorf("%s: a group takes a predicate in brackets or named arguments, not both", st.pos)
+			}
+			sel, err := selectOf(st.pred, kind, st.pos)
+			if err != nil {
+				return err
+			}
+			r.node, r.kind, r.sel, r.pos = true, sel.Kind, sel, st.pos
+			return nil
+		}
+		sel, err := in.predicate(st, kind)
 		if err != nil {
 			return err
 		}
@@ -553,9 +780,6 @@ func (in *interp) select_(r *receiver, st oStep) error {
 }
 
 func (in *interp) method(r receiver, st oStep) error {
-	if st.name == "join" {
-		return fmt.Errorf("%s: join is gone — say where our value goes: base.frontmatter.description.start(self.frontmatter.description) puts ours before upstream's, append after it; in toml or json, base.description.start(self.description)", st.pos)
-	}
 	if st.name == "patch" {
 		return fmt.Errorf("%s: there are no patch files any more — our file is upstream plus our edits, and lm sync carries the edits onto each new upstream: write base.merge(self) and delete the .diff", st.pos)
 	}
@@ -593,8 +817,8 @@ func (in *interp) method(r receiver, st oStep) error {
 			}
 			return fmt.Errorf("%s: unknown named argument `%s:` (reason: for replace / drop, after: / before: for move)", a.pos, a.name)
 		}
-		if st.name != "replace" && st.name != "drop" {
-			return fmt.Errorf("%s: reason: is only for replace / drop — %s does not change upstream content and needs no reason", a.pos, st.name)
+		if !contains(reasonMethods, st.name) {
+			return fmt.Errorf("%s: reason: is for %s — %s does not change upstream content and needs no reason", a.pos, strings.Join(reasonMethods, " / "), st.name)
 		}
 		if a.val.kind != vString || strings.TrimSpace(a.val.str) == "" {
 			return fmt.Errorf("%s: reason: takes a quoted reason", a.pos)
@@ -619,7 +843,7 @@ func (in *interp) method(r receiver, st oStep) error {
 		if len(srcs) == 0 {
 			return fmt.Errorf("%s: %s needs something to insert: %s(\"Install XSDD\")", at, st.name, st.name)
 		}
-		out = append(out, Stmt{Op: st.name, Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Srcs: srcs, Rng: at})
+		out = append(out, Stmt{Op: st.name, Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Axis: r.axis, Srcs: srcs, Rng: at})
 	case "start", "append":
 		if r.node {
 			if !isValue(r) {
@@ -674,7 +898,7 @@ func (in *interp) method(r receiver, st oStep) error {
 		if err != nil {
 			return err
 		}
-		out = append(out, Stmt{Op: "replace", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Srcs: srcs, Reason: reason, Rng: at})
+		out = append(out, Stmt{Op: "replace", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Axis: r.axis, Srcs: srcs, Reason: reason, Rng: at})
 	case "drop":
 		if reason == "" {
 			return fmt.Errorf("%s: drop changes upstream content and needs a reason: drop(reason: \"...\")", at)
@@ -682,7 +906,73 @@ func (in *interp) method(r receiver, st oStep) error {
 		if !r.node || len(pos) != 0 {
 			return fmt.Errorf("%s: drop applies to a node and takes only a reason: base.X.drop(reason: \"...\")", at)
 		}
-		out = append(out, Stmt{Op: "drop", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Select: r.sel, Reason: reason, Rng: at})
+		out = append(out, Stmt{Op: "drop", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Axis: r.axis, Select: r.sel, Reason: reason, Rng: at})
+	case "wrap":
+		// wrap(a, b) is before(a) and after(b): one statement because the two halves belong
+		// together, two statements because that is all it is.
+		if !r.node || len(pos) != 2 {
+			return fmt.Errorf("%s: wrap takes what goes before and what goes after: base.X.wrap(self.top, self.tail)", at)
+		}
+		head, err := in.contents(pos[:1], r.typ, r.viewOf != "")
+		if err != nil {
+			return err
+		}
+		tail, err := in.contents(pos[1:], r.typ, r.viewOf != "")
+		if err != nil {
+			return err
+		}
+		out = append(out,
+			Stmt{Op: "before", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Axis: r.axis, Srcs: head, Rng: at},
+			Stmt{Op: "after", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Axis: r.axis, Srcs: tail, Rng: at})
+	case "swap":
+		// Two moves, each reading the other's place before either has moved — which is what
+		// resolving both against upstream already gives.
+		if !r.node || len(pos) != 1 {
+			return fmt.Errorf("%s: swap takes the node to trade places with: base.X.swap(base.Y)", at)
+		}
+		other, err := in.moveTarget("after", pos[0].val, r.typ)
+		if err != nil {
+			return err
+		}
+		if other.Kind == r.kind && other.Anchor == r.anchor {
+			return fmt.Errorf("%s: swap takes a different node", at)
+		}
+		out = append(out, Stmt{Op: "swap", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Move: other, Rng: at})
+	case "unwrap":
+		if reason == "" {
+			return fmt.Errorf("%s: unwrap takes a heading out of the product and needs a reason: unwrap(reason: \"...\")", at)
+		}
+		if !r.node || len(pos) != 0 {
+			return fmt.Errorf("%s: unwrap applies to a node and takes only a reason", at)
+		}
+		if r.typ != "markdown" || r.kind != "heading" {
+			return fmt.Errorf("%s: unwrap removes a heading and lifts what was under it, so it applies to a markdown section", at)
+		}
+		out = append(out, Stmt{Op: "unwrap", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Axis: r.axis, Select: r.sel, Reason: reason, Rng: at})
+	case "join":
+		if r.kind != "heading" {
+			return fmt.Errorf("%s: join runs two markdown sections together; to put our value next to upstream's, say where it goes: base.frontmatter.description.start(self.frontmatter.description) puts ours before upstream's, append after it; in toml or yaml, base.description.start(self.description)", at)
+		}
+		if reason == "" {
+			return fmt.Errorf("%s: join takes the next heading out of the product and needs a reason: join(reason: \"...\")", at)
+		}
+		if !r.node || len(pos) != 0 {
+			return fmt.Errorf("%s: join applies to a node and takes only a reason", at)
+		}
+		out = append(out, Stmt{Op: "join", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Axis: r.axis, Reason: reason, Rng: at})
+	case "split":
+		if !r.node || len(pos) != 2 || pos[1].val.kind != vString {
+			return fmt.Errorf("%s: split takes where to cut and what to call the second half: base.X.split(base.X.Step_1, \"X, part two\")", at)
+		}
+		cut, err := in.moveTarget("before", pos[0].val, r.typ)
+		if err != nil {
+			return err
+		}
+		if r.typ != "markdown" || r.kind != "heading" {
+			return fmt.Errorf("%s: split cuts a section in two, so it applies to a markdown section", at)
+		}
+		out = append(out, Stmt{Op: "split", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within,
+			Move: &Move{Side: "before", Kind: cut.Kind, Anchor: cut.Anchor, Ident: cut.Ident, Within: cut.Within}, Reason: pos[1].val.str, Rng: at})
 	case "move":
 		if !r.node || len(pos) != 0 {
 			return fmt.Errorf("%s: move applies to a node and takes one side: base.X.move(after: base.Y)", at)
@@ -693,7 +983,7 @@ func (in *interp) method(r receiver, st oStep) error {
 		if moveTo.Kind == r.kind && moveTo.Anchor == r.anchor && len(moveTo.Within) == len(r.within) {
 			return fmt.Errorf("%s: move takes a different node as its target", at)
 		}
-		out = append(out, Stmt{Op: "move", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Move: moveTo, Rng: at})
+		out = append(out, Stmt{Op: "move", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Axis: r.axis, Move: moveTo, Rng: at})
 	case "promote", "demote":
 		if !r.node || len(pos) != 0 {
 			return fmt.Errorf("%s: %s applies to a node and takes nothing: base.X.%s()", at, st.name, st.name)
@@ -701,7 +991,7 @@ func (in *interp) method(r receiver, st oStep) error {
 		if r.typ != "markdown" || r.kind != "heading" {
 			return fmt.Errorf("%s: %s is about heading level, so it applies to a markdown section", at, st.name)
 		}
-		out = append(out, Stmt{Op: st.name, Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Select: r.sel, Rng: at})
+		out = append(out, Stmt{Op: st.name, Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Axis: r.axis, Select: r.sel, Rng: at})
 	case "set":
 		if !r.node || len(pos) != 1 {
 			return fmt.Errorf("%s: set applies to a node and takes one value: base.frontmatter.set(self.frontmatter)", at)
@@ -745,17 +1035,17 @@ func (in *interp) method(r receiver, st oStep) error {
 	if r.viewOf != "" {
 		// Statements in a view go into an in statement; adjacent ones on the same key and type
 		// merge into one, so the key's value is parsed and written back once
-		if n := len(in.t.Stmts); n > 0 {
-			last := &in.t.Stmts[n-1]
+		if n := len(*in.out()); n > 0 {
+			last := &(*in.out())[n-1]
 			if last.Op == "in" && last.Key == r.viewOf && last.As == r.viewAs {
 				last.Kids = append(last.Kids, out...)
 				return nil
 			}
 		}
-		in.t.Stmts = append(in.t.Stmts, Stmt{Op: "in", Key: r.viewOf, As: r.viewAs, Kids: out, Rng: r.pos})
+		*in.out() = append(*in.out(), Stmt{Op: "in", Key: r.viewOf, As: r.viewAs, Kids: out, Rng: r.pos})
 		return nil
 	}
-	in.t.Stmts = append(in.t.Stmts, out...)
+	*in.out() = append(*in.out(), out...)
 	return nil
 }
 
@@ -849,7 +1139,7 @@ func (in *interp) predicate(st oStep, kind string) (*Select, error) {
 // one content source rooted at upstream: it copies none of what upstream says, only the shape,
 // so what it writes is new rather than duplicated.
 func (in *interp) projection(e *oExpr, pos Pos, typ string) (Ref, bool, error) {
-	if len(e.steps) != 2 || !e.steps[0].call || !e.steps[1].call || e.steps[1].name != "project" {
+	if len(e.steps) != 2 || (!e.steps[0].call && e.steps[0].pred == nil) || !e.steps[1].call || e.steps[1].name != "project" {
 		return Ref{}, false, nil
 	}
 	obj, ok := in.objects[e.root]
@@ -860,11 +1150,19 @@ func (in *interp) projection(e *oExpr, pos Pos, typ string) (Ref, bool, error) {
 	if kind == "" {
 		return Ref{}, false, nil
 	}
-	sel, err := in.predicate(e.steps[0], kind)
+	var sel *Select
+	var err error
+	if e.steps[0].pred != nil {
+		sel, err = selectOf(e.steps[0].pred, kind, e.steps[0].pos)
+	} else {
+		sel, err = in.predicate(e.steps[0], kind)
+	}
 	if err != nil {
 		return Ref{}, false, err
 	}
 	a := e.steps[1].args
+	// project(`...`) and project{ ``` ... ``` } are the same thing: the block form only puts the
+	// template on lines of its own.
 	if len(a) != 1 || a[0].name != "" || (a[0].val.kind != vRaw && a[0].val.kind != vString) {
 		return Ref{}, false, fmt.Errorf("%s: project takes one template: project(`- {name}`)", e.steps[1].pos)
 	}
@@ -901,6 +1199,20 @@ func (in *interp) contents(args []oArg, typ string, inView bool) ([]Ref, error) 
 				return nil, fmt.Errorf("%s: inserted content must come from our layer (self or an imported file); %s is upstream", v.pos, e.root)
 			}
 			ref := Ref{Layer: "self", File: obj.file, Rng: v.pos}
+			if obj.inline {
+				// self comes from the template's own resource sections, so a step may name the
+				// section and a step may name the kind — both optional, in that order.
+				steps := e.steps
+				if len(steps) > 0 && !steps[0].str && in.hasResource(steps[0].name) {
+					ref.Res, steps = steps[0].name, steps[1:]
+				}
+				if len(steps) > 0 && !steps[0].str && contains(typeWords(), steps[0].name) {
+					ref.ResKind, steps = steps[0].name, steps[1:]
+				}
+				cp := *e
+				cp.steps = steps
+				e = &cp
+			}
 			switch {
 			case len(e.steps) == 0:
 				ref.Kind = "all"
@@ -1058,4 +1370,14 @@ func EditDistance(a, b string) int {
 		prev, cur = cur, prev
 	}
 	return prev[len(rb)]
+}
+
+// hasResource reports whether a name is one of this template's resource sections.
+func (in *interp) hasResource(name string) bool {
+	for _, r := range in.t.Resources {
+		if r.Name == name {
+			return true
+		}
+	}
+	return false
 }
