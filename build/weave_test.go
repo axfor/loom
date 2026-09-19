@@ -424,3 +424,68 @@ func TestWeaveHeadingLevel(t *testing.T) {
 		t.Error("expected an error for the unknown self.x, got none")
 	}
 }
+
+// A predicate selects a group, and the operation is done to each of them. The guarantee is
+// not weakened by there being several: each node is checked on its own, and the report lists
+// each one, so a group is a way of writing less rather than of knowing less.
+func TestWeaveSelector(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\n")
+	mustWrite(t, filepath.Join(dir, "up", "doc.md"),
+		"## Intro\n\ni\n\n## Step 1\n\na\n\n## Step 2\n\nb\n\n## Empty\n\n## Outro\n\no\n")
+
+	weave := func(tpl string) (string, error) {
+		mustWrite(t, filepath.Join(dir, "me", "doc.lm"), tpl)
+		c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		tm, err := lang.LoadTemplate(c, filepath.Join(dir, "me", "doc.lm"))
+		if err != nil {
+			return "", err
+		}
+		return build.Weave(c, tm)
+	}
+
+	got, err := weave("base.sections(match: \"^Step \").demote()\n")
+	if err != nil {
+		t.Fatalf("match: %v", err)
+	}
+	if !strings.Contains(got, "### Step 1") || !strings.Contains(got, "### Step 2") {
+		t.Errorf("one statement did not reach both sections:\n%s", got)
+	}
+	if !strings.Contains(got, "## Intro") || !strings.Contains(got, "## Outro") {
+		t.Errorf("the predicate reached sections it should not have:\n%s", got)
+	}
+
+	got, err = weave("base.sections(empty).drop(reason: \"upstream left a shell\")\n")
+	if err != nil {
+		t.Fatalf("empty: %v", err)
+	}
+	if strings.Contains(got, "## Empty") {
+		t.Error("the empty section was not dropped")
+	}
+	for _, keep := range []string{"## Intro", "## Step 1", "## Outro"} {
+		if !strings.Contains(got, keep) {
+			t.Errorf("%s was dropped and should not have been", keep)
+		}
+	}
+
+	for _, c := range []struct{ tpl, want string }{
+		// A predicate that matches nothing is an error: a statement that quietly did nothing is
+		// the kind of quiet this language exists to prevent.
+		{"base.sections(match: \"^Nope\").demote()\n", "matched nothing"},
+		{"base.sections().demote()\n", "needs a predicate"},
+		{"base.sections(match: \"[\").demote()\n", "match:"},
+		// A group takes only what means the same done to each of them.
+		{"base.sections(empty).after(self.x)\n", "not something to do to each"},
+		{"base.sections(empty).move(after: base.Intro)\n", "not something to do to each"},
+		{"base.Intro.sections(empty).drop(reason: \"x\")\n", "comes first"},
+	} {
+		if _, err := weave(c.tpl); err == nil {
+			t.Errorf("%s: accepted, want an error mentioning %q", strings.TrimSpace(c.tpl), c.want)
+		} else if !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: %v\nwant %q", strings.TrimSpace(c.tpl), err, c.want)
+		}
+	}
+}

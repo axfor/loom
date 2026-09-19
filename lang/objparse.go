@@ -17,6 +17,7 @@ package lang
 import (
 	"fmt"
 	"path"
+	"regexp"
 	"strings"
 )
 
@@ -30,6 +31,18 @@ var defaultKind = map[string]string{
 	"text":     "line",
 }
 
+// classCalls lists, per type, the plural form that selects every node of a kind:
+// base.sections(...) against base.section("Name"). The singular names one node, the plural
+// names a group and takes predicates rather than a name.
+var classCalls = map[string]map[string]string{
+	"markdown": {"sections": "heading", "lines": "line"},
+	"shell":    {"functions": "function", "markers": "marker", "lines": "line"},
+	"toml":     {"keys": "key"},
+	"yaml":     {"keys": "key"},
+	"json":     {"keys": "path"},
+	"text":     {"lines": "line"},
+}
+
 // kindCalls lists, per type, the kinds accepted in the kind("name") form (a json key is a dotted path).
 var kindCalls = map[string]map[string]string{
 	"markdown": {"section": "heading", "line": "line"},
@@ -41,6 +54,10 @@ var kindCalls = map[string]map[string]string{
 }
 
 // editMethods are the methods that change base.
+// groupMethods are the operations that mean the same thing done to every node a predicate
+// found. Anything that needs a target or a source of its own is not one of them.
+var groupMethods = []string{"drop", "promote", "demote"}
+
 var editMethods = []string{"after", "before", "start", "append", "replace", "drop", "move", "promote", "demote", "set", "merge"}
 
 func typeWords() []string { return []string{"markdown", "toml", "yaml", "json", "shell", "text"} }
@@ -409,7 +426,8 @@ type receiver struct {
 	ident  bool // name is in identifier form; _ matches a space or an underscore
 	within []Seg
 	typ    string
-	viewOf string // non-empty = inside an as(...) view: the key name
+	sel    *Select // non-nil = a group, not one node
+	viewOf string  // non-empty = inside an as(...) view: the key name
 	viewAs string
 	pos    Pos
 }
@@ -462,6 +480,10 @@ func (in *interp) select_(r *receiver, st oStep) error {
 		return nil
 	}
 	if r.node {
+		// A predicate picks from the whole file, so it cannot hang off a node already chosen.
+		if st.call && classCalls[r.typ][st.name] != "" {
+			return fmt.Errorf("%s: %s selects from the whole file, so it comes first: base.%s(...)", st.pos, st.name, st.name)
+		}
 		// A frontmatter key is a node of its own: base.frontmatter.description
 		if r.kind == "frontmatter" && !st.call {
 			r.kind, r.anchor, r.ident, r.pos = "fmkey", st.name, false, st.pos
@@ -482,6 +504,31 @@ func (in *interp) select_(r *receiver, st oStep) error {
 		return nil
 	}
 	switch {
+	case st.call && classCalls[r.typ][st.name] != "":
+		sel := &Select{Kind: classCalls[r.typ][st.name]}
+		for _, a := range st.args {
+			switch {
+			case a.name == "match":
+				if a.val.kind != vString {
+					return fmt.Errorf("%s: match: takes a quoted regular expression", a.pos)
+				}
+				if _, err := regexp.Compile(a.val.str); err != nil {
+					return fmt.Errorf("%s: match: %v", a.pos, err)
+				}
+				sel.Match = a.val.str
+			case a.name != "":
+				return fmt.Errorf("%s: unknown predicate `%s:` (match: is the only one that takes a value)", a.pos, a.name)
+			case a.val.kind == vExpr && len(a.val.expr.steps) == 0 && a.val.expr.root == "empty":
+				sel.Empty = true
+			default:
+				return fmt.Errorf("%s: a predicate is match: \"...\" or empty", a.pos)
+			}
+		}
+		if sel.Match == "" && !sel.Empty {
+			return fmt.Errorf("%s: %s needs a predicate, or it would select the whole file: %s(match: \"...\")", st.pos, st.name, st.name)
+		}
+		r.node, r.kind, r.sel, r.pos = true, sel.Kind, sel, st.pos
+		return nil
 	case st.call:
 		k, ok := kindCalls[r.typ][st.name]
 		if !ok {
@@ -550,6 +597,10 @@ func (in *interp) method(r receiver, st oStep) error {
 		reason = a.val.str
 	}
 	at := st.pos
+	if r.sel != nil && !contains(groupMethods, st.name) {
+		return fmt.Errorf("%s: %s selected a group, and %s is not something to do to each of them — a group takes %s",
+			st.pos, "the predicate", st.name, strings.Join(groupMethods, " / "))
+	}
 	var out []Stmt
 	switch st.name {
 	case "after", "before":
@@ -626,7 +677,7 @@ func (in *interp) method(r receiver, st oStep) error {
 		if !r.node || len(pos) != 0 {
 			return fmt.Errorf("%s: drop applies to a node and takes only a reason: base.X.drop(reason: \"...\")", at)
 		}
-		out = append(out, Stmt{Op: "drop", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, Within: r.within, Reason: reason, Rng: at})
+		out = append(out, Stmt{Op: "drop", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, Within: r.within, Select: r.sel, Reason: reason, Rng: at})
 	case "move":
 		if !r.node || len(pos) != 0 {
 			return fmt.Errorf("%s: move applies to a node and takes one side: base.X.move(after: base.Y)", at)
@@ -645,7 +696,7 @@ func (in *interp) method(r receiver, st oStep) error {
 		if r.typ != "markdown" || r.kind != "heading" {
 			return fmt.Errorf("%s: %s is about heading level, so it applies to a markdown section", at, st.name)
 		}
-		out = append(out, Stmt{Op: st.name, Kind: r.kind, Anchor: r.anchor, Ident: r.ident, Within: r.within, Rng: at})
+		out = append(out, Stmt{Op: st.name, Kind: r.kind, Anchor: r.anchor, Ident: r.ident, Within: r.within, Select: r.sel, Rng: at})
 	case "set":
 		if !r.node || len(pos) != 1 {
 			return fmt.Errorf("%s: set applies to a node and takes one value: base.frontmatter.set(self.frontmatter)", at)

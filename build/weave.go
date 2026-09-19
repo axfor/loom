@@ -202,11 +202,13 @@ func apply(c *lang.Config, t *lang.Template, stmts []lang.Stmt, tree ast.Tree, r
 				return fmt.Errorf("%s: this type has no `%s` nodes (it has %s)",
 					s.Rng, s.Kind, strings.Join(tree.Kinds(), "/"))
 			}
-			span, _, err := locate(tree, s.Kind, s.Within, s.Anchor, s.Ident, s)
+			spans, err := targets(tree, s)
 			if err != nil {
 				return err
 			}
-			edits = append(edits, edit{span[0], span[1], nil, len(edits)})
+			for _, span := range spans {
+				edits = append(edits, edit{span[0], span[1], nil, len(edits)})
+			}
 		case "move":
 			// A move is one deletion and one insertion of the very same lines. Both spans are
 			// resolved against the source, and edits apply back to front, so the two never
@@ -256,28 +258,30 @@ func apply(c *lang.Config, t *lang.Template, stmts []lang.Stmt, tree ast.Tree, r
 			if t.From != "" && t.From != c.Warp {
 				continue
 			}
-			span, _, err := locate(tree, s.Kind, s.Within, s.Anchor, s.Ident, s)
+			spans, err := targets(tree, s)
 			if err != nil {
 				return err
 			}
-			lines := append([]string{}, tree.Lines()[span[0]:span[1]]...)
-			g := reHeading.FindStringSubmatch(lines[0])
-			if g == nil {
-				return fmt.Errorf("%s: %s is not a heading", s.Rng, s.Anchor)
+			for _, span := range spans {
+				lines := append([]string{}, tree.Lines()[span[0]:span[1]]...)
+				g := reHeading.FindStringSubmatch(lines[0])
+				if g == nil {
+					return fmt.Errorf("%s: %s is not a heading", s.Rng, s.Anchor)
+				}
+				level := len(g[1])
+				if s.Op == "promote" && level == 1 {
+					return fmt.Errorf("%s: %s is already a top-level heading", s.Rng, s.Anchor)
+				}
+				if s.Op == "demote" && level == 6 {
+					return fmt.Errorf("%s: %s is already the deepest heading markdown has", s.Rng, s.Anchor)
+				}
+				if s.Op == "promote" {
+					lines[0] = lines[0][1:]
+				} else {
+					lines[0] = "#" + lines[0]
+				}
+				edits = append(edits, edit{span[0], span[1], lines, len(edits)})
 			}
-			level := len(g[1])
-			if s.Op == "promote" && level == 1 {
-				return fmt.Errorf("%s: %s is already a top-level heading", s.Rng, s.Anchor)
-			}
-			if s.Op == "demote" && level == 6 {
-				return fmt.Errorf("%s: %s is already the deepest heading markdown has", s.Rng, s.Anchor)
-			}
-			if s.Op == "promote" {
-				lines[0] = lines[0][1:]
-			} else {
-				lines[0] = "#" + lines[0]
-			}
-			edits = append(edits, edit{span[0], span[1], lines, len(edits)})
 		case "append", "prepend":
 			// Each item in the list is its own edit — exactly equivalent to writing several append statements.
 			for _, ref := range s.Srcs {
@@ -815,4 +819,52 @@ func keyValue(typ, src, key string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// targets is what a statement applies to: the one node it names, or every node its
+// predicate found. A predicate that matches nothing is an error — a statement that
+// silently did nothing is the kind of quiet the language exists to prevent.
+func targets(tree ast.Tree, s lang.Stmt) ([][2]int, error) {
+	if s.Select == nil {
+		span, _, err := locate(tree, s.Kind, s.Within, s.Anchor, s.Ident, s)
+		if err != nil {
+			return nil, err
+		}
+		return [][2]int{span}, nil
+	}
+	found, err := selected(tree, s.Select)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %v", s.Rng, err)
+	}
+	if len(found) == 0 {
+		return nil, fmt.Errorf("%s: the predicate matched nothing", s.Rng)
+	}
+	out := make([][2]int, 0, len(found))
+	for _, n := range found {
+		out = append(out, [2]int{n.Line, n.End})
+	}
+	return out, nil
+}
+
+// selected is every node a predicate allows, in file order. It is the one place the
+// predicates are read, so the weave and the checks that follow it agree on what was chosen.
+func selected(tree ast.Tree, sel *lang.Select) ([]ast.Named, error) {
+	var re *regexp.Regexp
+	if sel.Match != "" {
+		var err error
+		if re, err = regexp.Compile(sel.Match); err != nil {
+			return nil, err
+		}
+	}
+	var out []ast.Named
+	for _, n := range ast.Addressable(tree, sel.Kind) {
+		if re != nil && !re.MatchString(n.Name) {
+			continue
+		}
+		if sel.Empty && strings.TrimSpace(strings.Join(tree.Lines()[n.Line+1:n.End], "")) != "" {
+			continue
+		}
+		out = append(out, n)
+	}
+	return out, nil
 }

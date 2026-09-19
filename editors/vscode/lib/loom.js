@@ -11,6 +11,15 @@ const path = require('path');
 
 const METHODS = new Set(['after', 'before', 'start', 'append', 'replace', 'drop', 'move', 'promote', 'demote', 'set', 'merge']);
 const CONTENT_METHODS = new Set(['after', 'before', 'start', 'append', 'replace', 'set']);
+// The plural form selects a group and takes predicates instead of a name.
+const CLASS_CALLS = {
+  markdown: { sections: 'heading', lines: 'line' },
+  shell: { functions: 'function', markers: 'marker', lines: 'line' },
+  toml: { keys: 'key' },
+  yaml: { keys: 'key' },
+  json: { keys: 'path' },
+  text: { lines: 'line' },
+};
 const KIND_CALLS = {
   markdown: { section: 'heading', line: 'line' },
   shell: { function: 'function', marker: 'marker', line: 'line' },
@@ -667,6 +676,7 @@ function findNode(text, node, view) {
 }
 
 module.exports = {
+  CLASS_CALLS,
   METHODS,
   CONTENT_METHODS,
   KIND_CALLS,

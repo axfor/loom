@@ -455,6 +455,30 @@ base.start{
 
 A literal is our content: in markdown it is wrapped in marks like any other of our content.
 
+### Selecting a group
+
+The plural form of a node kind takes a predicate instead of a name, and the operation is done to
+every node it finds:
+
+```
+base.sections(match: "^Step ").demote()
+base.sections(empty).drop(reason: "upstream left the shells of sections it never wrote")
+base.functions(match: "^_").drop(reason: "private helpers we replace wholesale")
+```
+
+| Predicate | Matches |
+|---|---|
+| `match: "..."` | the node's name against a regular expression |
+| `empty` | nodes with nothing under them |
+
+A predicate that matches nothing is an error, not a statement that quietly did nothing.
+
+A group takes only the operations that mean the same thing done to each of it — `drop`, `promote`,
+`demote`. Anything needing a target or a source of its own (`after`, `move`) names one node.
+
+**The guarantee is not weakened by there being several.** Each node is checked on its own and the
+report lists each one, so a predicate is a way of writing less, never of knowing less.
+
 ### Reasons
 
 `replace` and `drop` change upstream content, so they need `reason:`. Other methods may not have one.

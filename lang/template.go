@@ -42,15 +42,24 @@ type Stmt struct {
 	Key  string // in: which key
 	Kids []Stmt // in: the statements inside
 
-	Layer  string // frontmatter: layer to take the whole block from
-	File   string // frontmatter: file it comes from; empty = product path
-	SetKey string // value: key to write
-	SetRef Ref    // value: where our value comes from (a key of ours, or a literal)
-	Mode   string // value: set / start / append
-	Reason string // replace / drop: why the upstream content is changed
-	Move   *Move  // move: where the node goes
+	Layer  string  // frontmatter: layer to take the whole block from
+	File   string  // frontmatter: file it comes from; empty = product path
+	SetKey string  // value: key to write
+	SetRef Ref     // value: where our value comes from (a key of ours, or a literal)
+	Mode   string  // value: set / start / append
+	Reason string  // replace / drop: why the upstream content is changed
+	Move   *Move   // move: where the node goes
+	Select *Select // a group instead of one node: every match gets the same operation
 
 	Rng Pos
+}
+
+// Select picks every node of a kind that the predicates allow. A selection is read-only in
+// itself; what makes it a statement is the operation applied to each node it found.
+type Select struct {
+	Kind  string
+	Match string // regular expression the name must match; empty = any
+	Empty bool   // only nodes with nothing under them
 }
 
 // Move is where a moved node goes: which side of which other node of the same file.

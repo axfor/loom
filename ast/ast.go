@@ -83,10 +83,11 @@ func splice(lines []string, s, e int, repl []string) []string {
 	return out
 }
 
-// Named is an addressable node: its name plus the line it is on.
+// Named is an addressable node: its name, where it starts, and where it ends.
 type Named struct {
 	Name  string
 	Line  int
+	End   int // one past the last line the node covers
 	Level int // level of a markdown heading (## is 2); 0 for other nodes
 }
 
@@ -100,7 +101,7 @@ func Addressable(t Tree, kind string) []Named {
 		}
 		var out []Named
 		for _, n := range v.nodes {
-			out = append(out, Named{n.title, n.start, n.level})
+			out = append(out, Named{Name: n.title, Line: n.start, End: n.end, Level: n.level})
 		}
 		return out
 	case *Toml:
@@ -109,7 +110,7 @@ func Addressable(t Tree, kind string) []Named {
 		}
 		var out []Named
 		for _, n := range v.nodes {
-			out = append(out, Named{Name: n.key, Line: n.start})
+			out = append(out, Named{Name: n.key, Line: n.start, End: n.end})
 		}
 		return out
 	case *Yaml:
@@ -118,19 +119,19 @@ func Addressable(t Tree, kind string) []Named {
 		}
 		var out []Named
 		for _, n := range v.nodes {
-			out = append(out, Named{Name: n.path, Line: n.start})
+			out = append(out, Named{Name: n.path, Line: n.start, End: n.end})
 		}
 		return out
 	case *Shell:
 		var out []Named
 		if kind == "function" {
 			for _, n := range v.nodes {
-				out = append(out, Named{Name: n.name, Line: n.start})
+				out = append(out, Named{Name: n.name, Line: n.start, End: n.end})
 			}
 		}
 		if kind == "marker" {
 			for _, n := range v.markers {
-				out = append(out, Named{Name: strings.TrimSpace(n.name), Line: n.start})
+				out = append(out, Named{Name: strings.TrimSpace(n.name), Line: n.start, End: n.end})
 			}
 		}
 		return out

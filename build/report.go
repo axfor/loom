@@ -122,6 +122,33 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 		upTree = ast.New(t.Type, up)
 	}
 	// realName maps a name written as an identifier to its real name in upstream
+	// A statement with a predicate stands for one statement per node it found. Expanding it
+	// here means everything downstream — the accounting, the checks, the report — keeps working
+	// by name and never has to know a predicate was involved.
+	expand := func(in []lang.Stmt) []lang.Stmt {
+		if upTree == nil {
+			return in
+		}
+		var out []lang.Stmt
+		for _, s := range in {
+			if s.Select == nil {
+				out = append(out, s)
+				continue
+			}
+			found, err := selected(upTree, s.Select)
+			if err != nil {
+				continue
+			}
+			for _, n := range found {
+				c := s
+				c.Select, c.Anchor, c.Ident, c.Within = nil, n.Name, false, nil
+				out = append(out, c)
+			}
+		}
+		return out
+	}
+	drops, replaces, moves, levels = expand(drops), expand(replaces), expand(moves), expand(levels)
+
 	realName := func(s lang.Stmt) string {
 		if (s.Ident || len(s.Within) > 0) && upTree != nil {
 			if _, n, err := locate(upTree, s.Kind, s.Within, s.Anchor, s.Ident, s); err == nil {
