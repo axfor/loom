@@ -65,10 +65,22 @@ const LANGS = { heading: 'markdown', fmkey: 'yaml', key: 'toml', path: 'json', f
 const IDENT = /^[\p{L}_][\p{L}\p{N}_]*$/u;
 const RESERVED = new Set([...loom.METHODS, 'as', 'frontmatter', 'body', ...Object.values(loom.KIND_CALLS).flatMap(Object.keys)]);
 
-// nodeText writes one name after a dot: an identifier when it is one, a string otherwise.
-// An identifier with _ would also match a space, so such names are always strings.
+// nodeText writes one name after a dot, as lang/write.go's NameText does: an identifier where it
+// can be, a string otherwise, and a space becomes an underscore — the rule the compiler resolves
+// by. An identifier already holding a _ would match a space too, so those stay strings.
+//
+// Writing the quoted form here instead also works, and read alone looks tidier. But then
+// completion and the build write the same name two ways, and lm sync rewrites one into the other
+// the next time upstream renames something.
+//
+// RESERVED holds more than the compiler does: a heading called `section` is not ambiguous to it,
+// since a kind is only ever a call. Quoting it anyway costs nothing and spares the reader the
+// question.
 function nodeText(name) {
-  return IDENT.test(name) && !name.includes('_') && !RESERVED.has(name) ? name : loom.quote(name);
+  if (name === '' || name.includes('_') || RESERVED.has(name)) return loom.quote(name);
+  const id = name.replace(/ /g, '_');
+  if (/ {2}/.test(name) || name.startsWith(' ') || name.endsWith(' ') || !IDENT.test(id)) return loom.quote(name);
+  return id;
 }
 
 // typedAs: what an identifier typed for this name looks like, so `Usage_T` still finds "Usage Tips".
@@ -179,10 +191,15 @@ function stepItems(cx, chain, index, range, quoted) {
   const text = cx.read(r.obj.file);
   if (text != null) {
     const src = { ...loom.viewLines(text, r.view), where: path.relative(cx.t.cfg.root, r.obj.file), typ: r.typ };
+    // The compiler writes the two sides differently, and this follows it: an anchor into upstream
+    // is written as NameText does it, because lm sync rewrites that token when upstream renames
+    // something; content of ours is always quoted, because that is what anchor completion appends.
+    // Matching both is what keeps a template from being rewritten the moment the build touches it.
+    const name = r.obj.layer === 'base' ? nodeText : loom.quote;
     const write = quoted
       ? (parts) => ({ insertText: parts.map(loom.quote).join('.'), filterText: loom.quote(parts[parts.length - 1]) })
       : (parts) => ({
-        insertText: parts.length === 1 ? nodeText(parts[0]) : parts.map(loom.quote).join('.'),
+        insertText: parts.length === 1 ? name(parts[0]) : parts.map(loom.quote).join('.'),
         filterText: typedAs(parts[parts.length - 1]),
       });
     if (!r.node) {
@@ -432,4 +449,4 @@ function settings(text, line, character) {
   return SETTINGS.map(([label, insertText, detail]) => item(label, 'keyword', { detail, insertText, snippet: true, range }));
 }
 
-module.exports = { completions };
+module.exports = { completions, nodeText };

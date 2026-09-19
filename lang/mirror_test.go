@@ -420,18 +420,27 @@ func TestEditorWritesTheSameText(t *testing.T) {
 	exe := node(t)
 	names := []string{
 		"plain", "Quick Start", `a\.b`, `say "hi"`, `back\\slash`, `tail\`, "已有中文", "A  B", " lead", "x_y", "",
+		"drop", "as", "frontmatter", "body", "One Two Three", "section",
 	}
 	paths := []string{
 		"a.md", "a.markdown", "A.MD", "b.toml", "c.yaml", "c.yml", "d.json", "e.sh", "e.bash", "f.txt", "g", "h.tar.gz",
 	}
+	// The editor quotes a few names the compiler does not: `section`, `key` and the other kind
+	// names are never ambiguous to the compiler, since a kind is only ever a call, but quoting
+	// them costs nothing and spares the reader the question. Those are checked separately.
 	in, err := json.Marshal(map[string][]string{"names": names, "paths": paths})
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(exe, "-e", `const m = require("./lib/loom.js");
+	cmd := exec.Command(exe, "-e", `const { nodeText } = require("./lib/completion.js");
+		const m = require("./lib/loom.js");
 		let src = ""; process.stdin.on("data", (d) => (src += d)).on("end", () => {
 			const { names, paths } = JSON.parse(src);
-			console.log(JSON.stringify({ quote: names.map(m.quote), typeOf: paths.map(m.typeOf) }));
+			console.log(JSON.stringify({
+				quote: names.map(m.quote),
+				typeOf: paths.map(m.typeOf),
+				nameText: names.map(nodeText),
+			}));
 		});`)
 	cmd.Dir = ext
 	cmd.Stdin = strings.NewReader(string(in))
@@ -451,6 +460,26 @@ func TestEditorWritesTheSameText(t *testing.T) {
 	for k, p := range paths {
 		if got, want := js["typeOf"][k], TypeOf(p); got != want {
 			t.Errorf("typeOf(%q): editor %q, compiler %q", p, got, want)
+		}
+	}
+	kindName := map[string]bool{}
+	for _, calls := range kindCalls {
+		for call := range calls {
+			kindName[call] = true
+		}
+	}
+	for k, n := range names {
+		got := js["nameText"][k]
+		if kindName[n] {
+			// Stricter on purpose: `section` is not ambiguous to the compiler, because a kind is
+			// only ever a call, but the editor quotes it anyway. Asserted so it stays a decision.
+			if want := Quote(n); got != want {
+				t.Errorf("nameText(%q): the editor should quote a kind name; got %s, want %s", n, got, want)
+			}
+			continue
+		}
+		if want := NameText(n); got != want {
+			t.Errorf("nameText(%q): editor %s, compiler %s", n, got, want)
 		}
 	}
 }

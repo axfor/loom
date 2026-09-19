@@ -73,11 +73,13 @@ const find = (items, label) => items.find((i) => i.label === label);
   ok(['frontmatter', 'section', 'line', 'start', 'append', 'replace', 'merge'].every((x) => l.includes(x)), 'base. offers parts, kinds and file methods', l);
   ok(!l.includes('body') && !l.includes('join') && !l.includes('after'), 'base. offers no body, no join, no node methods', l);
   ok(find(items, 'Overview').insertText === 'Overview', 'a plain name is inserted as an identifier');
-  ok(find(items, 'How it compares').insertText === '"How it compares"', 'a name with spaces is inserted as a string');
+  // An anchor into upstream is written as the compiler writes it — a space becomes an underscore —
+  // so that lm sync, which rewrites this same token when upstream renames something, agrees.
+  ok(find(items, 'How it compares').insertText === 'How_it_compares', 'a space in an upstream anchor becomes an underscore', find(items, 'How it compares').insertText);
   ok(find(items, 'replace').insertText === 'replace(self, reason: "$1")', 'replace on the whole file takes a file and a reason');
   // a repeated name comes with the parent that tells it apart, and "Phase 2" does not need one
   ok(find(items, 'Example 1 › Phase 1').insertText === '"Example 1"."Phase 1"', 'a repeated subsection comes with its parent path', l);
-  ok(find(items, 'Phase 2').insertText === '"Phase 2"', 'a unique subsection needs no path', l);
+  ok(find(items, 'Phase 2').insertText === 'Phase_2', 'a unique subsection needs no path', l);
   ok(!l.includes('Phase 1'), 'a repeated name is never offered bare', l);
 }
 {
@@ -211,6 +213,18 @@ const find = (items, label) => items.find((i) => i.label === label);
     const text = `base.Overview.after(${it.insertText})`;
     lands(md, text, it.insertText.split('.').pop().slice(1), it, lineOf(it));
   }
+}
+
+// ── the two sides are written differently, as the compiler writes them ──
+// An anchor into upstream goes through NameText (a space becomes an underscore), because lm sync
+// rewrites that token when upstream renames something. Content of ours is always quoted, because
+// that is what anchor completion appends next to it. Matching both keeps a template from being
+// rewritten the moment the build touches it.
+{
+  ok(find(at(md, 'base.|').items, 'How it compares').insertText === 'How_it_compares', 'an upstream anchor uses the underscore form');
+  const self = at(md, 'base.Overview.after(self.|)').items;
+  const it = find(self, '离线环境 fallback（无网络 / 内网部署）');
+  ok(it && it.insertText.startsWith('"'), 'content of ours is quoted', it && it.insertText);
 }
 
 // ── after a fenced literal ──
