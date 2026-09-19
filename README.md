@@ -602,6 +602,16 @@ This is also why markdown frontmatter needs no special case: it is yaml, so
 - In those two cases `drop` is a declaration: *this upstream section is intentionally not in the
   product*. The build verifies the section really is absent.
 
+**Splitting a section** has no operation of its own, because inserting a heading is already one.
+A section runs to the next heading, so putting a heading in the middle of it makes two:
+
+```
+base.Setup."Step A".before(`## Setup, part two`)
+```
+
+Everything upstream wrote is still there, in the same order, so the build still proves the file
+unchanged byte for byte.
+
 ### Following upstream
 
 Some files can't be woven by name: a script where we changed a few lines inside functions, say. For
