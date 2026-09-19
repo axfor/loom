@@ -46,7 +46,8 @@ type Config struct {
 	Weft        string
 	Templates   string
 	Loom        string // the language version this tree declares; empty = unstated
-	Frontmatter string // what to do with a key of ours upstream also has: set / start / append
+	Frontmatter string // what to do with a frontmatter key of ours upstream also has: set / start / append
+	Keys        string // the same, for a top-level key of a file that holds values (toml, yaml)
 	Output      string // output directory (default output of lm build)
 	Anchored    string
 

@@ -88,18 +88,41 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 	}
 	walk(t.Stmts)
 
+	up, upOK, _ := c.Read(c.Warp, t.BasePath)
+
 	// Our frontmatter must reach the product too: a key only in our file, left out because the template
 	// neither sets nor starts / appends a frontmatter key, would disappear with nothing to say so.
-	if t.Type == "markdown" && !whole && !merged && c.Weft != "" {
+	//
+	// The same holds one level out, for the top-level keys of a toml or yaml file. That case used to
+	// pass in silence: our description simply was not in the product, the build reported everything
+	// proved, and nothing said a value of ours had been dropped on the floor.
+	if (t.Type == "markdown" || lang.HasValues(t.Type)) && !whole && !merged && c.Weft != "" {
+		// A key opened as a view is woven into, not written over: what lands in the product is
+		// upstream's value with ours worked into it, so our text is not expected to appear whole.
+		// The statements inside the view are accounted for on their own terms.
+		viewed := map[string]bool{}
+		var views func([]lang.Stmt)
+		views = func(ss []lang.Stmt) {
+			for _, s := range ss {
+				if s.Op == "in" {
+					viewed[s.Key] = true
+				}
+				views(s.Kids)
+			}
+		}
+		views(t.Stmts)
 		if ours, ok, _ := c.Read(c.Weft, weftRel(c, t, c.Weft, t.Target)); ok {
-			for _, k := range frontmatterKeys(ours) {
+			for _, k := range ourKeys(t.Type, ours) {
+				if viewed[k] {
+					continue
+				}
 				// Both sides are read as weaving writes them, so an escaped quote compares equal.
-				want, _ := keyValue("markdown", ours, k)
-				got, found := keyValue("markdown", out, k)
+				want, _ := keyValue(t.Type, ours, k)
+				got, found := keyValue(t.Type, out, k)
 				// A value over several lines (a list, a nested map) can't be joined on one line, so it
 				// only arrives whole. Upstream's would otherwise stand in the product with ours nowhere.
 				if strings.TrimSpace(want) == "" {
-					if keyBlock(ours, k) != keyBlock(out, k) {
+					if t.Type == "markdown" && keyBlock(ours, k) != keyBlock(out, k) {
 						errs = append(errs, fmt.Errorf("%s: our frontmatter key %q has a value over several lines and the product has upstream's — a value like that can only be taken whole: base.frontmatter.set(self.frontmatter)", t.Path, k))
 					}
 					continue
@@ -107,14 +130,26 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 				mine, _ := unquote(want)
 				theirs, _ := unquote(got)
 				if !found || !strings.Contains(theirs, mine) {
-					errs = append(errs, fmt.Errorf("%s: our frontmatter key %q is not in the product %s — base.frontmatter.set(self.frontmatter) takes all of ours, base.frontmatter.%s.start(self.frontmatter.%s) puts ours before upstream's",
-						t.Path, k, t.Target, k, k))
+					if t.Type == "markdown" {
+						errs = append(errs, fmt.Errorf("%s: our frontmatter key %q is not in the product %s — base.frontmatter.set(self.frontmatter) takes all of ours, base.frontmatter.%s.start(self.frontmatter.%s) puts ours before upstream's",
+							t.Path, k, t.Target, k, k))
+						continue
+					}
+					// set, start and append on a key all write into upstream's, so they need
+					// upstream to have it. Where it does not, the key is new to the file and is
+					// added to it: naming a mode here would send the author to an error instead.
+					if _, shared := keyValue(t.Type, up, k); !shared {
+						errs = append(errs, fmt.Errorf("%s: our key %q is not in the product %s, and upstream has no such key — add it to the file: base.append(self.%s)",
+							t.Path, k, t.Target, lang.NameText(k)))
+						continue
+					}
+					errs = append(errs, fmt.Errorf("%s: our key %q is not in the product %s — say what to do with it: base.%s.start(self.%s), or once for the whole tree with `keys start` in loom.om",
+						t.Path, k, t.Target, lang.NameText(k), lang.NameText(k)))
 				}
 			}
 		}
 	}
 
-	up, upOK, _ := c.Read(c.Warp, t.BasePath)
 	var upTree ast.Tree
 	kind := ""
 	switch t.Type {
@@ -123,7 +158,10 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 	case "shell":
 		kind = "function"
 	}
-	if upOK && kind != "" {
+	// A tree for every type, not just the two that have names worth accounting for: the byte count
+	// below has to locate a dropped node to subtract it, and without a tree it either crashes or,
+	// worse, quietly counts the dropped bytes as proved.
+	if upOK {
 		upTree = ast.New(t.Type, up)
 	}
 	// realName maps a name written as an identifier to its real name in upstream
@@ -226,8 +264,11 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 		}
 	}
 
-	if upTree == nil {
-		return nil
+	// What follows is accounting by name, and only markdown headings and shell functions have
+	// names to account for. Everything found so far still counts: returning nil here threw away
+	// errors already collected, which is how a key of ours could go missing in silence.
+	if upTree == nil || kind == "" {
+		return errs
 	}
 
 	// Strip our marks and count how often each name appears in the product
@@ -631,4 +672,20 @@ func size(n int) string {
 	default:
 		return fmt.Sprintf("%d bytes", n)
 	}
+}
+
+// ourKeys are the keys of ours that have to reach the product: a markdown file's frontmatter, or
+// the top-level keys of a file whose nodes hold values. Nested keys are left out — what to do with
+// a table is not what to do with a value, and the product takes the table from whoever wrote it.
+func ourKeys(typ, src string) []string {
+	if typ == "markdown" {
+		return frontmatterKeys(src)
+	}
+	var out []string
+	for _, n := range ast.Addressable(ast.New(typ, src), "key") {
+		if !strings.Contains(n.Name, ".") {
+			out = append(out, n.Name)
+		}
+	}
+	return out
 }

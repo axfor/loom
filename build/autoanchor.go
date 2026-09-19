@@ -388,18 +388,25 @@ func completeAnchors(c *lang.Config, t *lang.Template, write bool, r *Report) (*
 	if err != nil {
 		return nil, err
 	}
-	if keys := frontmatterGaps(c, t); len(keys) > 0 {
+	part, mode, keys := "frontmatter", c.Frontmatter, frontmatterGaps(c, t)
+	if len(keys) == 0 {
+		part, mode, keys = "keys", c.Keys, keyGaps(c, t)
+	}
+	if len(keys) > 0 {
 		rel := lang.Rel(c, t.Path)
 		if !write {
-			return t, fmt.Errorf("%s: our frontmatter %s has no statement — lm build writes one, since loom.om says `frontmatter %s`",
-				t.Path, quoteAll(keys), c.Frontmatter)
+			return t, fmt.Errorf("%s: our %s has no statement — lm build writes one, since loom.om says `%s %s`",
+				t.Path, quoteAll(keys), part, mode)
 		}
 		var add []string
 		for _, k := range keys {
-			add = append(add, fmt.Sprintf("base.frontmatter.%s.%s(self.frontmatter.%s)",
-				lang.NameText(k), c.Frontmatter, lang.NameText(k)))
+			path := lang.NameText(k)
+			if part == "frontmatter" {
+				path = "frontmatter." + path
+			}
+			add = append(add, fmt.Sprintf("base.%s.%s(self.%s)", path, mode, path))
 			r.Anchored = append(r.Anchored, ReportLine{rel,
-				fmt.Sprintf("frontmatter %s written (loom.om says %s)", k, c.Frontmatter)})
+				fmt.Sprintf("%s %s written (loom.om says %s)", part, k, mode)})
 		}
 		src = append([]byte(strings.Join(add, "\n")+"\n"), src...)
 		if err := os.WriteFile(t.Path, src, 0o644); err != nil {
@@ -480,6 +487,63 @@ func frontmatterGaps(c *lang.Config, t *lang.Template) []string {
 			if _, there := ast.New("yaml", fmUp).BodyOf(n.Name); !there {
 				continue
 			}
+		}
+		out = append(out, n.Name)
+	}
+	return out
+}
+
+// keyGaps is frontmatterGaps one level out: the top-level keys of our toml or yaml file that
+// upstream also has and no statement accounts for. Same reasoning, same refusal to guess — the
+// setting says what to do, the build only says where it applies.
+func keyGaps(c *lang.Config, t *lang.Template) []string {
+	if c.Keys == "" || !lang.HasValues(t.Type) || c.Weft == "" || (t.From != "" && t.From != c.Warp) {
+		return nil
+	}
+	for _, s := range t.Stmts {
+		// Nothing to reconcile key by key when the whole file is already spoken for.
+		if s.Op == "merge" || (s.Op == "replace" && s.Anchor == "") {
+			return nil
+		}
+	}
+	ours, ok, err := c.Read(c.Weft, weftRel(c, t, c.Weft, t.Target))
+	if err != nil || !ok {
+		return nil
+	}
+	up, upOK, _ := c.Read(c.Warp, t.BasePath)
+	if !upOK {
+		return nil
+	}
+	upTree := ast.New(t.Type, up)
+	// Every key any statement already speaks for, in any of the three ways it can: as a value to
+	// write, as the key a view is opened on, or as the node an edit names. Counting only the first
+	// writes a second statement for a key a view already handles, and then the two fight.
+	done := map[string]bool{}
+	var walk func([]lang.Stmt)
+	walk = func(ss []lang.Stmt) {
+		for _, s := range ss {
+			switch {
+			case s.Op == "value":
+				done[s.SetKey] = true
+			case s.Op == "in":
+				done[s.Key] = true
+			case s.Kind == "key" && s.Anchor != "":
+				done[s.Anchor] = true
+			}
+			walk(s.Kids)
+		}
+	}
+	walk(t.Stmts)
+	var out []string
+	for _, n := range ast.Addressable(ast.New(t.Type, ours), "key") {
+		// A key upstream does not have is simply added by the product; there is nothing to
+		// reconcile and nothing for the setting to decide. Nested keys are left alone: what to do
+		// with a table is not what to do with a value.
+		if done[n.Name] || strings.Contains(n.Name, ".") {
+			continue
+		}
+		if _, there := upTree.BodyOf(n.Name); !there {
+			continue
 		}
 		out = append(out, n.Name)
 	}

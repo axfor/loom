@@ -489,3 +489,106 @@ func TestFrontmatterCompleted(t *testing.T) {
 		t.Errorf("a second build changed the template again:\n%s", again)
 	}
 }
+
+// `keys` is the frontmatter rule one level out: a top-level key of our toml or yaml file that
+// upstream also has. Same machinery, same refusal to decide — the setting says what to do with
+// such a key, and the build only works out which keys those are and writes it down.
+func TestKeysCompleted(t *testing.T) {
+	dir := t.TempDir()
+	tpl := filepath.Join(dir, "me", "c.lm")
+	setup := func(settings, template string) *lang.Config {
+		t.Helper()
+		mustWrite(t, filepath.Join(dir, "loom.om"), settings)
+		mustWrite(t, filepath.Join(dir, "up", "c.toml"),
+			"description = \"Upstream.\"\nprompt = \"\"\"\n## Steps\n\nup\n\"\"\"\nkept = 1\n")
+		mustWrite(t, filepath.Join(dir, "me", "c.toml"),
+			"description = \"Ours.\"\nprompt = \"\"\"\n## Ours\n\nx\n\"\"\"\nonlyours = 2\n")
+		mustWrite(t, tpl, template)
+		c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+
+	// A key a view already opens is not written for a second time. Getting this wrong is not
+	// harmless: the value statement and the view then both write the key, and the product changes.
+	// onlyours is ours alone, so nothing in the setting's remit covers it: it needs a set of its
+	// own, and the build says so rather than letting the key vanish.
+	const view = "base.prompt.as(markdown).Steps.after(\"Ours\")\nbase.append(self.onlyours)\n"
+
+	c := setup("base \"up\"\nself \"me\"\n", view)
+	if _, err := build.PlanBuild(c, true); err == nil {
+		t.Error("an unaccounted key should fail when the tree has said nothing")
+	}
+	if got := readFile(t, tpl); got != view {
+		t.Errorf("the template was written to without a policy: %q", got)
+	}
+
+	c = setup("keys start\nbase \"up\"\nself \"me\"\n", view)
+	if _, err := build.PlanBuild(c, true); err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	got := readFile(t, tpl)
+	if !strings.HasPrefix(got, "base.description.start(self.description)\n") {
+		t.Errorf("the statement was not written into the template:\n%s", got)
+	}
+	if strings.Count(got, "base.prompt") != 1 {
+		t.Errorf("a key the view already opens was written for again:\n%s", got)
+	}
+	// The setting only covers keys both layers have; the one that is ours alone keeps the single
+	// statement it was written with, and gains no second one.
+	if strings.Count(got, "onlyours") != 1 {
+		t.Errorf("the setting wrote for a key upstream does not have:\n%s", got)
+	}
+
+	// Running again writes nothing more.
+	if _, err := build.PlanBuild(c, true); err != nil {
+		t.Fatalf("second build: %v", err)
+	}
+	if again := readFile(t, tpl); again != got {
+		t.Errorf("a second build changed the template again:\n%s", again)
+	}
+
+	// A key an edit already names is spoken for too, whatever the edit is. Dropping it fails for
+	// its own reason — our value really is not in the product then — but the setting must not add
+	// a second statement on top of the drop, which would be two statements fighting over one key.
+	c = setup("keys start\nbase \"up\"\nself \"me\"\n", view+"base.key(\"description\").drop(reason: \"upstream's is wrong for us\")\n")
+	_, err := build.PlanBuild(c, true)
+	if err == nil {
+		t.Error("dropping the key leaves our value out of the product, which should be said")
+	} else if !strings.Contains(err.Error(), `our key "description" is not in the product`) {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if got := readFile(t, tpl); strings.Contains(got, "base.description.start") {
+		t.Errorf("a key an edit already names was written for:\n%s", got)
+	}
+}
+
+// A drop or replace on a toml or yaml key used to crash: the report built an upstream tree only
+// for the two types that have names worth accounting for, then located the dropped node in it
+// anyway. Guarding the call would have hidden a second fault — the dropped bytes would have been
+// counted as proved — so the tree is built for every type and the guarantee is real.
+func TestValueTypeDropIsCountedNotCrashed(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\n")
+	mustWrite(t, filepath.Join(dir, "up", "c.toml"), "description = \"Upstream.\"\nkept = \"stays\"\n")
+	mustWrite(t, filepath.Join(dir, "me", "c.toml"), "kept = \"stays\"\n")
+	mustWrite(t, filepath.Join(dir, "me", "c.toml.lm"), "base.key(\"description\").drop(reason: \"not for us\")\n")
+
+	c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := build.PlanBuild(c, true)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	// The dropped key is inside the write set, so it cannot be part of what is proved unchanged.
+	if plan.Report.VerifiedBytes >= plan.Report.UpBytes {
+		t.Errorf("the dropped key was counted as proved: %d of %d bytes", plan.Report.VerifiedBytes, plan.Report.UpBytes)
+	}
+	if plan.Report.VerifiedBytes == 0 {
+		t.Error("nothing was counted as proved, though the rest of the file is untouched")
+	}
+}

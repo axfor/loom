@@ -948,7 +948,11 @@ func (in *interp) contents(args []oArg, typ string, inView bool) ([]Ref, error) 
 
 // hasValues reports whether a type's nodes are keys holding a value — the types whose
 // value can be written with set / start / append, and re-opened as another type with as.
-func hasValues(typ string) bool {
+func hasValues(typ string) bool { return HasValues(typ) }
+
+// HasValues reports whether a type's nodes are keys holding a value that set / start / append can
+// write. build needs to ask the same question the parser does.
+func HasValues(typ string) bool {
 	return typ == "toml" || typ == "yaml" || typ == "json"
 }
 

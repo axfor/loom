@@ -29,7 +29,7 @@ import (
 )
 
 // registry is listed to be refused with what to do instead, not to be taken as an unknown word
-var settingKeywords = []string{"loom", "frontmatter", "base", "self", "templates", "output", "mark", "registry", "take", "mirror", "manifest"}
+var settingKeywords = []string{"loom", "frontmatter", "keys", "base", "self", "templates", "output", "mark", "registry", "take", "mirror", "manifest"}
 
 // LoadConfig reads loom.om.
 func LoadConfig(path string) (*Config, error) {
@@ -103,6 +103,14 @@ func parseSettings(path string, src []byte) (*Config, error) {
 				return nil, fmt.Errorf("%s: `frontmatter` takes set, start or append — what to do with a key of ours that upstream also has: frontmatter start", first.Pos)
 			}
 			c.Frontmatter = as[0].Text
+		case "keys":
+			// The same thing one level out: a toml or yaml file's own top-level keys. The .gemini
+			// commands say `base.description.start(self.description)` nine times over, which is
+			// the frontmatter rule wearing a different hat.
+			if len(as) != 1 || as[0].Kind != KIdent || !contains([]string{"set", "start", "append"}, as[0].Text) {
+				return nil, fmt.Errorf("%s: `keys` takes set, start or append — what to do with a top-level key of ours that upstream also has: keys start", first.Pos)
+			}
+			c.Keys = as[0].Text
 		case "base", "self", "templates", "output", "manifest":
 			if len(as) != 1 || as[0].Kind != KString {
 				return nil, fmt.Errorf("%s: `%s` takes one quoted directory: %s \"...\"", first.Pos, kw, kw)

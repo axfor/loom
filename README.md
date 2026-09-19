@@ -240,8 +240,9 @@ One setting per line. `//` starts a comment.
 ```
 loom      "1.0"
 
-// what to do with a frontmatter key of ours that upstream also has
-frontmatter start
+// what to do with a key of ours that upstream also has
+frontmatter start   // a markdown file's frontmatter
+keys        start   // a toml or yaml file's top-level keys
 
 base      "upstream"
 self      "mine"
@@ -262,7 +263,8 @@ manifest  ".build-manifest"
 
 | Setting | Meaning |
 |---|---|
-| `frontmatter` | what the build should do with a key of ours that upstream also has: `set`, `start` or `append`. Say it once and the build writes the statement into each template that needs it, the way it completes anchors. Leave it out and an unaccounted key is an error, as before — whether ours replaces upstream's value or goes before it changes what the product says, and nothing decides that for you |
+| `frontmatter` | what the build should do with a frontmatter key of ours that upstream also has: `set`, `start` or `append`. Say it once and the build writes the statement into each template that needs it, the way it completes anchors. Leave it out and an unaccounted key is an error, as before — whether ours replaces upstream's value or goes before it changes what the product says, and nothing decides that for you |
+| `keys` | the same, one level out: the top-level keys of a toml or yaml file. A key a statement already speaks for is left alone, including one opened as a view; a key upstream does not have is added to the file rather than written into upstream's, so the setting does not cover it |
 | `loom` | the language version this tree is written for; an lm that speaks an older one refuses it and says to update. Leaving it out is allowed and means "whatever this lm speaks" |
 | `base` | upstream directory (required); in a template, `base` is the file at the product's path in it |
 | `self` | our layer's directory; in a template, `self` is the file at the product's path in it |
