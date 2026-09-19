@@ -18,10 +18,13 @@ base.frontmatter.description.start(self.description)
 
 base.Overview.after(self.job)
 
-base.Verification.before:
+base.Verification.before{
+    ```markdown
     ## 自检清单
 
     跑 `lm check` 确认产物是最新的。
+    ```
+}
 
 base."How it compares".drop(reason: "上游在和别的项目比，与我们无关")
 
@@ -236,14 +239,59 @@ base.prompt.as(markdown).Steps.after(self.我们的步骤)
 
 ## 6. 内容从哪来
 
-### 6.1 引用
+### 6.1 三种内容
 
 ```go
-base.Overview.after(self."Where this fits")     我们文件的一个部分
-base.append(self.body)                              我们文件的正文
-base.append(self.frontmatter)                       整个 frontmatter
-base."X".after(a, b, c)                            多个，按序
+base.Overview.after(self.job)          引用：我们的一个部分
+base.Overview.after("Where this fits") 字符串：直接插入这行字
+base.Overview.after{                   围栏：直接插入多行
+    ```markdown
+    ## Where this fits
+
+    跑 `lm build` 就能织进去。
+    ```
+}
 ```
+
+**没有 `self` 就不是引用。** 字符串就是那串字，围栏就是围栏里的东西——今天那套「裸字符串 = 我们的同名节」的隐式约定取消了：省几个字符，换来每次都要猜。
+
+| 写成 | 是什么 | 可溯源 |
+|---|---|---|
+| `self.job` / `ship.body` | 引用我们层的部分 | ✅ 指向一个地址 |
+| `"..."` | 字面量，一行 | ✅ 指向这个 `.lm` 的这一行 |
+| 围栏 | 字面量，多行 | ✅ 同上 |
+
+### 6.1.1 参数：一行用 `()`，多行用 `{}`
+
+```go
+base.Overview.after(self.a, self.b)
+
+base.Overview.after{
+    self.a
+    self.b
+    ```markdown
+    还能混一段字面量
+    ```
+}
+```
+
+两种形式含义完全相同——`{}` 只是把参数一行一个排开。（今天的语言已经是这样。）
+
+### 6.1.2 围栏
+
+围栏是**唯一的多行字面量形式**，和资源段里用的是同一种东西：
+
+```go
+base.Overview.after{
+    ```markdown
+    反引号 `lm build`、代码块，都只是普通文本。
+    ```
+}
+```
+
+- **语言标签就是种类**，编译器据此做类型检查（§10）。不写标签就按落点的种类。
+- 里面本来就有代码块时，**外层围栏写更多反引号**，和 markdown 自己的规则一样。
+- 公共缩进由编译器剥掉。
 
 ### 6.2 资源从哪来：三条路，同一种东西
 
@@ -295,7 +343,7 @@ Self:
 
 **`Self` 是类，`self` 是实例。** `Self:` 声明我们这一层由什么构成，语句里的 `self` 是它的实例。
 
-**`Self:` 之后是缩进块**——和写内容的 `after:` 同一条规则：冒号 + 换行 + 缩进。语言里只有这一条块规则。缩进之内是若干带语言标签的围栏，标签就是种类。
+**`Self:` 之后是缩进块**，里面是若干带语言标签的围栏——和 §6.1.2 写内容用的是同一种围栏，只是这里可以放好几个。
 
 #### `self` 是命名空间
 
@@ -405,27 +453,6 @@ fn bilingual(up, ours) {
 bilingual(base.Overview, self.job)
 ```
 
-### 6.7 块：写内容
-
-冒号 + 换行 + 缩进。**缩进是定界符，所以内容里不需要任何转义**：
-
-```go
-base.Overview.after:
-    ## Where this fits
-
-    跑 `lm build`，或者：
-
-    ```sh
-    lm build -o ../plugins/XSDD
-    ```
-
-    反引号、代码块、缩进，全都只是普通文本。
-```
-
-公共缩进由编译器剥掉。块在第一个缩进不足的行处结束。
-
----
-
 ## 7. 操作
 
 ### 7.1 放置（上游 100% 保留）
@@ -477,8 +504,11 @@ base.frontmatter.description.end(self.frontmatter.description)     上游的 + �
 ### 7.5 投影（产出新文档，来源不动）
 
 ```go
-base.start.project(base.sections[level == 2]):
+base.start.project(base.sections[level == 2]){
+    ```markdown
     - [{name}](#{anchor})
+    ```
+}
 ```
 
 块是模板，`{name}` `{anchor}` `{body}` `{level}` 取自被选中的每个部分。
@@ -637,10 +667,9 @@ import     = "import" [ ident ] string ;
 fn         = "fn" ident "(" [ ident { "," ident } ] ")" "{" { stmt | call } "}" ;
 call       = ident "(" [ args ] ")" ;
 resources  = "---" NEWLINE { resource } ;
-resource   = "Self" [ "as" ident ] ":" NEWLINE indented-fences ;
+resource   = "Self" [ "as" ident ] ":" NEWLINE { fence } ;   (* 缩进定界 *)
 
-stmt       = [ ident "=" ] target "(" [ args ] ")"   (* 接住结果才不硬停 *)
-           | target ":" block
+stmt       = [ ident "=" ] target ( "(" [ args ] ")" | "{" { arg NEWLINE } "}" )
            | if
            | call ;
 if         = "if" cond "{" { stmt } "}" [ "else" "{" { stmt } "}" ] ;
@@ -668,8 +697,8 @@ pterm      = [ "!" ] ( "level" cmp int | "name" ( "==" | "~" ) string
 cmp        = "==" | "!=" | "<" | "<=" | ">" | ">=" ;
 
 args       = arg { "," arg } ;
-arg        = target | string | "reason" ":" string ;
-block      = NEWLINE indented-lines ;
+arg        = target | string | fence | "reason" ":" string ;
+fence      = "```" [ kind ] NEWLINE ... NEWLINE "```" ;   (* 反引号可加长以容纳内部围栏 *)
 
 comment    = "//" ... NEWLINE ;
 string     = '"' ... '"' ;
@@ -813,7 +842,8 @@ base.Overview.wrap(self.开头, self.结尾)        两端各一次
 base.append(self.body)                                  我们的正文
 base.append(self.frontmatter)                           整个 frontmatter
 
-base.Overview.after:                                 块：缩进定界
+base.Overview.after{                                 围栏：多行字面量
+    ````markdown
     ## 直接写在这里
 
     反引号 `lm build`、代码块都只是普通文本：
@@ -823,6 +853,8 @@ base.Overview.after:                                 块：缩进定界
     ```
 
     仓库是 {{@url}}。占位符照常展开，{{@@url}} 是字面的 {{@url}}。
+    ````
+}
 
 
 // ── 结构变换：保证比放置还强 ─────────────────────────────────
@@ -851,13 +883,19 @@ base.frontmatter.description.end(self.frontmatter.description)    上游的 + �
 
 // ── 投影：产出新文档，来源不动 ───────────────────────────────
 
-base.start.project(base.sections[level == 2]):
+base.start.project(base.sections[level == 2]){
+    ```markdown
     - [{name}](#{anchor})
+    ```
+}
 
-base.append.project(base.functions):
+base.append.project(base.functions){
+    ```markdown
     ### {name}
 
     {body}
+    ```
+}
 
 
 // ── 对齐：两个序列一一对应 ───────────────────────────────────
@@ -973,10 +1011,13 @@ base.frontmatter.description.start(self.frontmatter.description)
 
 base.Overview.after(self."Where this fits")
 
-base.Verification.before:
+base.Verification.before{
+    ```markdown
     ## 自检清单
 
     跑 `lm check` 确认产物是最新的。
+    ```
+}
 
 base."How it compares".drop(reason: "上游在和别的项目比，与我们无关")
 ```
