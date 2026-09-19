@@ -526,13 +526,19 @@ json 这类**注册表**用它：两边的条目按**身份**合并——我们�
 
 保证：产物里我们每个条目都在，且**没有任何处理器被注册两次**——后者是这个操作存在的理由，重复注册会让钩子跑两遍，而文件仍是合法 json。
 
-### 7.7 对齐
+### 7.7 为什么没有对齐算子
 
-```go
-base.sections.align(self.sections)
-```
+逐节翻译的文件今天写十六条同形状的语句——上游每节之后跟一节译文。看起来该有个 `align(base.sections, self.sections)` 把它收成一行。
 
-两个序列按顺序一一对应，各自插在对应部分之后。**对不齐就报错**——多一节、少一节、顺序变了，编译器指出是哪一节，不猜。
+**不做，因为它不可能安全。**
+
+`align` 要能用，就必须能发现「两个序列不再对应」。而长度相同、语义错位的情况检测不出来：上游删一节又加一节，长度不变，第五节译文就接到了已经变成另一节的原文下面——**产物看起来完全正常，零报错**。这正是这门语言存在要消灭的那类 bug。
+
+要让它可检测，只有一条路：**和上次构建的基线比对**，发现上游序列变了就报错。而那就是身份机制（DESIGN L2.4），不是一个算子。
+
+反过来说，那十六行**不是问题所在**。问题是锚点会因上游改名而断。有了身份，十六行照写，只是不再会断——而且断的时候说得出「上游把 X 改名成了 Y」。
+
+**显式的十六行是防错的，不是啰嗦的。**
 
 ---
 
@@ -692,7 +698,7 @@ axis       = "children" | "next" | "prev" | "parent" | "first" | "last" ;
 place      = "after" | "before" | "start" | "end" | "append" ;
 op         = "wrap" | "replace" | "drop" | "unwrap" | "set"
            | "move" | "swap" | "promote" | "demote" | "split" | "join"
-           | "project" | "align" ;
+           | "project" ;
 
 predicate  = pterm { ( "&&" | "||" ) pterm } ;
 pterm      = [ "!" ] ( "level" cmp int | "name" ( "==" | "~" ) string
@@ -720,7 +726,6 @@ kind       = "markdown" | "shell" | "toml" | "json" | "text" ;
 | 名字匹配到两个 | 列出两处，要求加路径 |
 | 类型不符 | 指出内容的类型和落点要求的类型 |
 | 两个写跨度相交 | 指出双方出处 |
-| `align` 对不齐 | 指出是哪一节开始错位 |
 | 上游内容不见了且无人认领 | 指出丢了哪一节 |
 | `drop` / `replace` / `unwrap` / `return` 没写理由 | 指出哪一句 |
 | `return` 之后还有语句 | 指出多余的语句 |
@@ -737,7 +742,6 @@ kind       = "markdown" | "shell" | "toml" | "json" | "text" ;
 | 路径 | 名字唯一时不需要 |
 | 公共缩进 | 剥掉 |
 | 未被安放的内容去哪 | 按它在你文件里的邻居推断，**并把语句写回** |
-| 重复的语句 | 结构对齐能看出来的，不用写（见 `align`） |
 
 ---
 
@@ -753,7 +757,7 @@ kind       = "markdown" | "shell" | "toml" | "json" | "text" ;
 | `base.frontmatter.description.start(x)` | 不变 |
 | `base.prompt.as(markdown).Steps` | `base.prompt.as(markdown).Steps` |
 | 标识符形式（下划线代空格）+ 撞名规则 | 点号原样匹配，拼不出时加引号 |
-| 16 行逐节翻译 | `base.sections.align(self.sections)` |
+| 16 行逐节翻译 | 仍是 16 行 —— 见 §7.7，收成一行的算子不可能安全 |
 
 ---
 
@@ -901,9 +905,6 @@ base.append.project(base.functions){
 }
 
 
-// ── 对齐：两个序列一一对应 ───────────────────────────────────
-
-base.sections.align(self.sections)
 
 
 // ── 按身份合并：json registry ────────────────────────────────
@@ -931,7 +932,7 @@ return self   // reason: 两份 AGENTS 会被 agent 同时读到，必须只有�
 | `op` 变换类 | `move` `swap` `promote` `demote` `split` `join` |
 | `op` 改写类 | `replace` `drop` `unwrap` |
 | `op` 值 | `set` `start` `end` |
-| `op` 其他 | `project` `align` `merge` |
+| `op` 其他 | `project` `merge` |
 | `arg` 引用 | `self."X"` `self.body` `self.frontmatter` |
 | `arg` 多个 | `after(a, b, c)` |
 | `arg` `reason:` | 「改写」三条 |
@@ -1063,21 +1064,20 @@ skills/testing/SKILL.md   extended   +3   保证 100%（去掉 drop 的那节）
 
 ---
 
-## 例二 · 逐节对齐
+## 例二 · 逐节翻译
 
-上游 4 节，我们 4 节中文，一一对应。
-
-**`xsdd/docs/getting-started.lm`**
+上游 4 节，我们 4 节中文，一一对应。**每一条都显式写出来**：
 
 ```go
-base.sections.align(self.sections)
+base.How_Skills_Work.after(self."Skill 如何工作")
+base."Quick Start".after(self."Quick Start（任何 agent）")
+base.Recommended_Setup.after(self."推荐 Setup")
+base.Tips.after(self.提示)
 ```
 
-一行。对不齐——上游多一节、顺序变了——编译器指出是哪一节开始错位，不猜。
+看起来该有个算子把它收成一行。**没有，而且不会有**——见 §7.7：任何按位置配对的算子，在上游删一节又加一节时会静默配错，而产物看起来完全正常。
 
-今天这个文件是 16 行，每行一个 `base.X.after("译名")`。
-
----
+这四行会在上游改名时断。那是**身份问题**（DESIGN L2.4），不是行数问题。
 
 ## 例三 · 整份都是我们的
 
@@ -1158,7 +1158,7 @@ base.merge(self)
 | 产物 | 写法 | 保证 | 上游新增的东西会自动进来吗 |
 |---|---|---|---|
 | `SKILL.md` | `after` / `before` / `drop` | 100%（除 drop 那节） | ✅ |
-| `docs/getting-started.md` | `align` | 100% | ✅ 对不齐会报错 |
+| `docs/getting-started.md` | 逐节 `after` | 100% | ✅ 改名会报错，不会错位 |
 | `AGENTS.md` | `return self` | **0%** | ⚠️ 靠 `lm sync` 三方合并 |
 | `hooks/hooks.json` | `merge` | 条目级 | ✅ |
 
