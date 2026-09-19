@@ -101,8 +101,20 @@ function unquote(s) {
 }
 
 // quote writes a Loom string: the only escapes are \" and \\.
+// quote mirrors lang/write.go: `"` always becomes \", but a backslash is doubled only where it
+// would otherwise be read as an escape — before a quote or another backslash, or at the end. So a
+// \. in a regular expression is written as it was typed. Escaping every backslash also round
+// trips, but then the editor and the compiler write the same name two different ways, and a sync
+// that rewrites an anchor turns one into the other.
 function quote(s) {
-  return `"${s.replace(/[\\"]/g, '\\$&')}"`;
+  let out = '"';
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === '"') out += '\\"';
+    else if (ch === '\\') out += i + 1 === s.length || s[i + 1] === '"' || s[i + 1] === '\\' ? '\\\\' : '\\';
+    else out += ch;
+  }
+  return `${out}"`;
 }
 
 function layerDir(cfg, layer) {

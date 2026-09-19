@@ -410,3 +410,46 @@ func stderr(err error) []byte {
 	}
 	return nil
 }
+
+// The last of the mirror is the plain functions over strings: what type a path is, and how a name
+// is written back into a template. They look too small to drift and are not — the editor escaped
+// every backslash where the compiler escapes only the ones that would be read as escapes, so the
+// two wrote the same name differently and a sync turned one into the other.
+func TestEditorWritesTheSameText(t *testing.T) {
+	exe := node(t)
+	names := []string{
+		"plain", "Quick Start", `a\.b`, `say "hi"`, `back\\slash`, `tail\`, "已有中文", "A  B", " lead", "x_y", "",
+	}
+	paths := []string{
+		"a.md", "a.markdown", "A.MD", "b.toml", "c.yaml", "c.yml", "d.json", "e.sh", "e.bash", "f.txt", "g", "h.tar.gz",
+	}
+	in, err := json.Marshal(map[string][]string{"names": names, "paths": paths})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(exe, "-e", `const m = require("./lib/loom.js");
+		let src = ""; process.stdin.on("data", (d) => (src += d)).on("end", () => {
+			const { names, paths } = JSON.parse(src);
+			console.log(JSON.stringify({ quote: names.map(m.quote), typeOf: paths.map(m.typeOf) }));
+		});`)
+	cmd.Dir = ext
+	cmd.Stdin = strings.NewReader(string(in))
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("writing text with the editor: %v\n%s", err, stderr(err))
+	}
+	var js map[string][]string
+	if err := json.Unmarshal(out, &js); err != nil {
+		t.Fatal(err)
+	}
+	for k, n := range names {
+		if got, want := js["quote"][k], Quote(n); got != want {
+			t.Errorf("quote(%q): editor %s, compiler %s", n, got, want)
+		}
+	}
+	for k, p := range paths {
+		if got, want := js["typeOf"][k], TypeOf(p); got != want {
+			t.Errorf("typeOf(%q): editor %q, compiler %q", p, got, want)
+		}
+	}
+}
