@@ -331,7 +331,7 @@ import base "/old/name"               // base is a renamed upstream file
 | layer | `base` resolves in upstream, every other name in our layer |
 | name | without a name, the file name without extension; it must be a valid identifier |
 | duplicates | importing a name twice is an error; `self` cannot be redirected |
-| type | taken from the extension: `.md` markdown, `.toml`, `.json`, `.sh` shell, anything else text |
+| type | taken from the extension: `.md` markdown, `.toml`, `.yaml` / `.yml`, `.json`, `.sh` shell, anything else text |
 
 ---
 
@@ -344,8 +344,13 @@ A node is a part of a file. A bare name means the default node kind of the file 
 | markdown | section: a heading down to the next heading | `section("...")`, `line("...")`, `frontmatter`, a frontmatter key `frontmatter.description` (quoted when it has a `-`: `frontmatter."argument-hint"`), `body` (everything after the frontmatter) |
 | shell | function | `function("...")`, `marker("...")` (a banner comment `# ── Name ──` down to the next banner, matched by prefix), `line("...")` |
 | toml | key | `key("...")` |
-| json | key (dotted path) | `key("a.b")` |
+| yaml | key (nested by path) | `key("...")`; a key covers whatever is indented under it |
+| json | key (nested by path) | `key("a.b")` |
 | text | line | `line("...")` |
+
+A nested key is reached by chaining names, `base.jobs.test`, or by quoting the whole path,
+`base."jobs.test"`, for a segment a dot cannot spell. A trailing part of a path is enough while it
+is unambiguous: `base.steps` finds `jobs.build.steps` as long as nothing else ends in `steps`.
 
 ### String form and identifier form
 
@@ -406,7 +411,7 @@ exactly one heading.
 | `set` | `frontmatter` | take our whole frontmatter: `base.frontmatter.set(self.frontmatter)` | `self.frontmatter` |
 | `set` | key value | the value becomes ours: `base.frontmatter."argument-hint".set(self.frontmatter."argument-hint")`, `base.description.set(self.description)`; adds a frontmatter key upstream does not have | one value |
 | `merge` | `base` | the product is upstream's file and ours together. For a script ours is the product and `lm sync` carries the edits onto each new upstream ([Following upstream](#following-upstream)); for a json registry the entries are merged by identity, ours winning where both register the same handler ([Registries](#registries)) | `self` |
-| `as` | toml / json key | view the key's value as another type; methods follow | a type name |
+| `as` | toml / yaml / json key | view the key's value as another type; methods follow | a type name |
 
 ### Arguments
 
@@ -455,7 +460,8 @@ Reasons show up in the build report.
 
 ### Views
 
-A toml key whose value is really markdown:
+A key whose value is really a document of another type — a toml `"""` block, a yaml block scalar,
+a json string:
 
 ```
 import cmd "/.claude/commands/ship"
@@ -463,7 +469,14 @@ base.prompt.as(markdown).append(cmd.body)
 base.prompt.as(markdown).Steps.after("Our step")
 ```
 
+The value is parsed as that type and woven section by section, then put back where it came from,
+re-indented under its key. A backtick or a fenced code block inside it is just text — it is content,
+not a literal in the template.
+
 Inside a view, a bare string names a section of the same key's value in our file.
+
+This is also why markdown frontmatter needs no special case: it is yaml, so
+`base.frontmatter.description` and a yaml key are the same thing reached two ways.
 
 ### Combinations
 
