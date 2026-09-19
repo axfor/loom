@@ -11,6 +11,7 @@ import (
 	"github.com/axfor/loom/lang"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/axfor/loom/ast"
@@ -549,12 +550,26 @@ func isMarked(c *lang.Config, t *lang.Template, refs []lang.Ref, body string) bo
 }
 
 func refMarked(c *lang.Config, t *lang.Template, r lang.Ref, body string) bool {
-	m, ok := c.MarksFor(r.Layer, t.Type)
+	layer := r.Layer
+	if r.Project != nil {
+		layer = c.Weft
+	}
+	m, ok := c.MarksFor(layer, t.Type)
 	return ok && strings.HasPrefix(body, m.Begin)
 }
 
 // payload evaluates one content source.
 func payload(c *lang.Config, t *lang.Template, r lang.Ref, rel string, nest *nestCtx) (string, error) {
+	if r.Project != nil {
+		body, err := project(c, t, r, rel)
+		if err != nil {
+			return "", err
+		}
+		// A projection reads upstream's shape and writes something that was not there before,
+		// so it is ours: it goes inside our marks like any other content of ours, and the
+		// report counts it against what we wrote rather than against what upstream kept.
+		return mark(c, t, c.Weft, body), nil
+	}
 	if r.IsLit {
 		// A literal belongs to our layer: wrap it in marks like the rest of our content, or the
 		// "byte-identical to upstream once marks are stripped" check fails.
@@ -867,4 +882,39 @@ func selected(tree ast.Tree, sel *lang.Select) ([]ast.Named, error) {
 		out = append(out, n)
 	}
 	return out, nil
+}
+
+// project derives content from the shape of upstream: every node the predicate found, put
+// through the template once. It copies nothing upstream says — only the names it gave things —
+// so what it writes is new, and the report counts it as ours like any other literal.
+//
+// The fields are the ones a document's structure actually has. There is deliberately no field
+// for a link target: an anchor is a convention of whichever renderer reads the product, not a
+// property of the document, and this language does not guess conventions.
+func project(c *lang.Config, t *lang.Template, r lang.Ref, rel string) (string, error) {
+	src, ok, err := c.Read(r.Layer, weftRel(c, t, r.Layer, rel))
+	if err != nil || !ok {
+		return "", fmt.Errorf("%s: %s has no %s to project from", r.Rng, r.Layer, rel)
+	}
+	tree := ast.New(t.Type, src)
+	if tree == nil {
+		return "", fmt.Errorf("%s: %s cannot be projected from", r.Rng, t.Type)
+	}
+	found, err := selected(tree, r.Project)
+	if err != nil {
+		return "", fmt.Errorf("%s: %v", r.Rng, err)
+	}
+	if len(found) == 0 {
+		return "", fmt.Errorf("%s: the predicate matched nothing to project", r.Rng)
+	}
+	var out []string
+	for _, n := range found {
+		line := r.Literal
+		line = strings.ReplaceAll(line, "{name}", n.Name)
+		line = strings.ReplaceAll(line, "{level}", strconv.Itoa(n.Level))
+		body := strings.Join(tree.Lines()[n.Line+1:n.End], "\n")
+		line = strings.ReplaceAll(line, "{body}", strings.TrimSpace(body))
+		out = append(out, line)
+	}
+	return strings.Join(out, "\n"), nil
 }

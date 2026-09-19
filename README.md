@@ -482,6 +482,33 @@ A group takes only the operations that mean the same thing done to each of it �
 **The guarantee is not weakened by there being several.** Each node is checked on its own and the
 report lists each one, so a predicate is a way of writing less, never of knowing less.
 
+### Projecting upstream's shape
+
+`project` derives content from the structure of a file rather than from its words: every node a
+predicate finds, put through a template once.
+
+```
+base.start(base.sections(match: "^Step ").project(`- {name}`))
+base.append(base.functions(match: "^test_").project(`### {name}
+
+{body}`))
+```
+
+| Field | Is |
+|---|---|
+| `{name}` | the node's name — the one its author wrote |
+| `{level}` | a markdown heading's level; 0 for other nodes |
+| `{body}` | what the node holds, trimmed |
+
+This is the only content source that reads upstream, and it is allowed to because it copies
+nothing upstream says — only the names it gave things. What it writes was not there before, so it
+is ours: it goes inside our marks, and upstream is still proved whole.
+
+**There is no field for a link target.** An anchor is a convention of whichever renderer reads the
+product — GitHub, Obsidian and mkdocs each slugify a heading differently — and that is not a
+property of the document. Guessing one would be this language making up a rule it cannot check. If
+a link is wanted, write the target the renderer expects.
+
 ### Reasons
 
 `replace` and `drop` change upstream content, so they need `reason:`. Other methods may not have one.

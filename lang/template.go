@@ -16,6 +16,11 @@ type Ref struct {
 	File    string // file the content comes from (path in the layer); empty = product path
 	Ident   bool   // name is in identifier form: _ matches a space or an underscore
 	Within  []Seg  // section path: look under these headings (self."Parent"."Name")
+
+	// Project: content derived from upstream's own structure rather than taken from our
+	// layer — the one content source that does come from upstream, because it reads the
+	// shape of it rather than copying what it says.
+	Project *Select
 	Rng     Pos
 }
 

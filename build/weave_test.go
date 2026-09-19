@@ -489,3 +489,61 @@ func TestWeaveSelector(t *testing.T) {
 		}
 	}
 }
+
+// project derives content from the shape of upstream — the names it gave things — and writes
+// something that was not there before. It copies nothing upstream says, so upstream is still
+// proved whole, and what it writes counts as ours.
+func TestWeaveProject(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n")
+	mustWrite(t, filepath.Join(dir, "up", "doc.md"),
+		"## Intro\n\ni\n\n## Step 1\n\nfirst\n\n## Step 2\n\nsecond\n")
+
+	weave := func(tpl string) (string, error) {
+		mustWrite(t, filepath.Join(dir, "me", "doc.lm"), tpl)
+		c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		tm, err := lang.LoadTemplate(c, filepath.Join(dir, "me", "doc.lm"))
+		if err != nil {
+			return "", err
+		}
+		return build.Weave(c, tm)
+	}
+
+	got, err := weave("base.start(base.sections(match: \"^Step \").project(`- {name}`))\n")
+	if err != nil {
+		t.Fatalf("project: %v", err)
+	}
+	if !strings.Contains(got, "- Step 1\n- Step 2") {
+		t.Errorf("the projection did not run over both sections:\n%s", got)
+	}
+	// It is ours, so it sits inside our marks — which is what lets upstream still be compared.
+	if !strings.Contains(got, "<!-- B -->\n- Step 1") {
+		t.Errorf("the projection was not marked as ours:\n%s", got)
+	}
+	if !strings.Contains(got, "## Intro") || !strings.Contains(got, "second") {
+		t.Errorf("upstream was disturbed:\n%s", got)
+	}
+
+	// {level} and {body} are the other things a document's structure actually has.
+	got, err = weave("base.append(base.sections(match: \"^Step 1\").project(`{level}: {body}`))\n")
+	if err != nil {
+		t.Fatalf("fields: %v", err)
+	}
+	if !strings.Contains(got, "2: first") {
+		t.Errorf("level and body did not expand:\n%s", got)
+	}
+
+	for _, c := range []struct{ tpl, want string }{
+		{"base.start(base.sections(match: \"^Nope\").project(`- {name}`))\n", "matched nothing"},
+		{"base.start(base.sections(empty).project())\n", "takes one template"},
+	} {
+		if _, err := weave(c.tpl); err == nil {
+			t.Errorf("%s: accepted, want %q", strings.TrimSpace(c.tpl), c.want)
+		} else if !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: %v\nwant %q", strings.TrimSpace(c.tpl), err, c.want)
+		}
+	}
+}

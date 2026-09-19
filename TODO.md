@@ -12,7 +12,7 @@
 |---|---|---|
 | **L1 数据模型** | 6 种类型；递归 `as` | 类型仍是 `ast.New` 里一条 switch，加类型要改编译器 |
 | **L2 命名** | 名字、路径、派生地址 | **选择器**（一组）、**身份**（重命名跟随） |
-| **L3 变换** | after/before/start/append/replace/drop/set/merge/move/promote/demote | **wrap、swap、split、join、unwrap、project、align** |
+| **L3 变换** | 以上全部 + move/promote/demote/**选择器**/**project** | split、join、unwrap（语义未推敲）；~~wrap/swap~~ 是糖；~~align~~ 已砍 |
 | **L4 保证** | 不变式、move 与层级的逐字节校验、重叠检测、保证量 | —— |
 | **L5 组织** | `import` 引内容 | **`fn`**、套用（`apply`） |
 | **L6 语法** | 今天的语法 | **全新语法整套**（`Self:`、围栏、点号取名、`return`、`if`） |
@@ -35,8 +35,9 @@
 
 ### 第二梯队 —— 要先定设计
 
-- [ ] **`project`** —— 需要模板语法（`{name}` `{anchor}`）。
-      **未决**：`{anchor}` 是算出来的 slug，而 GitHub / Obsidian / mkdocs 规则各不相同（对抗审核 #5）。
+- [x] **`project`** ✅ `base.start(base.sections(match: "^Step ").project(\`- {name}\`))`
+      字段 `{name}` / `{level}` / `{body}` —— 全是文档真有的结构。
+      **`{anchor}` 决定不做**：锚点是渲染器的约定，不是文档的性质，猜一个等于编一条自己验不了的规则（对抗审核 #5 解决）。
 - [x] ~~**`align`**~~ ✅ **已决定：不做**。任何按位置配对的算子在上游删一节又加一节时会静默配错。
       让它可检测只有「与基线比对」一条路，而那就是身份（第三梯队）。它是伪装成算子的身份问题。
 - [ ] **`split` / `join` / `unwrap`** —— 语义还没推敲（在哪切、并到哪）。

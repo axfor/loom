@@ -505,27 +505,9 @@ func (in *interp) select_(r *receiver, st oStep) error {
 	}
 	switch {
 	case st.call && classCalls[r.typ][st.name] != "":
-		sel := &Select{Kind: classCalls[r.typ][st.name]}
-		for _, a := range st.args {
-			switch {
-			case a.name == "match":
-				if a.val.kind != vString {
-					return fmt.Errorf("%s: match: takes a quoted regular expression", a.pos)
-				}
-				if _, err := regexp.Compile(a.val.str); err != nil {
-					return fmt.Errorf("%s: match: %v", a.pos, err)
-				}
-				sel.Match = a.val.str
-			case a.name != "":
-				return fmt.Errorf("%s: unknown predicate `%s:` (match: is the only one that takes a value)", a.pos, a.name)
-			case a.val.kind == vExpr && len(a.val.expr.steps) == 0 && a.val.expr.root == "empty":
-				sel.Empty = true
-			default:
-				return fmt.Errorf("%s: a predicate is match: \"...\" or empty", a.pos)
-			}
-		}
-		if sel.Match == "" && !sel.Empty {
-			return fmt.Errorf("%s: %s needs a predicate, or it would select the whole file: %s(match: \"...\")", st.pos, st.name, st.name)
+		sel, err := in.predicate(st, classCalls[r.typ][st.name])
+		if err != nil {
+			return err
 		}
 		r.node, r.kind, r.sel, r.pos = true, sel.Kind, sel, st.pos
 		return nil
@@ -797,6 +779,59 @@ func (in *interp) moveTarget(side string, v oValue, typ string) (*Move, error) {
 	return m, nil
 }
 
+// predicate reads the arguments of a class call into a selection.
+func (in *interp) predicate(st oStep, kind string) (*Select, error) {
+	sel := &Select{Kind: kind}
+	for _, a := range st.args {
+		switch {
+		case a.name == "match":
+			if a.val.kind != vString {
+				return nil, fmt.Errorf("%s: match: takes a quoted regular expression", a.pos)
+			}
+			if _, err := regexp.Compile(a.val.str); err != nil {
+				return nil, fmt.Errorf("%s: match: %v", a.pos, err)
+			}
+			sel.Match = a.val.str
+		case a.name != "":
+			return nil, fmt.Errorf("%s: unknown predicate `%s:` (match: is the only one that takes a value)", a.pos, a.name)
+		case a.val.kind == vExpr && len(a.val.expr.steps) == 0 && a.val.expr.root == "empty":
+			sel.Empty = true
+		default:
+			return nil, fmt.Errorf("%s: a predicate is match: \"...\" or empty", a.pos)
+		}
+	}
+	if sel.Match == "" && !sel.Empty {
+		return nil, fmt.Errorf("%s: %s needs a predicate, or it would select the whole file: %s(match: \"...\")", st.pos, st.name, st.name)
+	}
+	return sel, nil
+}
+
+// projection recognises base.<class>(predicate).project(`template`) in an argument. It is the
+// one content source rooted at upstream: it copies none of what upstream says, only the shape,
+// so what it writes is new rather than duplicated.
+func (in *interp) projection(e *oExpr, pos Pos, typ string) (Ref, bool, error) {
+	if len(e.steps) != 2 || !e.steps[0].call || !e.steps[1].call || e.steps[1].name != "project" {
+		return Ref{}, false, nil
+	}
+	obj, ok := in.objects[e.root]
+	if !ok || obj.layer == "self" {
+		return Ref{}, false, nil
+	}
+	kind := classCalls[obj.typ][e.steps[0].name]
+	if kind == "" {
+		return Ref{}, false, nil
+	}
+	sel, err := in.predicate(e.steps[0], kind)
+	if err != nil {
+		return Ref{}, false, err
+	}
+	a := e.steps[1].args
+	if len(a) != 1 || a[0].name != "" || (a[0].val.kind != vRaw && a[0].val.kind != vString) {
+		return Ref{}, false, fmt.Errorf("%s: project takes one template: project(`- {name}`)", e.steps[1].pos)
+	}
+	return Ref{Layer: obj.layer, Kind: "project", Project: sel, Literal: a[0].val.str, IsLit: true, Rng: pos}, true, nil
+}
+
 func (in *interp) contents(args []oArg, typ string, inView bool) ([]Ref, error) {
 	var out []Ref
 	for _, a := range args {
@@ -808,6 +843,14 @@ func (in *interp) contents(args []oArg, typ string, inView bool) ([]Ref, error) 
 			out = append(out, Ref{Layer: "self", IsLit: true, Literal: v.str, Rng: v.pos})
 		case vExpr:
 			e := v.expr
+			// A projection reads upstream's structure and writes something new from it:
+			// base.sections(match: "...").project(`- {name}`)
+			if ref, ok, err := in.projection(e, v.pos, typ); err != nil {
+				return nil, err
+			} else if ok {
+				out = append(out, ref)
+				continue
+			}
 			obj, ok := in.objects[e.root]
 			if !ok {
 				if len(e.steps) == 0 && (e.root == "body" || e.root == "frontmatter") {
