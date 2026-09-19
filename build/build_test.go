@@ -391,3 +391,42 @@ func TestTemplatesBesideOurFiles(t *testing.T) {
 		t.Errorf("the import of /doc did not bring in doc.md:\n%s", guide)
 	}
 }
+
+// The guarantee is a quantity, not a category: the report says what share of upstream the
+// build proved is still there, byte for byte, and a file that kept less says so on its line.
+func TestReportGuaranteedShare(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\n")
+	mustWrite(t, filepath.Join(dir, "up", "keep.md"), "## A\n\naaaa\n\n## B\n\nbbbb\n")
+	mustWrite(t, filepath.Join(dir, "me", "keep.md"), "## Ours\n\nx\n")
+	mustWrite(t, filepath.Join(dir, "me", "keep.lm"), "base.A.after(self.Ours)\n")
+	mustWrite(t, filepath.Join(dir, "up", "gone.md"), "## A\n\naaaa\n\n## B\n\nbbbb\n")
+	mustWrite(t, filepath.Join(dir, "me", "gone.md"), "## Ours\n\nx\n")
+	mustWrite(t, filepath.Join(dir, "me", "gone.lm"), "base.replace(self, reason: \"all ours\")\n")
+
+	c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := build.PlanBuild(c, false)
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	r := plan.Report
+	if r.UpBytes == 0 {
+		t.Fatal("no upstream bytes were counted")
+	}
+	// One file kept everything, the other kept none of it, and they are the same size.
+	if pct := r.VerifiedBytes * 100 / r.UpBytes; pct != 50 {
+		t.Errorf("guaranteed %d%% of upstream, want 50%%", pct)
+	}
+	var line string
+	for _, l := range r.Overridden {
+		if l.Path == "gone.md" {
+			line = l.Detail
+		}
+	}
+	if !strings.Contains(line, "0% of upstream kept") {
+		t.Errorf("a wholly replaced file should say it kept none: %q", line)
+	}
+}

@@ -706,10 +706,17 @@ added              547 files   only in our layer
 not taken          100 files   in upstream, not listed in take
   evals/...
 lost                 0 places  ← must be 0, otherwise the build fails
+guaranteed          98% of upstream  proved unchanged; 4.1 kB is inside what we wrote
 anchors completed   17 places  written back to templates; review them with your commit
   docs/cursor-setup.md.lm                      "Option 1: project skills" placed after "Setup" (line 10)
 variables            1         url
 ```
+
+The last line is the one the language exists for. **Trust is a quantity, not a category**: every
+byte of upstream outside what we wrote is compared and proved unchanged, so the share that is inside
+what we wrote is exactly the share nobody verified. An insert-only tree reads 100%. A `drop` or a
+`replace` takes its node out of the count, and the file says so on its own line — `0% of upstream
+kept · whole file`. Nothing is forbidden; it is priced.
 
 `lm check` prints the same report with `lm check` as its first line and nothing written.
 

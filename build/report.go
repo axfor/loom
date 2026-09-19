@@ -40,6 +40,11 @@ type Report struct {
 
 	VarsUsed, VarsUnused []string
 	Warnings             []string
+
+	// How much of upstream the build proved is still there, byte for byte. This is the
+	// language's one claim, so the report states it as a quantity rather than as a category:
+	// everything outside the write set is verified, and what is inside it is not.
+	UpBytes, VerifiedBytes int
 }
 
 // ReportLine is one line of the report: which product file, and what happened to it.
@@ -187,6 +192,38 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 	}
 	if !whole && !merged && len(inserted) > 0 {
 		r.Extended = append(r.Extended, ReportLine{t.Target, fmt.Sprintf("+%d: %s", len(inserted), strings.Join(inserted, " / "))})
+	}
+
+	// The share of upstream this product proves. Everything outside the write set is compared
+	// byte for byte; a dropped or replaced node is inside it, and a merged or wholly replaced
+	// file is all of it.
+	if upOK {
+		verified := len(up)
+		switch {
+		case whole || merged:
+			verified = 0
+		default:
+			for _, s := range append(append([]lang.Stmt{}, drops...), replaces...) {
+				if span, _, err := locate(upTree, s.Kind, s.Within, s.Anchor, s.Ident, s); err == nil {
+					for _, l := range upTree.Lines()[span[0]:span[1]] {
+						verified -= len(l) + 1
+					}
+				}
+			}
+		}
+		if verified < 0 {
+			verified = 0
+		}
+		r.UpBytes += len(up)
+		r.VerifiedBytes += verified
+		if len(up) > 0 && verified < len(up) {
+			pct := verified * 100 / len(up)
+			for i := range r.Overridden {
+				if r.Overridden[i].Path == t.Target {
+					r.Overridden[i].Detail = fmt.Sprintf("%d%% of upstream kept · %s", pct, r.Overridden[i].Detail)
+				}
+			}
+		}
 	}
 
 	if upTree == nil {
@@ -494,6 +531,14 @@ func (r *Report) Print(w io.Writer) {
 		fmt.Fprintf(w, "  %s\n", p)
 	}
 	fmt.Fprintf(w, "lost                 0 places  ← must be 0, otherwise the build fails\n")
+	if r.UpBytes > 0 {
+		pct := r.VerifiedBytes * 100 / r.UpBytes
+		note := "proved unchanged, byte for byte"
+		if pct < 100 {
+			note = fmt.Sprintf("proved unchanged; %s is inside what we wrote", size(r.UpBytes-r.VerifiedBytes))
+		}
+		fmt.Fprintf(w, "guaranteed         %3d%% of upstream  %s\n", pct, note)
+	}
 	if len(r.Anchored) > 0 {
 		section("anchors completed", r.Anchored, "places", "written back to templates; review them with your commit", -1)
 	}
@@ -574,4 +619,16 @@ func unlevel(sec string) string {
 		head, rest = sec[:i], sec[i:]
 	}
 	return strings.TrimLeft(head, "#") + rest
+}
+
+// size prints a byte count the way a person reads one.
+func size(n int) string {
+	switch {
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%.1f kB", float64(n)/(1<<10))
+	default:
+		return fmt.Sprintf("%d bytes", n)
+	}
 }
