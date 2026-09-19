@@ -168,7 +168,7 @@ async function tree() {
   ok(viaRoot.text === r.text, 'a tree has one patch, whichever path inside it asked for one');
   ok(r.files.length === 2, 'both templates appear', r.files && r.files.map((f) => f.target));
   ok(/2 files changed, 6 insertions\(\+\), 0 deletions\(-\)/.test(r.text), 'the summary counts every file', r.text.split('\n')[0]);
-  ok(r.text.includes('diff --loom up/doc.md doc.md'), 'each file is named by the real layer directories, not the words upstream and product', r.text.split('\n').find((l) => l.startsWith('diff ')));
+  ok(r.text.includes('diff --loom up/doc.md doc.md'), 'the upstream file is named by its real directory, the product by its own path', r.text.split('\n').find((l) => l.startsWith('diff ')));
   ok(!/upstream\/|product\//.test(r.text), 'no invented directory appears anywhere in the patch');
   ok(r.text.includes('+<!-- B -->') && r.text.includes('+## Ours'), 'our inserted content is on + lines');
   ok(r.text.includes('  up()') && !r.text.includes('-  up()'), 'upstream lines it kept are context, not deletions');
@@ -199,11 +199,12 @@ async function tree() {
   const quiet = await filePatch(lm, path.join(root, 'me', 'nothing.lm'));
   ok(!quiet.error && /adds nothing to it/.test(quiet.text), 'a template that changes nothing says so', quiet);
 
-  // With an output directory the right side is where lm build writes, not a made-up name.
+  // The output directory is where a build writes; it is not what a patch is against. What sits
+  // there may be older than this weave, or may never have been built at all.
   write('loom.om', 'base "up"\nself "me"\noutput "../dist"\nmark markdown "<!-- B -->" "<!-- E -->"\n');
   const out = await filePatch(lm, path.join(root, 'me', 'doc.lm'));
-  ok(out.text.includes('diff --loom up/doc.md ../dist/doc.md'), 'the product side is the configured output path', out.text.split('\n').find((l) => l.startsWith('diff ')));
-  ok(out.text.includes('up → ../dist'), 'and the header says which directories', out.text.split('\n')[1]);
+  ok(out.text.includes('diff --loom up/doc.md doc.md'), 'an output directory does not reach the patch', out.text.split('\n').find((l) => l.startsWith('diff ')));
+  ok(!out.text.includes('../dist'), 'nowhere in it');
   write('loom.om', 'base "up"\nself "me"\nmark markdown "<!-- B -->" "<!-- E -->"\n');
 
   const notATemplate = await filePatch(lm, path.join(root, 'loom.om'));

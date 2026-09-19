@@ -271,17 +271,17 @@ function bar(added, removed, widest, width) {
 // A merge template is marked: there the product is our own file, so the diff is not what a template
 // inserts but the edits we carry — the ones lm sync re-applies to each new upstream. They exist
 // nowhere else as a file, which is the reason this view is worth having.
-// A patch names real places, not the words "upstream" and "product": the left side is the file in
-// the base layer, which you can open, and the right side is where lm build writes the product.
-// Both are written relative to the tree root, as git writes paths relative to the repository.
+// A patch names the upstream file it is against and the product it builds — not the words
+// "upstream" and "product", and not the output directory either. The left side is the file in the
+// base layer, relative to the tree root, which you can open. The right side is the product's own
+// path: `output` is where a build writes, but what is on disk there is not what this patch shows —
+// it is woven here and now, and that directory may hold something older or nothing at all.
 function upstreamLabel(cfg, e) {
   return path.posix.join(cfg.base, e.path);
 }
 
-// Without an output setting there is no directory to name, and the product path alone is the
-// honest answer: it is what `lm build -o dir` would write under whichever dir it is given.
 function productLabel(cfg, e) {
-  return cfg.output ? path.posix.join(cfg.output, e.target) : e.target;
+  return e.target;
 }
 
 // diffEntries weaves each template and diffs it against the upstream file it is built on.
@@ -368,9 +368,10 @@ function renderOne(f, cfg) {
   return head.join('\n') + f.text;
 }
 
-// direction names the two layers the patch runs between, by the directories loom.om gives them.
+// direction names what the patch runs between: the base layer, by the directory loom.om gives it,
+// and the product — which is woven, not read from the output directory.
 function direction(cfg) {
-  return `${cfg.base} → ${cfg.output || 'the product'}`;
+  return `${cfg.base} → the product`;
 }
 
 function render(files, cfg) {
