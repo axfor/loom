@@ -595,6 +595,29 @@ Upstream's fixes where we changed nothing flow in. Where upstream changed the li
 file gets conflict markers, as in git, and the build refuses it until they are resolved. A file
 upstream removed is listed too. Sync exits non-zero while any of that needs a person.
 
+### When upstream renames something
+
+An anchor names a node by the words its author wrote, so a rename upstream breaks every anchor
+pointing at it — and the sync that brings the rename in is the one moment both versions are in
+hand. So that is where it is worked out:
+
+```
+followed       1 files   upstream renamed it; the anchor was rewritten — review with your commit
+  mine/doc.lm: Overview → Introduction
+```
+
+A rename is recorded **only** when a name vanished and exactly one new name holds byte-identical
+content. A name that vanished with nothing matching it was deleted. One that could have become any
+of several is reported and left alone:
+
+```
+ambiguous      1 files   a name vanished and could be several things — left for you
+  doc.md § Overview could be A or B
+```
+
+It applies to every kind — a shell function and a yaml key are named by their authors too — and it
+edits the name where it is written and nothing else, so what you review is one word per rename.
+
 Resolve a conflict before the next sync: the markers can only be resolved against the upstream they
 came from, so sync refuses to replace it while any are left.
 

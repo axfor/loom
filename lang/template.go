@@ -40,6 +40,7 @@ type Stmt struct {
 	Kind   string // position: node kind
 	Anchor string // position: node name
 	Ident  bool   // the name is in identifier form: _ matches a space or an underscore
+	At     Pos    // where the name is written, so sync can rewrite it when upstream renames it
 	Within []Seg  // section path: look under these headings (base."Parent"."Name")
 	Srcs   []Ref  // what to insert
 

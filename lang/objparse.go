@@ -596,7 +596,7 @@ func (in *interp) method(r receiver, st oStep) error {
 		if len(srcs) == 0 {
 			return fmt.Errorf("%s: %s needs something to insert: %s(\"Install XSDD\")", at, st.name, st.name)
 		}
-		out = append(out, Stmt{Op: st.name, Kind: r.kind, Anchor: r.anchor, Ident: r.ident, Within: r.within, Srcs: srcs, Rng: at})
+		out = append(out, Stmt{Op: st.name, Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Srcs: srcs, Rng: at})
 	case "start", "append":
 		if r.node {
 			if !isValue(r) {
@@ -651,7 +651,7 @@ func (in *interp) method(r receiver, st oStep) error {
 		if err != nil {
 			return err
 		}
-		out = append(out, Stmt{Op: "replace", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, Within: r.within, Srcs: srcs, Reason: reason, Rng: at})
+		out = append(out, Stmt{Op: "replace", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Srcs: srcs, Reason: reason, Rng: at})
 	case "drop":
 		if reason == "" {
 			return fmt.Errorf("%s: drop changes upstream content and needs a reason: drop(reason: \"...\")", at)
@@ -659,7 +659,7 @@ func (in *interp) method(r receiver, st oStep) error {
 		if !r.node || len(pos) != 0 {
 			return fmt.Errorf("%s: drop applies to a node and takes only a reason: base.X.drop(reason: \"...\")", at)
 		}
-		out = append(out, Stmt{Op: "drop", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, Within: r.within, Select: r.sel, Reason: reason, Rng: at})
+		out = append(out, Stmt{Op: "drop", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Select: r.sel, Reason: reason, Rng: at})
 	case "move":
 		if !r.node || len(pos) != 0 {
 			return fmt.Errorf("%s: move applies to a node and takes one side: base.X.move(after: base.Y)", at)
@@ -670,7 +670,7 @@ func (in *interp) method(r receiver, st oStep) error {
 		if moveTo.Kind == r.kind && moveTo.Anchor == r.anchor && len(moveTo.Within) == len(r.within) {
 			return fmt.Errorf("%s: move takes a different node as its target", at)
 		}
-		out = append(out, Stmt{Op: "move", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, Within: r.within, Move: moveTo, Rng: at})
+		out = append(out, Stmt{Op: "move", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Move: moveTo, Rng: at})
 	case "promote", "demote":
 		if !r.node || len(pos) != 0 {
 			return fmt.Errorf("%s: %s applies to a node and takes nothing: base.X.%s()", at, st.name, st.name)
@@ -678,7 +678,7 @@ func (in *interp) method(r receiver, st oStep) error {
 		if r.typ != "markdown" || r.kind != "heading" {
 			return fmt.Errorf("%s: %s is about heading level, so it applies to a markdown section", at, st.name)
 		}
-		out = append(out, Stmt{Op: st.name, Kind: r.kind, Anchor: r.anchor, Ident: r.ident, Within: r.within, Select: r.sel, Rng: at})
+		out = append(out, Stmt{Op: st.name, Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Select: r.sel, Rng: at})
 	case "set":
 		if !r.node || len(pos) != 1 {
 			return fmt.Errorf("%s: set applies to a node and takes one value: base.frontmatter.set(self.frontmatter)", at)

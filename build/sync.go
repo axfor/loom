@@ -30,6 +30,8 @@ type SyncReport struct {
 	Merged                  []string // our files that took upstream's changes
 	Conflicts               []string // our files left with conflict markers
 	Gone                    []string // our files whose upstream file no longer exists
+	Followed                []string // anchors rewritten because upstream renamed what they name
+	Ambiguous               []string // names that vanished and could have become several things
 }
 
 // Sync replaces the upstream layer with the tree at from and merges upstream's changes into the
@@ -63,6 +65,14 @@ func Sync(c *lang.Config, from string) (*SyncReport, error) {
 	}
 	var merges []merge
 	var unresolved []string
+	// The old upstream is about to be replaced, and it is the only thing that can say whether a
+	// name that disappears was renamed or deleted. Keep what each template anchors into.
+	type anchored struct {
+		tpl  *lang.Template
+		base string
+		old  string
+	}
+	var before []anchored
 	tpls, err := lang.Templates(c)
 	if err != nil {
 		return nil, err
@@ -71,6 +81,11 @@ func Sync(c *lang.Config, from string) (*SyncReport, error) {
 		t, err := lang.LoadTemplate(c, p)
 		if err != nil {
 			return nil, fmt.Errorf("fix the templates before syncing, the old upstream is needed to merge: %v", err)
+		}
+		if t.BasePath != "" {
+			if old, ok, err := c.Read(c.Warp, t.BasePath); err == nil && ok {
+				before = append(before, anchored{t, t.BasePath, old})
+			}
 		}
 		for _, s := range t.Stmts {
 			if s.Op != "merge" {
@@ -109,6 +124,35 @@ func Sync(c *lang.Config, from string) (*SyncReport, error) {
 	r := &SyncReport{}
 	if err := mirror(src, upRoot, r); err != nil {
 		return r, err
+	}
+
+	// Both versions have been in hand for exactly this: work out what upstream renamed, and
+	// point the anchors at the new names. A rename is only ever recorded when the content is
+	// byte-identical; anything less certain is reported and left for a person.
+	seen := map[string]bool{}
+	for _, a := range before {
+		now, ok, err := c.Read(c.Warp, a.base)
+		if err != nil || !ok || now == a.old {
+			continue
+		}
+		rs, amb := renames(a.base, a.tpl.Type, a.old, now)
+		for _, x := range amb {
+			line := fmt.Sprintf("%s § %s could be %s", x.File, x.Old, strings.Join(x.Could, " or "))
+			if !seen[line] {
+				seen[line] = true
+				r.Ambiguous = append(r.Ambiguous, line)
+			}
+		}
+		if len(rs) == 0 {
+			continue
+		}
+		notes, err := follow(a.tpl, rs)
+		if err != nil {
+			return r, fmt.Errorf("%s: %v", lang.Rel(c, a.tpl.Path), err)
+		}
+		for _, n := range notes {
+			r.Followed = append(r.Followed, lang.Rel(c, a.tpl.Path)+": "+n)
+		}
 	}
 
 	for _, m := range merges {

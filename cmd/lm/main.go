@@ -208,6 +208,8 @@ func printSync(r *build.SyncReport) {
 			fmt.Printf("  %s\n", p)
 		}
 	}
+	list("followed", r.Followed, "upstream renamed it; the anchor was rewritten — review with your commit")
+	list("ambiguous", r.Ambiguous, "a name vanished and could be several things — left for you")
 	list("merged", r.Merged, "our edits carried onto the new upstream")
 	list("conflicts", r.Conflicts, "conflict markers left in our file")
 	list("gone", r.Gone, "upstream removed the file our file is merged into")
