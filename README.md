@@ -408,6 +408,7 @@ exactly one heading.
 | `replace` | node | replace the node with content | one content, `reason:` |
 | `replace` | `base` | whole-file replace: `base.replace(self, reason: "...")` | a file object, `reason:` |
 | `drop` | node | leave the node out of the product on purpose | `reason:` |
+| `move` | node | put the node somewhere else in the same file | `after:` or `before:`, naming a node of upstream |
 | `set` | `frontmatter` | take our whole frontmatter: `base.frontmatter.set(self.frontmatter)` | `self.frontmatter` |
 | `set` | key value | the value becomes ours: `base.frontmatter."argument-hint".set(self.frontmatter."argument-hint")`, `base.description.set(self.description)`; adds a frontmatter key upstream does not have | one value |
 | `merge` | `base` | the product is upstream's file and ours together. For a script ours is the product and `lm sync` carries the edits onto each new upstream ([Following upstream](#following-upstream)); for a json registry the entries are merged by identity, ours winning where both register the same handler ([Registries](#registries)) | `self` |
@@ -457,6 +458,20 @@ A literal is our content: in markdown it is wrapped in marks like any other of o
 
 `replace` and `drop` change upstream content, so they need `reason:`. Other methods may not have one.
 Reasons show up in the build report.
+
+`move` needs none, and that is the point of it. It changes where a node is, never what it is, so
+nothing is lost and nothing is ours: the node's own bytes are still in the product. The build checks
+exactly that — not that the file still parses, but that the moved node is byte for byte what
+upstream wrote — and the report lists the move with where it went.
+
+```
+base.Troubleshooting.move(after: base.B)
+base."Quick Start".move(before: base.Install)
+```
+
+A move is the one thing here that promises *more* than an insertion does. An insertion promises
+upstream is untouched around it; a move promises the node itself came through unchanged, which is
+why it is checked rather than assumed.
 
 ### Views
 

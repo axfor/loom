@@ -48,8 +48,20 @@ type Stmt struct {
 	SetRef Ref    // value: where our value comes from (a key of ours, or a literal)
 	Mode   string // value: set / start / append
 	Reason string // replace / drop: why the upstream content is changed
+	Move   *Move  // move: where the node goes
 
 	Rng Pos
+}
+
+// Move is where a moved node goes: which side of which other node of the same file.
+// Nothing is inserted and nothing is lost, so a move needs no reason — the node's own
+// bytes are still in the product, which the build checks.
+type Move struct {
+	Side   string // "after" or "before"
+	Kind   string
+	Anchor string
+	Ident  bool
+	Within []Seg
 }
 
 // Template is one template: which product it weaves, from which base, and how.

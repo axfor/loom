@@ -41,7 +41,7 @@ var kindCalls = map[string]map[string]string{
 }
 
 // editMethods are the methods that change base.
-var editMethods = []string{"after", "before", "start", "append", "replace", "drop", "set", "merge"}
+var editMethods = []string{"after", "before", "start", "append", "replace", "drop", "move", "set", "merge"}
 
 func typeWords() []string { return []string{"markdown", "toml", "yaml", "json", "shell", "text"} }
 
@@ -518,13 +518,28 @@ func (in *interp) method(r receiver, st oStep) error {
 	}
 	var pos []oArg
 	reason := ""
+	var moveTo *Move
 	for _, a := range st.args {
 		if a.name == "" {
 			pos = append(pos, a)
 			continue
 		}
+		if a.name == "after" || a.name == "before" {
+			if st.name != "move" {
+				return fmt.Errorf("%s: `%s:` is only for move: base.X.move(%s: base.Y)", a.pos, a.name, a.name)
+			}
+			if moveTo != nil {
+				return fmt.Errorf("%s: move takes one side, after: or before:", a.pos)
+			}
+			m, err := in.moveTarget(a.name, a.val, r.typ)
+			if err != nil {
+				return err
+			}
+			moveTo = m
+			continue
+		}
 		if a.name != "reason" {
-			return fmt.Errorf("%s: unknown named argument `%s:` (only reason: is allowed)", a.pos, a.name)
+			return fmt.Errorf("%s: unknown named argument `%s:` (reason: for replace / drop, after: / before: for move)", a.pos, a.name)
 		}
 		if st.name != "replace" && st.name != "drop" {
 			return fmt.Errorf("%s: reason: is only for replace / drop — %s does not change upstream content and needs no reason", a.pos, st.name)
@@ -612,6 +627,17 @@ func (in *interp) method(r receiver, st oStep) error {
 			return fmt.Errorf("%s: drop applies to a node and takes only a reason: base.X.drop(reason: \"...\")", at)
 		}
 		out = append(out, Stmt{Op: "drop", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, Within: r.within, Reason: reason, Rng: at})
+	case "move":
+		if !r.node || len(pos) != 0 {
+			return fmt.Errorf("%s: move applies to a node and takes one side: base.X.move(after: base.Y)", at)
+		}
+		if moveTo == nil {
+			return fmt.Errorf("%s: move needs a side: move(after: base.Y) or move(before: base.Y)", at)
+		}
+		if moveTo.Kind == r.kind && moveTo.Anchor == r.anchor && len(moveTo.Within) == len(r.within) {
+			return fmt.Errorf("%s: move takes a different node as its target", at)
+		}
+		out = append(out, Stmt{Op: "move", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, Within: r.within, Move: moveTo, Rng: at})
 	case "set":
 		if !r.node || len(pos) != 1 {
 			return fmt.Errorf("%s: set applies to a node and takes one value: base.frontmatter.set(self.frontmatter)", at)
@@ -671,6 +697,47 @@ func (in *interp) method(r receiver, st oStep) error {
 
 // contents interprets "which of our content to insert". typ is the type of the position it
 // goes into; with inView, a bare name refers to content inside the view.
+// moveTarget resolves the node a move goes next to: `after: base.X`, or a path —
+// `after: base."A"."B"` for a markdown section, `after: base.jobs.test` for a key.
+// The target is in the same file as the node being moved, so it is named on the warp.
+func (in *interp) moveTarget(side string, v oValue, typ string) (*Move, error) {
+	if v.kind != vExpr {
+		return nil, fmt.Errorf("%s: move takes a node of this file: move(%s: base.X)", v.pos, side)
+	}
+	e := v.expr
+	obj, ok := in.objects[e.root]
+	if !ok {
+		return nil, in.unknownObject(e.root, v.pos)
+	}
+	if obj.layer == "self" {
+		return nil, fmt.Errorf("%s: a move goes next to a node of this same file, which is upstream: move(%s: base.X)", v.pos, side)
+	}
+	if len(e.steps) == 0 {
+		return nil, fmt.Errorf("%s: move needs a node to go next to: move(%s: base.X)", v.pos, side)
+	}
+	m := &Move{Side: side, Kind: defaultKind[typ]}
+	var names []string
+	for _, st := range e.steps {
+		if st.call {
+			return nil, fmt.Errorf("%s: move takes a plain node, not a call", st.pos)
+		}
+		names = append(names, st.name)
+		if !st.str {
+			m.Ident = true
+		}
+	}
+	if hasValues(typ) {
+		m.Anchor = strings.Join(names, ".")
+		m.Ident = false
+		return m, nil
+	}
+	for _, n := range names[:len(names)-1] {
+		m.Within = append(m.Within, Seg{Name: n})
+	}
+	m.Anchor = names[len(names)-1]
+	return m, nil
+}
+
 func (in *interp) contents(args []oArg, typ string, inView bool) ([]Ref, error) {
 	var out []Ref
 	for _, a := range args {

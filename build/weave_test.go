@@ -261,3 +261,115 @@ func TestWeaveYamlValueAsMarkdown(t *testing.T) {
 		t.Errorf("upstream's section was lost:\n%s", got)
 	}
 }
+
+// move: a node changes where it is, never what it is. The promise is stronger than the
+// one an insertion makes about upstream, and the build checks it rather than trusting
+// the engine that did the moving.
+func TestWeaveMove(t *testing.T) {
+	dir := t.TempDir()
+	write := func(rel, text string) {
+		t.Helper()
+		mustWrite(t, filepath.Join(dir, rel), text)
+	}
+	write("loom.om", "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n")
+	write("up/doc.md", "## A\n\na\n\n## Troubleshooting\n\nt with `code`\n\n## B\n\nb\n")
+
+	weave := func(tpl string) (string, error) {
+		write("me/doc.lm", tpl)
+		c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		tm, err := lang.LoadTemplate(c, filepath.Join(dir, "me", "doc.lm"))
+		if err != nil {
+			return "", err
+		}
+		return build.Weave(c, tm)
+	}
+
+	got, err := weave("base.Troubleshooting.move(after: base.B)\n")
+	if err != nil {
+		t.Fatalf("move: %v", err)
+	}
+	want := "## A\n\na\n\n## B\n\nb\n\n## Troubleshooting\n\nt with `code`\n"
+	if got != want {
+		t.Errorf("after:\ngot  %q\nwant %q", got, want)
+	}
+
+	got, err = weave("base.Troubleshooting.move(before: base.A)\n")
+	if err != nil {
+		t.Fatalf("move before: %v", err)
+	}
+	want = "## Troubleshooting\n\nt with `code`\n\n## A\n\na\n\n## B\n\nb\n"
+	if got != want {
+		t.Errorf("before:\ngot  %q\nwant %q", got, want)
+	}
+
+	// Every upstream line is still there — a move loses nothing.
+	for _, line := range []string{"## A", "## B", "## Troubleshooting", "t with `code`"} {
+		if !strings.Contains(got, line) {
+			t.Errorf("a move lost %q", line)
+		}
+	}
+}
+
+func TestMoveRefusals(t *testing.T) {
+	dir := t.TempDir()
+	write := func(rel, text string) {
+		t.Helper()
+		mustWrite(t, filepath.Join(dir, rel), text)
+	}
+	write("loom.om", "base \"up\"\nself \"me\"\n")
+	write("up/doc.md", "## A\n\na\n\n### A1\n\nsub\n\n## B\n\nb\n")
+	write("me/doc.md", "")
+
+	for _, c := range []struct{ tpl, want string }{
+		{"base.A.move(after: base.A)\n", "different node"},
+		{"base.A.move(base.B)\n", "takes one side"},
+		{"base.A.move(after: self.X)\n", "which is upstream"},
+		// A markdown section stops at the next heading, so no heading is ever inside another —
+		// the guard that a target must be outside the moved node is exercised on yaml below.
+		{"base.A.move(reason: \"x\")\n", "reason: is only for replace / drop"},
+	} {
+		write("me/doc.lm", c.tpl)
+		cfg, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		tm, err := lang.LoadTemplate(cfg, filepath.Join(dir, "me", "doc.lm"))
+		if err == nil {
+			_, err = build.Weave(cfg, tm)
+		}
+		if err == nil {
+			t.Errorf("%s: accepted, want an error mentioning %q", strings.TrimSpace(c.tpl), c.want)
+			continue
+		}
+		if !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: %v\nwant an error mentioning %q", strings.TrimSpace(c.tpl), err, c.want)
+		}
+	}
+}
+
+// A yaml key covers what is indented under it, so a nested key really is inside its
+// parent — which is the one shape where moving a node next to its own child is possible
+// to write, and has to be refused.
+func TestMoveTargetInsideItself(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\n")
+	mustWrite(t, filepath.Join(dir, "up", "ci.yaml"), "name: x\n\njobs:\n  test:\n    runs-on: a\n")
+	mustWrite(t, filepath.Join(dir, "me", "ci.lm"), "base.jobs.move(after: base.jobs.test)\n")
+
+	c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tm, err := lang.LoadTemplate(c, filepath.Join(dir, "me", "ci.lm"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := build.Weave(c, tm); err == nil {
+		t.Error("moving a key next to its own child was accepted")
+	} else if !strings.Contains(err.Error(), "outside the node being moved") {
+		t.Errorf("wrong error: %v", err)
+	}
+}

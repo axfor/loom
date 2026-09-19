@@ -203,6 +203,48 @@ func apply(c *lang.Config, t *lang.Template, stmts []lang.Stmt, tree ast.Tree, r
 				return err
 			}
 			edits = append(edits, edit{span[0], span[1], nil, len(edits)})
+		case "move":
+			// A move is one deletion and one insertion of the very same lines. Both spans are
+			// resolved against the source, and edits apply back to front, so the two never
+			// disturb each other's line numbers.
+			//
+			// Nothing is inserted from our layer and nothing is lost, so a move needs no reason:
+			// the node's own bytes are still in the product, and the check that upstream survived
+			// finds them there.
+			if t.From != "" && t.From != c.Warp {
+				continue
+			}
+			src, _, err := locate(tree, s.Kind, s.Within, s.Anchor, s.Ident, s)
+			if err != nil {
+				return err
+			}
+			dst, _, err := locate(tree, s.Move.Kind, s.Move.Within, s.Move.Anchor, s.Move.Ident, s)
+			if err != nil {
+				return err
+			}
+			if dst[0] >= src[0] && dst[0] < src[1] {
+				return fmt.Errorf("%s: move takes a target outside the node being moved", s.Rng)
+			}
+			body := append([]string{}, tree.Lines()[src[0]:src[1]]...)
+			// Trailing blank lines belong to the gap the node leaves behind, not to the node.
+			for len(body) > 0 && strings.TrimSpace(body[len(body)-1]) == "" {
+				body = body[:len(body)-1]
+			}
+			at := dst[1]
+			if s.Move.Side == "before" {
+				at = dst[0]
+			}
+			var repl []string
+			// No blank line before the very start of the file, and none where there is one already.
+			if at > 0 && !(at-1 < len(tree.Lines()) && strings.TrimSpace(tree.Lines()[at-1]) == "") {
+				repl = append(repl, "")
+			}
+			repl = append(repl, body...)
+			if !(at < len(tree.Lines()) && strings.TrimSpace(tree.Lines()[at]) == "") {
+				repl = append(repl, "")
+			}
+			edits = append(edits, edit{at, at, repl, len(edits)})
+			edits = append(edits, edit{src[0], src[1], nil, len(edits)})
 		case "append", "prepend":
 			// Each item in the list is its own edit — exactly equivalent to writing several append statements.
 			for _, ref := range s.Srcs {

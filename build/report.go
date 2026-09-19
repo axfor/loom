@@ -33,6 +33,7 @@ type Report struct {
 	Extended   []ReportLine // upstream kept whole, ours inserted
 	Overridden []ReportLine // ours replaces part or all of upstream
 	Dropped    []ReportLine // upstream nodes left out of the product on purpose
+	Moved      []ReportLine // upstream nodes put somewhere else, byte for byte
 	Added      []string     // files only in our layer
 	Untaken    []string     // files in upstream, not taken into the product
 	Anchored   []ReportLine // anchors completed during the build
@@ -52,7 +53,7 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 	whole := t.From != "" && t.From != c.Warp
 	merged := false
 	var inserted []string
-	var drops, replaces []lang.Stmt
+	var drops, replaces, moves []lang.Stmt
 	var walk func(ss []lang.Stmt)
 	walk = func(ss []lang.Stmt) {
 		for _, s := range ss {
@@ -63,6 +64,8 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 				drops = append(drops, s)
 			case "replace":
 				replaces = append(replaces, s)
+			case "move":
+				moves = append(moves, s)
 			case "after", "before", "append", "prepend":
 				for _, ref := range s.Srcs {
 					inserted = append(inserted, refName(ref))
@@ -129,6 +132,10 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 	for _, s := range drops {
 		r.Dropped = append(r.Dropped, ReportLine{t.Target + " § " + realName(s), s.Reason})
 	}
+	for _, s := range moves {
+		r.Moved = append(r.Moved, ReportLine{t.Target + " § " + realName(s),
+			s.Move.Side + " " + s.Move.Anchor + " · bytes unchanged"})
+	}
 	switch {
 	case whole:
 		r.Overridden = append(r.Overridden, ReportLine{t.Target, "whole file · " + t.UseReason})
@@ -161,7 +168,9 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 		// must be byte-identical to upstream. It is checked on every build instead of by a separate
 		// outside gate: an engine one byte off on a blank line still yields a normal-looking product.
 		// The frontmatter may be changed by set / start / append, so only the body is compared.
-		if t.Type == "markdown" && !whole && !merged && len(drops)+len(replaces) == 0 {
+		// A move reorders upstream, so the body cannot match it line for line — what a move
+		// promises instead is checked just below, and it is a stronger promise.
+		if t.Type == "markdown" && !whole && !merged && len(drops)+len(replaces)+len(moves) == 0 {
 			body := func(s string) string {
 				b, _ := ast.NewMarkdown(s).BodyOf("body")
 				return strings.TrimRight(b, "\n")
@@ -171,6 +180,27 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 			}
 		}
 	}
+	// What a move promises: the node's own bytes are unchanged, only its place is. That is
+	// stronger than what an insertion promises about upstream, and it is checkable — so it is
+	// checked, rather than being taken on the word of the engine that did the moving.
+	if len(moves) > 0 && upOK {
+		moved := ast.New(t.Type, outText)
+		for _, s := range moves {
+			want, err := nodeText(upTree, s.Kind, s.Within, s.Anchor, s.Ident, s)
+			if err != nil {
+				continue // the anchor error is reported where the weave failed
+			}
+			got, err := nodeText(moved, s.Kind, s.Within, s.Anchor, s.Ident, s)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("%s: %s was moved but is not in the product", s.Rng, s.Anchor))
+				continue
+			}
+			if got != want {
+				errs = append(errs, fmt.Errorf("%s: %s was moved and its own bytes changed — a move may change where a node is, never what it is", s.Rng, s.Anchor))
+			}
+		}
+	}
+
 	outTree := ast.New(t.Type, outText)
 	have := map[string]int{}
 	for _, n := range ast.Addressable(outTree, kind) {
@@ -400,6 +430,7 @@ func (r *Report) Print(w io.Writer) {
 	section("extended         ", r.Extended, "files ", "upstream kept whole, ours inserted", 5)
 	section("overridden       ", r.Overridden, "files ", "ours replaces part or all of upstream", -1)
 	section("dropped          ", r.Dropped, "places", "left out on purpose", -1)
+	section("moved            ", r.Moved, "places", "put elsewhere, byte for byte", -1)
 	fmt.Fprintf(w, "added             %4d files   only in our layer\n", len(r.Added))
 	fmt.Fprintf(w, "not taken         %4d files   in upstream, not listed in take\n", len(r.Untaken))
 	for i, p := range r.Untaken {
@@ -448,6 +479,7 @@ func (r *Report) Markdown() string {
 	table("Extended", r.Extended)
 	table("Overridden", r.Overridden)
 	table("Dropped", r.Dropped)
+	table("Moved", r.Moved)
 	list("Added", r.Added)
 	list("Not taken", r.Untaken)
 	table("Anchors completed", r.Anchored)
@@ -464,3 +496,17 @@ func (r *Report) Markdown() string {
 }
 
 func escCell(s string) string { return strings.ReplaceAll(s, "|", "\\|") }
+
+// nodeText is a node's own lines, with the blank lines that trail it left out — they belong
+// to the gap around a node, not to the node, and a move changes the gaps.
+func nodeText(tree ast.Tree, kind string, within []lang.Seg, anchor string, ident bool, s lang.Stmt) (string, error) {
+	span, _, err := locate(tree, kind, within, anchor, ident, s)
+	if err != nil {
+		return "", err
+	}
+	lines := tree.Lines()[span[0]:span[1]]
+	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return strings.Join(lines, "\n"), nil
+}

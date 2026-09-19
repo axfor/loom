@@ -9,7 +9,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const METHODS = new Set(['after', 'before', 'start', 'append', 'replace', 'drop', 'set', 'merge']);
+const METHODS = new Set(['after', 'before', 'start', 'append', 'replace', 'drop', 'move', 'set', 'merge']);
 const CONTENT_METHODS = new Set(['after', 'before', 'start', 'append', 'replace', 'set']);
 const KIND_CALLS = {
   markdown: { section: 'heading', line: 'line' },
