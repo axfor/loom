@@ -359,6 +359,28 @@ A node is a part of a file. A bare name means the default node kind of the file 
 | json | key (nested by path) | `key("a.b")` |
 | text | line | `line("...")` |
 
+### What each type is checked for
+
+Not every guarantee can mean the same thing for every kind of file, and the table says which ones
+do. Each row was checked by running the build, not read off the code.
+
+| Type | Upstream content can't be lost | Ours can't go missing | Insert-only stays byte-identical | Anchor completion | `move` verified |
+|---|---|---|---|---|---|
+| markdown | by section | by section, and by frontmatter key | the body — the frontmatter is changed on purpose | yes | yes |
+| shell | by function | by function | the whole file | yes | yes |
+| toml | by key | by key | the whole file, unless a value is written | — | yes |
+| yaml | by key | by key | the whole file, unless a value is written | — | yes |
+| json | by construction: a registry merge is upstream's entries plus ours | — | — (a registry is merged whole) | — | — |
+| text | **no** — see below | **no** | the whole file | — | — (a move needs a plain node, and every line is a call) |
+
+Anchor completion stops where order stops meaning anything: a section follows the section before
+it, and so does a function, but a toml key's neighbour says nothing about where a new key belongs.
+
+**text is the one gap, and it is deliberate.** Its nodes are lines, and a line *is* its content, so
+"this node is still here" — the question asked of the other types, indifferent to what changed
+inside it — becomes "this line is unchanged". That is a far stricter promise, not the same one
+extended, so it is not made without asking. TODO.md carries the decision and what it would cost.
+
 A nested key is reached by chaining names, `base.jobs.test`, or by quoting the whole path,
 `base."jobs.test"`, for a segment a dot cannot spell. A trailing part of a path is enough while it
 is unambiguous: `base.steps` finds `jobs.build.steps` as long as nothing else ends in `steps`.
