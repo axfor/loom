@@ -390,148 +390,91 @@ for sec := range base.sections {
 
 **这是这份设计目前唯一确知的缺口。**
 
-## 6.6 全新语法：三个方案
+## 6.4 全新语法（已定）
 
-不是微调今天的写法，是重画。共同前提：**名字只有一种写法**。
+### 三条决定
 
-今天有两种——标识符形式 `base.How_Skills_Work`（下划线代空格）和字符串形式 `base."How it compares"`，外加一条「标识符撞名时报错、改用字符串」的规则。Go 里没有这种东西：动态名字用索引取。**全新设计应该整条删掉它**，只留索引。
+**只有一类 `.lm`：每个文件恰好产出一个产物。** 没有规则文件、没有包、没有库。
+**复用交给编译器**：重复的不是「规则」，是编译器本该看出来的东西（L7）。
+**名字只有一种写法**：索引。今天那套「标识符形式 + 下划线代空格 + 撞名时改用字符串」整条删掉——Go 里没有这种东西。
 
-三个方案的差别在**「部分」怎么被取到**。同一个真实文件（`xsdd/docs/getting-started.lm`，逐节翻译）。
+这三条一起把 `func` / `package` / `import` 全部消掉了：既然一个文件恰好一个函数、参数类型由扩展名决定、又没有跨文件复用，**那个壳就只剩仪式**。
 
-### 甲 · 索引取部分，位置是方法
+> **文件就是函数体。**
 
-```go
-package docs
+### 一条语法规则
 
-func GettingStarted(up, mine markdown) {
-    up["How Skills Work"].after(mine["Skill 如何工作"])
-    up["Quick Start (Any Agent)"].after(mine["Quick Start（任何 agent）"])
-    up["1. Clone the repository"].after(mine["1. clone 仓库"])
-    // …还有 13 行
-}
-```
+> **方括号是选择，点号是语言。**
 
-索引结果是**一个部分**，部分上挂位置方法。最贴近 Go 的 map + 方法。
-16 行还是 16 行。
+方括号里是**文档里的东西**（作者写的名字、谓词）；点号后面是**语言的词**（位置、操作、轴）。看一眼就知道哪部分是数据、哪部分是语法——不需要靠大小写约定。
 
-### 乙 · 文档是接收者，锚点是参数
+### 长什么样
 
 ```go
-func GettingStarted(up, mine markdown) {
-    up.after("How Skills Work", mine["Skill 如何工作"])
-    up.after("Quick Start (Any Agent)", mine["Quick Start（任何 agent）"])
-    // …
-}
+// xsdd/skills/testing/SKILL.lm
+base.frontmatter.description.start(self.frontmatter.description)
+base["Overview"].after(self["Where this fits"])
+base.append(self.body)
 ```
 
-所有操作都是**文档的方法**，锚点退化成普通参数。好处：`up` 的方法集是固定的、可补全、可类型检查；不需要「索引出来的东西是什么类型」这一层。
-坏处：读起来「在谁之后」被埋进参数里，没有甲直观。
-
-### 丙 · 选择器是唯一入口，单个是特例
+内容直接写在里面，缩进定界：
 
 ```go
-func GettingStarted(up, mine markdown) {
-    up.sections().align(mine.sections())
-}
+base["Overview"].after:
+    ## Where this fits
+
+    跑 `lm build` 就能织进去：
+
+    ```sh
+    lm build -o ../plugins/XSDD
+    ```
 ```
 
-取一个部分是「取一组」的退化情况：
+合并——`return` 在顶层，因为文件就是函数体：
 
 ```go
-up.sections("Overview").after(mine.sections("Where this fits"))
-up.sections(level(2)).demote()
+// xsdd/AGENTS.lm
+return self   // reason: 上游那份和我们的会跑两遍
 ```
 
-**16 行变 1 行**——因为它承认了这个文件真正在说的是「两个序列对齐」（L3 的缺口）。
-坏处：最简单的事也要经过选择器，下限被抬高了。
+**返回就是写根跨度**，保证量为零（L4.2）。不需要 `merge` 这个词，也不需要额外记住它特殊。
 
----
-
-### 三者的取舍
-
-| | 名字怎么取 | 最简单的一句 | 16 行的那个文件 | 最像 |
-|---|---|---|---|---|
-| 甲 | 索引 → 部分 | `up["X"].after(y)` | 16 行 | Go 的 map |
-| 乙 | 参数 | `up.after("X", y)` | 16 行 | Go 的方法集 |
-| 丙 | 选择器 | `up.sections("X").after(y)` | **1 行** | jQuery / XPath |
-
-**甲和乙是同一个语言的两种写法**，差别只在锚点放哪。**丙是另一个语言**——它把「一组」当成基本情况，于是词汇表（L3）和它天然贴合，但简单的事变啰嗦。
-
-一个折中是**甲 + 丙**：索引取一个，`.sections(...)` 取一组，两者都在。代价是有两条取部分的路。
-
-## 6.7 未决：五个语法决定
-
-其余语法都是这五条的后果。决定一条就在「状态」里记一笔，不要只留在对话里。
-
-| # | 决定 | 推荐 | 状态 |
-|---|---|---|---|
-| 1 | 要不要 `func` 包一层 | 要 | ⬜ 未定 |
-| 2 | 位置词是方法还是动词前置 | 方法 | ⬜ 未定 |
-| 3 | 引用自己的内容用裸字符串还是显式 | 显式为准，裸串为糖 | ⬜ 未定 |
-| 4 | merge 用返回类型还是关键字 | 返回类型 | ⬜ 未定 |
-| 5 | 套用用指令注释还是编译器推断 | 不确定 | ⬜ 未定 |
-
----
-
-### 1. 要不要 `func` 包一层
-
-视觉上差别最大，「像不像一门语言」主要来自这里。
+选择与结构变换：
 
 ```go
-// A 今天：语句直接躺在文件顶层
-base.Overview.after("Where this fits")
-
-// B：包在函数里
-func weave(base, self markdown) {
-    base.Overview.after(self["Where this fits"])
-}
+base.sections[level == 2].demote()
+base["Troubleshooting"].move(base.sections.last.after)
+base.start.project(base.sections[level == 2]):
+    - [{name}](#{anchor})
 ```
 
-**推荐 B。** 不只是好看：`base` / `self` 从「魔法全局」变成**有类型的参数**，于是 merge 能用返回类型表达（决定 4）、复用能用调用表达（L5.3）。**没有 B，后面几条都没地方挂。**
-
-代价：最简单的文件从 1 行变 3 行。
-
-### 2. 位置词是方法，还是动词前置
+逐节翻译（`xsdd/docs/getting-started.lm`，今天 16 行）：
 
 ```go
-base.Overview.after(x)        // A 方法链（今天）
-after base.Overview: x        // B 动词前置
+base.sections.align(self.sections)
 ```
 
-**推荐 A。** 位置词是**地址的最后一步**（L2.2），方法链如实反映了这一点。动词前置会让它看起来像一个独立操作，而系统里它不是。
+### 为什么是这个形状
 
-### 3. 引用我们自己的内容
+| 决定 | 因为 |
+|---|---|
+| 没有 `func` 壳 | 一个文件一个产物，壳里永远只有一种签名 |
+| 没有 `package` / `import` | 没有跨文件复用（决定 1） |
+| `return` 表达合并 | 返回 = 写根跨度 = 保证量为零，是 L4 的直接后果 |
+| 方括号选择 | 名字是数据，不是标识符 |
+| 点号是语言 | 位置、操作、轴都是语言的词，数量有限、可补全、可类型检查 |
+| 缩进块 | 真实文档里全是反引号和代码块，缩进是唯一不需要转义的定界符 |
 
-```go
-base.Overview.after("Where this fits")        // A 裸字符串 = 我们的同名节（今天）
-base.Overview.after(self["Where this fits"])  // B 显式
+### 和今天比
+
+```
+base.How_Skills_Work.after("Skill 如何工作")        今天
+base["How Skills Work"].after(self["Skill 如何工作"])  全新
 ```
 
-**推荐 B 为准、A 为简写。** 有了 `func(base, self ...)`，`self` 本就在作用域里，裸字符串只是省掉它的糖；但两个参数都在场时，显式那版没有歧义。
+长了一点。换来的是：**删掉了标识符/字符串双形式和那条撞名规则**，并且 `base[...]` 和 `base.sections[...]` 是同一件事的两种写法——取一个和取一组，语法同形。
 
-### 4. merge 用返回类型还是关键字
-
-```go
-func weave(base, self markdown) markdown {
-    return self
-} // reason: 上游那份和我们的会跑两遍
-
-base.merge(self)   // 今天
-```
-
-**推荐返回类型。** 它把「这个文件的保证量为零」变成**类型系统的事实**，而不是一个要另外记住的特例。`return a.call(...)` 这类计算也自动落进同一条规则（L5.2）。
-
-### 5. 套用到一批文件
-
-```go
-//loom:apply "skills/**"     // A 指令注释，仿 Go build tag
-```
-
-**最不确定的一条。** A 的问题是**作用在远处**：读一个模板时，看不出它还被别处套了东西。缓解只能靠构建报告逐个列出、以及编辑器把套来的语句灰显。
-
-**B 替代：编译器推断**——根本不写套用，按结构自己算。更符合 L7.1，但假设不成立时必须响亮失败。
-
-## 6.8 文法
+## 6.5 文法
 
 ```ebnf
 file       = { comment | doc | import | func | directive } ;
@@ -562,7 +505,7 @@ kind       = "markdown" | "shell" | "toml" | "json" | "text" | ... ;
 
 **没有表达式、没有赋值、没有算术。** `return` 只能返回一份文档，不能返回算出来的文本——那条由 L5.2 的类型规则挡住。
 
-## 6.9 刻意不要的
+## 6.6 刻意不要的
 
 | 不要 | 为什么（全部来自 L0） |
 |---|---|
