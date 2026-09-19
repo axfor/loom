@@ -36,6 +36,8 @@ Usage:
                             template text is read from stdin (an unsaved editor buffer)
   lm list [-tsv]            print each template's metadata (for outer gates)
   lm anchors                list the upstream line each anchor resolves to right now
+  lm uses [path-fragment]   the other direction: which templates name each piece of upstream —
+                            what depends on this file, what breaks if this section moves
   lm view                   generate a derived view annotated with anchors
   lm update [-check]        replace this lm with the latest release from GitHub, after checking it
                             against the release's SHA256SUMS; -check only says what is available
@@ -189,6 +191,15 @@ func run(cmd string, args []string) error {
 			return build.ListTSV(c, os.Stdout)
 		}
 		return build.List(c, os.Stdout)
+	case "uses":
+		if len(args) > 1 {
+			return fmt.Errorf("usage: lm uses [path-fragment]")
+		}
+		pattern := ""
+		if len(args) == 1 {
+			pattern = args[0]
+		}
+		return build.Uses(c, os.Stdout, pattern)
 	case "anchors":
 		return build.ListAnchors(c, os.Stdout)
 	case "view":

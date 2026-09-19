@@ -820,6 +820,7 @@ lm sync <dir>                                take a new upstream release; merge 
 lm weave [-e vars] [-stdin] <template.lm>    weave one template to stdout; -stdin reads the template text from stdin
 lm list [-tsv]                               template metadata as JSON (or six TSV columns) for other tools
 lm anchors                                   where each anchor currently resolves upstream
+lm uses [path-fragment]                      the other direction: what names each piece of upstream
 lm view                                      write upstream files annotated with their anchors
 lm update [-check]                           replace this lm with the latest release; -check only says what is available
 lm version                                   the version, platform and Go version
@@ -829,6 +830,21 @@ lm version                                   the version, platform and Go versio
 
 `lm list` resolves identifier forms and section paths to real names, so a tool reading it can compare
 anchors with upstream headings directly.
+
+`lm uses` turns that round. Every other view answers "where does this anchor point"; this one
+answers **"what points here"** — which is the question asked before touching anything:
+
+```
+docs/getting-started.md
+  How Skills Work          ← mine/docs/getting-started.lm:3:22
+  Quick Start (Any Agent)  ← mine/docs/getting-started.lm:4:32
+skills/testing/SKILL.md
+  Overview                 ← mine/skills/testing/SKILL.lm:5:15, mine/skills/other.lm:2:20
+```
+
+What breaks if this section moves, what depends on this file, which upstream nodes nothing names at
+all. Nothing is computed that the build did not already compute — resolving anchors is most of what
+a weave does, and the answer used to be thrown away.
 
 ---
 
