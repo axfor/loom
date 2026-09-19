@@ -1,6 +1,6 @@
 package lang
 
-// loom.lm — how the loom understands this repository. The settings syntax is read by settings.go.
+// loom.om — how the loom understands this repository. The settings syntax is read by settings.go.
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 )
 
 // ConfigName is the loom's settings file.
-const ConfigName = "loom.lm"
+const ConfigName = "loom.om"
 
 // Marks is a pair of wrapping marks. Weft content is wrapped in them on its way into the product, so
 // "100% of the warp preserved" can be checked mechanically: strip the marked blocks, and what remains
@@ -51,7 +51,7 @@ type Config struct {
 	Vars *Vars
 }
 
-// FindConfig searches upward from start for loom.lm.
+// FindConfig searches upward from start for loom.om.
 func FindConfig(start string) (string, error) {
 	d, err := filepath.Abs(start)
 	if err != nil {

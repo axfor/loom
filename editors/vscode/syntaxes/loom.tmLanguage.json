@@ -2,49 +2,73 @@
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
   "name": "Loom",
   "scopeName": "source.loom",
-  "fileTypes": ["lm"],
+  "fileTypes": [
+    "lm"
+  ],
   "patterns": [
-    { "include": "#comment" },
-    { "include": "#import" },
-    { "include": "#config" },
-    { "include": "#unknown-statement" },
-    { "include": "#string" },
-    { "include": "#literal" },
-    { "include": "#named-argument" },
-    { "include": "#step" },
-    { "include": "#format" },
-    { "include": "#object" },
-    { "include": "#punctuation" }
+    {
+      "include": "#comment"
+    },
+    {
+      "include": "#import"
+    },
+    {
+      "include": "#unknown-statement"
+    },
+    {
+      "include": "#string"
+    },
+    {
+      "include": "#literal"
+    },
+    {
+      "include": "#named-argument"
+    },
+    {
+      "include": "#step"
+    },
+    {
+      "include": "#format"
+    },
+    {
+      "include": "#object"
+    },
+    {
+      "include": "#punctuation"
+    }
   ],
   "repository": {
     "comment": {
       "match": "(//).*$",
       "name": "comment.line.double-slash.loom",
       "captures": {
-        "1": { "name": "punctuation.definition.comment.loom" }
+        "1": {
+          "name": "punctuation.definition.comment.loom"
+        }
       }
     },
     "import": {
       "comment": "import \"/path\" · import name \"/path\" · import base \"/path\" (base points at another upstream file)",
       "match": "^\\s*(import)\\b(?:\\s+(?:(base)\\b|([\\p{L}_][\\p{L}\\p{N}_]*)))?",
       "captures": {
-        "1": { "name": "keyword.control.import.loom" },
-        "2": { "name": "variable.language.loom" },
-        "3": { "name": "variable.other.object.loom" }
-      }
-    },
-    "config": {
-      "comment": "loom.lm settings: a setting word starts the line and is not followed by `.`, `(` or `:`.",
-      "match": "^\\s*(base|self|templates|output|mark|registry|take|mirror|manifest)\\b(?!\\s*[.(:])",
-      "captures": {
-        "1": { "name": "keyword.control.config.loom" }
+        "1": {
+          "name": "keyword.control.import.loom"
+        },
+        "2": {
+          "name": "variable.language.loom"
+        },
+        "3": {
+          "name": "variable.other.object.loom"
+        }
       }
     },
     "unknown-statement": {
-      "comment": "A statement starts with an object (`base.`, `self.`, an imported name) or `import`. A bare word at the start of a line is a typo; build would reject it too.",
-      "match": "^\\s*(?!(?:import|base|self|templates|output|mark|registry|take|mirror|manifest)\\b)([\\p{L}_][\\p{L}\\p{N}_]*)\\b(?!\\s*[.:(])",
+      "comment": "A statement starts with an object (`base.`, `self.`, an imported name) or `import`. A bare word at the start of a line is a typo; build would reject it too. Settings live in loom.om, which is its own language, so `take` or `output` here is a mistake like any other.",
+      "match": "^\\s*(?!(?:import|base|self)\\b)([\\p{L}_][\\p{L}\\p{N}_]*)\\b(?!\\s*[.:(])",
       "captures": {
-        "1": { "name": "invalid.illegal.unknown-statement.loom" }
+        "1": {
+          "name": "invalid.illegal.unknown-statement.loom"
+        }
       }
     },
     "string": {
@@ -52,14 +76,23 @@
       "begin": "\"",
       "end": "\"|$",
       "beginCaptures": {
-        "0": { "name": "punctuation.definition.string.begin.loom" }
+        "0": {
+          "name": "punctuation.definition.string.begin.loom"
+        }
       },
       "endCaptures": {
-        "0": { "name": "punctuation.definition.string.end.loom" }
+        "0": {
+          "name": "punctuation.definition.string.end.loom"
+        }
       },
       "patterns": [
-        { "match": "\\\\[\"\\\\]", "name": "constant.character.escape.loom" },
-        { "include": "#placeholder" }
+        {
+          "match": "\\\\[\"\\\\]",
+          "name": "constant.character.escape.loom"
+        },
+        {
+          "include": "#placeholder"
+        }
       ]
     },
     "literal": {
@@ -68,13 +101,19 @@
       "begin": "`",
       "end": "`",
       "beginCaptures": {
-        "0": { "name": "punctuation.definition.string.begin.loom" }
+        "0": {
+          "name": "punctuation.definition.string.begin.loom"
+        }
       },
       "endCaptures": {
-        "0": { "name": "punctuation.definition.string.end.loom" }
+        "0": {
+          "name": "punctuation.definition.string.end.loom"
+        }
       },
       "patterns": [
-        { "include": "#placeholder" }
+        {
+          "include": "#placeholder"
+        }
       ]
     },
     "placeholder": {
@@ -87,9 +126,15 @@
         {
           "match": "(\\{\\{@)([A-Za-z_][A-Za-z0-9_]*)(\\}\\})",
           "captures": {
-            "1": { "name": "punctuation.definition.placeholder.begin.loom" },
-            "2": { "name": "variable.other.placeholder.loom" },
-            "3": { "name": "punctuation.definition.placeholder.end.loom" }
+            "1": {
+              "name": "punctuation.definition.placeholder.begin.loom"
+            },
+            "2": {
+              "name": "variable.other.placeholder.loom"
+            },
+            "3": {
+              "name": "punctuation.definition.placeholder.end.loom"
+            }
           }
         }
       ]
@@ -99,16 +144,24 @@
         {
           "match": "\\b(reason)\\s*(:)",
           "captures": {
-            "1": { "name": "variable.parameter.loom" },
-            "2": { "name": "punctuation.separator.key-value.loom" }
+            "1": {
+              "name": "variable.parameter.loom"
+            },
+            "2": {
+              "name": "punctuation.separator.key-value.loom"
+            }
           }
         },
         {
           "comment": "reason: is the only named argument",
           "match": "([\\p{L}_][\\p{L}\\p{N}_]*)\\s*(:)",
           "captures": {
-            "1": { "name": "invalid.illegal.unknown-argument.loom" },
-            "2": { "name": "punctuation.separator.key-value.loom" }
+            "1": {
+              "name": "invalid.illegal.unknown-argument.loom"
+            },
+            "2": {
+              "name": "punctuation.separator.key-value.loom"
+            }
           }
         }
       ]
@@ -119,46 +172,70 @@
           "comment": "methods: they change base",
           "match": "(\\.)\\s*(after|before|start|append|replace|drop|set|merge)\\s*(?=[({])",
           "captures": {
-            "1": { "name": "punctuation.accessor.loom" },
-            "2": { "name": "entity.name.function.method.loom" }
+            "1": {
+              "name": "punctuation.accessor.loom"
+            },
+            "2": {
+              "name": "entity.name.function.method.loom"
+            }
           }
         },
         {
           "comment": "kind(\"name\"): a node that is not the file type's default kind",
           "match": "(\\.)\\s*(section|line|function|marker|key)\\s*(?=\\()",
           "captures": {
-            "1": { "name": "punctuation.accessor.loom" },
-            "2": { "name": "support.type.kind.loom" }
+            "1": {
+              "name": "punctuation.accessor.loom"
+            },
+            "2": {
+              "name": "support.type.kind.loom"
+            }
           }
         },
         {
           "match": "(\\.)\\s*(as)\\s*(?=\\()",
           "captures": {
-            "1": { "name": "punctuation.accessor.loom" },
-            "2": { "name": "keyword.operator.as.loom" }
+            "1": {
+              "name": "punctuation.accessor.loom"
+            },
+            "2": {
+              "name": "keyword.operator.as.loom"
+            }
           }
         },
         {
           "comment": "anything else called like a method is not one: a typo like .aftr(",
           "match": "(\\.)\\s*([\\p{L}_][\\p{L}\\p{N}_]*)\\s*(?=[({])",
           "captures": {
-            "1": { "name": "punctuation.accessor.loom" },
-            "2": { "name": "invalid.illegal.unknown-method.loom" }
+            "1": {
+              "name": "punctuation.accessor.loom"
+            },
+            "2": {
+              "name": "invalid.illegal.unknown-method.loom"
+            }
           }
         },
         {
           "match": "(\\.)\\s*(frontmatter|body)\\b",
           "captures": {
-            "1": { "name": "punctuation.accessor.loom" },
-            "2": { "name": "support.variable.property.loom" }
+            "1": {
+              "name": "punctuation.accessor.loom"
+            },
+            "2": {
+              "name": "support.variable.property.loom"
+            }
           }
         },
         {
           "comment": "a node written as a name: base.Install, base.Usage_Tips (_ matches a space)",
           "match": "(\\.)\\s*([\\p{L}_][\\p{L}\\p{N}_]*)",
           "captures": {
-            "1": { "name": "punctuation.accessor.loom" },
-            "2": { "name": "variable.other.property.loom" }
+            "1": {
+              "name": "punctuation.accessor.loom"
+            },
+            "2": {
+              "name": "variable.other.property.loom"
+            }
           }
         },
         {
@@ -186,11 +263,26 @@
     },
     "punctuation": {
       "patterns": [
-        { "match": "\\{", "name": "punctuation.section.block.begin.loom" },
-        { "match": "\\}", "name": "punctuation.section.block.end.loom" },
-        { "match": "\\(", "name": "punctuation.section.parens.begin.loom" },
-        { "match": "\\)", "name": "punctuation.section.parens.end.loom" },
-        { "match": ",", "name": "punctuation.separator.comma.loom" }
+        {
+          "match": "\\{",
+          "name": "punctuation.section.block.begin.loom"
+        },
+        {
+          "match": "\\}",
+          "name": "punctuation.section.block.end.loom"
+        },
+        {
+          "match": "\\(",
+          "name": "punctuation.section.parens.begin.loom"
+        },
+        {
+          "match": "\\)",
+          "name": "punctuation.section.parens.end.loom"
+        },
+        {
+          "match": ",",
+          "name": "punctuation.separator.comma.loom"
+        }
       ]
     }
   }

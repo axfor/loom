@@ -17,6 +17,7 @@ const onigLib = oniguruma.loadWASM(wasm).then(() => ({
 
 const files = {
   'source.loom': 'syntaxes/loom.tmLanguage.json',
+  'source.loom-om': 'syntaxes/loom-om.tmLanguage.json',
   'source.loom-env': 'syntaxes/loom-env.tmLanguage.json',
   'loom.placeholder.injection': 'syntaxes/loom-placeholder.injection.json',
 };
@@ -70,6 +71,7 @@ function expectNot(grammar, line, text, scope) {
 
 (async () => {
   const lm = await registry.loadGrammar('source.loom');
+  const om = await registry.loadGrammar('source.loom-om');
   const env = await registry.loadGrammar('source.loom-env');
   const sh = await registry.loadGrammar('source.shell');
 
@@ -145,17 +147,13 @@ function expectNot(grammar, line, text, scope) {
   expect(lm, 'base."C// notes".drop(reason: "x")', 'C//', 'string.quoted.double.loom');
   expectNot(lm, 'base."C// notes".drop(reason: "x")', 'drop', 'comment.line.double-slash.loom');
 
-  // Settings: a setting word starts the line; base / self start settings in loom.lm and objects in templates
-  expect(lm, 'base      "upstream"', 'base', 'keyword.control.config.loom');
-  expect(lm, 'self      "xsdd"', 'self', 'keyword.control.config.loom');
+  // Settings are not template syntax: they live in loom.om, which is its own language. A setting
+  // word at the start of a template line is a mistake, and lm rejects it too.
   expect(lm, 'base.Install.after("x")', 'base', 'variable.language.loom');
   expectNot(lm, 'base.Install.after("x")', 'base', 'keyword.control.config.loom');
-  expect(lm, 'mark      markdown "<!-- XSDD:BEGIN -->" "<!-- XSDD:END -->"', 'mark', 'keyword.control.config.loom');
-  expect(lm, 'mark      markdown "<!-- XSDD:BEGIN -->" "<!-- XSDD:END -->"', 'markdown', 'entity.name.type.format.loom');
-  expect(lm, 'registry  "hooks" "hooks/(x)"', 'registry', 'keyword.control.config.loom');
-  for (const k of ['templates', 'output', 'take', 'mirror', 'manifest']) {
-    expectNot(lm, `${k} "x"`, k, 'invalid.illegal.unknown-statement.loom');
-    expect(lm, `${k} "x"`, k, 'keyword.control.config.loom');
+  for (const k of ['templates', 'output', 'take', 'mirror', 'manifest', 'mark', 'registry']) {
+    expect(lm, `${k} "x"`, k, 'invalid.illegal.unknown-statement.loom');
+    expectNot(lm, `${k} "x"`, k, 'keyword.control.config.loom');
   }
 
   // Escapes: only \" and \\; any other backslash (a regex's \.) is plain string text
@@ -177,6 +175,21 @@ function expectNot(grammar, line, text, scope) {
   expect(env, '# lm.e (the default)', '# lm.e', 'comment.line.number-sign.loom-env');
   expect(env, 'not a variable line', 'not', 'invalid.illegal.line.loom-env');
   expect(env, '9url = x', '9url', 'invalid.illegal.line.loom-env');
+
+  // loom.om is its own language: the settings file shares no syntax with a template, and a word
+  // that means an object there means a setting here.
+  expect(om, 'base      "upstream"', 'base', 'keyword.control.config.loom');
+  expect(om, 'self      "mine"', 'self', 'keyword.control.config.loom');
+  expect(om, 'output    "../dist"', 'output', 'keyword.control.config.loom');
+  expect(om, 'take      "references/**" "LICENSE"', 'take', 'keyword.control.config.loom');
+  expect(om, 'base      "upstream"', '"upstream"', 'string.quoted.double.loom');
+  expect(om, 'mark      markdown "<!-- B -->" "<!-- E -->"', 'mark', 'keyword.control.config.loom');
+  expect(om, 'mark      markdown "<!-- B -->" "<!-- E -->"', 'markdown', 'entity.name.type.format.loom');
+  expect(om, '// which layer is upstream', '// which', 'comment.line.double-slash.loom');
+  // A template statement is not a setting: in loom.om it is a mistake, and lm says so too.
+  expect(om, 'import ship "/x"', 'import', 'invalid.illegal.unknown-setting.loom');
+  expect(om, 'bogus "x"', 'bogus', 'invalid.illegal.unknown-setting.loom');
+  expectNot(om, 'base      "upstream"', 'base', 'invalid.illegal.unknown-setting.loom');
 
   // Injection: placeholders in a host language
   expect(sh, 'echo "Repository: {{@url}}"', 'url', 'variable.other.placeholder.loom');

@@ -1,0 +1,79 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Loom Settings",
+  "scopeName": "source.loom-om",
+  "patterns": [
+    {
+      "include": "#comment"
+    },
+    {
+      "include": "#setting"
+    },
+    {
+      "include": "#unknown-setting"
+    },
+    {
+      "include": "#format"
+    },
+    {
+      "include": "#string"
+    }
+  ],
+  "repository": {
+    "comment": {
+      "match": "(//).*$",
+      "name": "comment.line.double-slash.loom",
+      "captures": {
+        "1": {
+          "name": "punctuation.definition.comment.loom"
+        }
+      }
+    },
+    "string": {
+      "name": "string.quoted.double.loom",
+      "begin": "\"",
+      "end": "\"|$",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.string.begin.loom"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.string.end.loom"
+        }
+      },
+      "patterns": [
+        {
+          "match": "\\\\[\"\\\\]",
+          "name": "constant.character.escape.loom"
+        },
+        {
+          "include": "#placeholder"
+        }
+      ]
+    },
+    "format": {
+      "match": "\\b(markdown|toml|json|shell|text)\\b",
+      "name": "entity.name.type.format.loom"
+    },
+    "setting": {
+      "comment": "A setting starts the line. loom.om takes one per line and nothing else.",
+      "match": "^\\s*(base|self|templates|output|mark|registry|take|mirror|manifest)\\b",
+      "captures": {
+        "1": {
+          "name": "keyword.control.config.loom"
+        }
+      }
+    },
+    "unknown-setting": {
+      "comment": "Any other word at the start of a line: lm rejects it, and so should the colours.",
+      "match": "^\\s*(?!(?:base|self|templates|output|mark|registry|take|mirror|manifest)\\b)([\\p{L}_][\\p{L}\\p{N}_]*)\\b",
+      "captures": {
+        "1": {
+          "name": "invalid.illegal.unknown-setting.loom"
+        }
+      }
+    }
+  }
+}

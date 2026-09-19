@@ -1,6 +1,6 @@
 package lang
 
-// Lexer shared by templates (object syntax) and loom.lm (one setting per line).
+// Lexer shared by templates (object syntax) and loom.om (one setting per line).
 //
 // Token kinds: names (base / Install / Install_XSDD), strings "...", literals `...`,
 // punctuation . , : ( ) { }, and newlines. Comments (// to end of line) and whitespace

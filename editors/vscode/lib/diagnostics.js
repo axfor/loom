@@ -24,24 +24,24 @@ const POS = /^(.*?):(\d+):(\d+): ([\s\S]*)$/;
 const UNUSED = /^\s*⚠ variable (\S+) is defined but never used\s*$/;
 
 function isSettings(file) {
-  return path.basename(file) === 'loom.lm';
+  return path.basename(file) === 'loom.om';
 }
 
 function isVars(file) {
   return path.extname(file) === '.e';
 }
 
-// inTree: is this document part of a Loom tree — is there a loom.lm above it?
+// inTree: is this document part of a Loom tree — is there a loom.om above it?
 //
 // A .lm or .e file with none is not something lm can build, and that is not the author's mistake:
 // the extension also highlights Loom syntax in a repository that merely documents it, and the
-// examples it ships are read, not woven. One "found no loom.lm" error across every such file would
-// be noise, so there is nothing to say. A loom.lm is itself the root of a tree, so it always counts.
+// examples it ships are read, not woven. One "found no loom.om" error across every such file would
+// be noise, so there is nothing to say. A loom.om is itself the root of a tree, so it always counts.
 function inTree(file) {
   if (isSettings(file)) return true;
   let dir = path.dirname(path.resolve(file));
   for (;;) {
-    if (loom.isFile(path.join(dir, 'loom.lm'))) return true;
+    if (loom.isFile(path.join(dir, 'loom.om'))) return true;
     const parent = path.dirname(dir);
     if (parent === dir) return false;
     dir = parent;
@@ -51,7 +51,7 @@ function inTree(file) {
 // commandFor: the lm invocation that diagnoses this document.
 //   a template  → `weave -stdin <path>`: the editor's text is piped in, so an edit is diagnosed
 //                 before it is saved, and only this one template is woven, which keeps it quick.
-//   loom.lm     → `check`: settings errors only surface when the tree is loaded against them.
+//   loom.om     → `check`: settings errors only surface when the tree is loaded against them.
 //   a .e file   → `check -e <path>`: -e reads only that file, so the variables being edited are the
 //                 ones checked and lm.e is never silently used instead.
 function commandFor(file) {

@@ -41,7 +41,7 @@ Usage:
                             against the release's SHA256SUMS; -check only says what is available
   lm version                print the version, platform and Go version
 
-Settings are read from the nearest build.lm (searching up from the current directory).
+Settings are read from the nearest loom.om (searching up from the current directory).
 `
 
 func main() {
@@ -57,7 +57,7 @@ func main() {
 		printVersion()
 		return
 	case "update":
-		// No loom.lm is needed to replace the binary, and needing one would be absurd: the usual
+		// No loom.om is needed to replace the binary, and needing one would be absurd: the usual
 		// reason to update is that the lm on PATH is too old for the tree in front of you.
 		check := len(os.Args) > 2 && (os.Args[2] == "-check" || os.Args[2] == "--check")
 		if len(os.Args) > 2 && !check {
@@ -93,7 +93,7 @@ func run(cmd string, args []string) error {
 	switch cmd {
 	case "weave":
 		fs := flag.NewFlagSet("weave", flag.ContinueOnError)
-		envFlag := fs.String("e", "", "variables file (default: lm.e next to build.lm)")
+		envFlag := fs.String("e", "", "variables file (default: lm.e next to loom.om)")
 		stdinFlag := fs.Bool("stdin", false, "read the template text from stdin; the path still names the product")
 		if err := fs.Parse(args); err != nil {
 			return err
@@ -113,8 +113,8 @@ func run(cmd string, args []string) error {
 
 	case "build", "check":
 		fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
-		envFlag := fs.String("e", "", "variables file (default: lm.e next to build.lm)")
-		outFlag := fs.String("o", "", "output directory (default: output in build.lm)")
+		envFlag := fs.String("e", "", "variables file (default: lm.e next to loom.om)")
+		outFlag := fs.String("o", "", "output directory (default: output in loom.om)")
 		reportFlag := fs.String("report", "", "write the full build report to this file (markdown)")
 		if err := fs.Parse(args); err != nil {
 			return err
@@ -130,7 +130,7 @@ func run(cmd string, args []string) error {
 			outDir = filepath.Join(c.Root, c.Output)
 		}
 		if cmd == "build" && outDir == "" {
-			return fmt.Errorf("no output directory — pass -o, or write output \"...\" in build.lm")
+			return fmt.Errorf("no output directory — pass -o, or write output \"...\" in loom.om")
 		}
 		plan, err := build.PlanBuild(c, cmd == "build")
 		if err != nil {
@@ -214,7 +214,7 @@ func printSync(r *build.SyncReport) {
 }
 
 // loadVars reads only the file given with -e (no fallback to lm.e); without -e it reads lm.e next to
-// build.lm, and no such file means no variables.
+// loom.om, and no such file means no variables.
 func loadVars(c *lang.Config, file string) error {
 	if file == "" {
 		p := filepath.Join(c.Root, lang.VarsName)

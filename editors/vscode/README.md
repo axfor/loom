@@ -6,7 +6,7 @@ Syntax highlighting, diagnostics, completion, a live preview, a patch against up
 
 | File | What gets highlighted |
 |---|---|
-| `*.lm` (templates and the `loom.lm` settings file) | The objects `base` / `self` / imported names, nodes, methods, `as(type)`, node kinds, `reason:`, strings and backtick literals, `//` comments, settings; misspelled methods, argument names and words at the start of a line are marked red |
+| `*.lm` (templates and the `loom.om` settings file) | The objects `base` / `self` / imported names, nodes, methods, `as(type)`, node kinds, `reason:`, strings and backtick literals, `//` comments, settings; misspelled methods, argument names and words at the start of a line are marked red |
 | `*.e` (variables files) | `name = value`, `#` comments at the start of a line; malformed lines are marked red |
 | `{{@name}}` in sources | Highlighted in markdown / shell / json / toml / yaml / js / ts / python / go / html / css and more; `{{@@name}}` (a literal) is marked differently |
 
@@ -78,7 +78,7 @@ diff --loom upstream/doc.md ../dist/doc.md
  ## Process
 ```
 
-Both sides are named by `loom.lm`, relative to the tree root, the way git writes paths relative to
+Both sides are named by `loom.om`, relative to the tree root, the way git writes paths relative to
 the repository: the left is the file in the `base` layer, which you can open, and the right is where
 `output` says `lm build` writes the product — or the product's own path when no output is set.
 
@@ -113,7 +113,7 @@ when an anchor is missing or ambiguous, and this is where it says so before the 
 | File | Checked with | When |
 |---|---|---|
 | a template | `lm weave -stdin` | as you type; the editor's text is what is checked, saved or not |
-| `loom.lm` | `lm check` | on open and on save — the settings are read from disk |
+| `loom.om` | `lm check` | on open and on save — the settings are read from disk |
 | `*.e` | `lm check -e <file>` | on open and on save; `-e` reads only that file, so the variables being edited are the ones checked |
 
 Every diagnostic carries lm's own message, so a fix comes with it:
@@ -131,8 +131,8 @@ Two details worth knowing:
 - **Where a fault is not in the file you are editing** — our content uses `{{@name}}` that no variables file defines,
   say — lm names both the content file and the template that pulls it in. The squiggle goes on the template, and the
   content file's `path:line:column` stays in the message, so it still says where to look. An error about another file
-  entirely (a broken `loom.lm`) is reported at the top of the file you have open rather than not at all.
-- **A `.lm` or `.e` file with no `loom.lm` above it is left alone.** It is not part of a tree, so there is nothing to
+  entirely (a broken `loom.om`) is reported at the top of the file you have open rather than not at all.
+- **A `.lm` or `.e` file with no `loom.om` above it is left alone.** It is not part of a tree, so there is nothing to
   build and nothing to say — the extension also highlights Loom syntax in a repository that only documents it.
 
 A variable a variables file defines but nothing expands is a warning, on the line that defines it.
@@ -146,7 +146,7 @@ Suggestions open after `.`, `"`, `/` and `(`, or with Ctrl-Space:
 
 | Where | Offered |
 |---|---|
-| Start of a line | `base`, `import` (in `loom.lm`: the settings) |
+| Start of a line | `base`, `import` (in `loom.om`: the settings) |
 | `base.` / `self.` / an imported name followed by `.` | The file's sections (keys, functions), then `frontmatter` / `body`, node kinds such as `section("...")`, and on `base` the methods that apply to the whole file |
 | `base.Install.` | The methods that apply to a node: `after` / `before` / `replace` / `drop` |
 | `base.frontmatter.` / `base.frontmatter.description.` | The frontmatter's keys and `set` / a key's `set` / `start` / `append` (on a toml key also `as`) |

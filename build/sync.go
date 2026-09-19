@@ -37,7 +37,7 @@ type SyncReport struct {
 // the like) before calling.
 func Sync(c *lang.Config, from string) (*SyncReport, error) {
 	if c.Warp == "" || c.Weft == "" {
-		return nil, fmt.Errorf("sync needs both base and self in loom.lm")
+		return nil, fmt.Errorf("sync needs both base and self in loom.om")
 	}
 	src, err := filepath.Abs(from)
 	if err != nil {

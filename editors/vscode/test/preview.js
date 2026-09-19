@@ -32,7 +32,7 @@ async function main() {
     process.exit(1);
   }
 
-  write('loom.lm', 'base "up"\nself "me"\nmark markdown "<!-- B -->" "<!-- E -->"\n');
+  write('loom.om', 'base "up"\nself "me"\nmark markdown "<!-- B -->" "<!-- E -->"\n');
   write('up/SKILL.md', '## Overview\n\nup\n');
   write('me/SKILL.md', '## Ours\n\nme\n\n## Also ours\n\nmore\n');
   const tpl = path.join(root, 'me', 'SKILL.lm');
@@ -58,7 +58,7 @@ async function main() {
   ok(none.error && none.error.includes('go install'), 'no lm says how to install it', none);
 
   // An lm that exits before reading its stdin — one too old for -stdin, or a repository with no
-  // loom.lm — breaks the pipe while the template is still being written. That must come back as an
+  // loom.om — breaks the pipe while the template is still being written. That must come back as an
   // error, not an uncaught EPIPE that leaves the preview waiting for ever.
   write('bin/gone', '#!/bin/sh\nexit 1\n');
   fs.chmodSync(path.join(root, 'bin', 'gone'), 0o755);

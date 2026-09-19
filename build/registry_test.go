@@ -13,11 +13,11 @@ import (
 func regRepo(t *testing.T, files map[string]string) (*lang.Config, string) {
 	t.Helper()
 	dir := t.TempDir()
-	mustWrite(t, filepath.Join(dir, "build.lm"), "base \"up\"\nself \"me\"\n")
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\n")
 	for p, s := range files {
 		mustWrite(t, filepath.Join(dir, filepath.FromSlash(p)), s)
 	}
-	c, err := lang.LoadConfig(filepath.Join(dir, "build.lm"))
+	c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,8 +57,8 @@ func TestRegistryMerge(t *testing.T) {
 // line is told what to do instead of being merged by a rule it does not name.
 func TestRegistrySettingIsGone(t *testing.T) {
 	dir := t.TempDir()
-	mustWrite(t, filepath.Join(dir, "build.lm"), "base \"up\"\nself \"me\"\nregistry \"hooks\" \"hooks/(x)\"\n")
-	_, err := lang.LoadConfig(filepath.Join(dir, "build.lm"))
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nregistry \"hooks\" \"hooks/(x)\"\n")
+	_, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
 	if err == nil || !strings.Contains(err.Error(), "base.merge(self)") {
 		t.Errorf("want the line refused with what to do instead, got: %v", err)
 	}

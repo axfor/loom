@@ -32,9 +32,9 @@ function parsing() {
   ok(d[0].message === '/w/me/doc.md:14:7: variable {{@x}} is not defined', 'the inner position stays in the message', d);
 
   // An error about another file still has to be seen: the tree does not build.
-  d = parse(file, '', '⛔ /w/loom.lm:3:1: unknown setting `bogus`\n', null);
+  d = parse(file, '', '⛔ /w/loom.om:3:1: unknown setting `bogus`\n', null);
   ok(d.length === 1 && d[0].line === 0 && d[0].col === 0, 'another file’s error goes to the top of this one', d);
-  ok(d[0].message.includes('/w/loom.lm:3:1:'), 'and keeps the path, so it says where to look', d);
+  ok(d[0].message.includes('/w/loom.om:3:1:'), 'and keeps the path, so it says where to look', d);
 
   // The same fault is reported once against the content file and once against the template.
   d = parse(file, '', `⛔ /w/me/doc.md:1:1: bad\n/w/me/doc.md:1:1: bad\n`, null);
@@ -57,13 +57,13 @@ function parsing() {
   d = parse(file, '  ⚠ variable unused is defined but never used\n', '', null);
   ok(d.length === 0, 'unused variables are only reported in the file that defines them', d);
 
-  ok(isSettings('/w/loom.lm') && !isSettings('/w/me/doc.lm'), 'loom.lm is the settings file');
+  ok(isSettings('/w/loom.om') && !isSettings('/w/me/doc.lm'), 'loom.om is the settings file');
   ok(isVars('/w/lm.e') && !isVars('/w/me/doc.lm'), '.e is a variables file');
   ok(commandFor('/w/me/doc.lm').args.join(' ') === 'weave -stdin /w/me/doc.lm', 'a template is woven from stdin', commandFor('/w/me/doc.lm'));
   ok(commandFor('/w/me/doc.lm').stdin === true, 'and is fed the editor’s text');
-  ok(commandFor('/w/loom.lm').args.join(' ') === 'check', 'loom.lm is checked');
+  ok(commandFor('/w/loom.om').args.join(' ') === 'check', 'loom.om is checked');
   ok(commandFor('/w/lm.e').args.join(' ') === 'check -e /w/lm.e', 'a variables file is checked as the only one');
-  ok(commandFor('/w/loom.lm').stdin === false && commandFor('/w/lm.e').stdin === false, 'neither is piped: lm reads them from disk');
+  ok(commandFor('/w/loom.om').stdin === false && commandFor('/w/lm.e').stdin === false, 'neither is piped: lm reads them from disk');
 }
 
 async function compiler() {
@@ -80,7 +80,7 @@ async function compiler() {
     process.exit(1);
   }
 
-  write('loom.lm', 'base "up"\nself "me"\nmark markdown "<!-- B -->" "<!-- E -->"\n');
+  write('loom.om', 'base "up"\nself "me"\nmark markdown "<!-- B -->" "<!-- E -->"\n');
   write('up/SKILL.md', '## Overview\n\nup\n');
   write('me/SKILL.md', '## Ours\n\nme\n');
   const tpl = path.join(root, 'me', 'SKILL.lm');
@@ -105,12 +105,12 @@ async function compiler() {
   ok(d.length >= 1 && d.some((x) => x.message.includes('{{@nope}}')), 'an undefined variable reaches the template', d);
   write('me/SKILL.md', '## Ours\n\nme\n');
 
-  // loom.lm: a settings error, squiggled where it is written.
-  const cfg = path.join(root, 'loom.lm');
-  write('loom.lm', 'base "up"\nself "me"\nbogus "x"\n');
+  // loom.om: a settings error, squiggled where it is written.
+  const cfg = path.join(root, 'loom.om');
+  write('loom.om', 'base "up"\nself "me"\nbogus "x"\n');
   d = await diagnose(lm, cfg, fs.readFileSync(cfg, 'utf8'));
   ok(d.length === 1 && d[0].line === 2 && d[0].message.includes('bogus'), 'an unknown setting is diagnosed on its line', d);
-  write('loom.lm', 'base "up"\nself "me"\nmark markdown "<!-- B -->" "<!-- E -->"\n');
+  write('loom.om', 'base "up"\nself "me"\nmark markdown "<!-- B -->" "<!-- E -->"\n');
 
   // A variables file: the one variable nothing expands.
   const e = path.join(root, 'lm.e');
@@ -119,13 +119,13 @@ async function compiler() {
   d = await diagnose(lm, e, eText);
   ok(d.some((x) => x.severity === 'warning' && x.line === 1 && x.message.includes('unused')), 'an unused variable warns in the .e file', d);
 
-  // A template with no loom.lm above it is not part of a tree: nothing to say, rather than one
-  // "found no loom.lm" error on every stray .lm file a repository happens to hold.
+  // A template with no loom.om above it is not part of a tree: nothing to say, rather than one
+  // "found no loom.om" error on every stray .lm file a repository happens to hold.
   const stray = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'loom-stray-')));
   fs.writeFileSync(path.join(stray, 'sample.lm'), 'base.Overview.after("Ours")\n');
-  ok(inTree(tpl) === true, 'a template under a loom.lm is in a tree');
+  ok(inTree(tpl) === true, 'a template under a loom.om is in a tree');
   ok(inTree(path.join(stray, 'sample.lm')) === false, 'a stray template is not');
-  ok(inTree(path.join(stray, 'loom.lm')) === true, 'a loom.lm is the root of one, wherever it is');
+  ok(inTree(path.join(stray, 'loom.om')) === true, 'a loom.om is the root of one, wherever it is');
   d = await diagnose(lm, path.join(stray, 'sample.lm'), 'base.Overview.after("Ours")\n');
   ok(d.length === 0, 'a template outside any tree is left alone', d);
   d = await diagnose(null, path.join(stray, 'sample.lm'), 'base.Overview.after("Ours")\n');

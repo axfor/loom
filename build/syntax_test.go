@@ -22,7 +22,7 @@ mark      markdown "<!-- MINE:BEGIN -->" "<!-- MINE:END -->"
 func objRepo(t *testing.T, files map[string]string) (*lang.Config, string) {
 	t.Helper()
 	dir := t.TempDir()
-	mustWrite(t, filepath.Join(dir, "build.lm"), objConfig)
+	mustWrite(t, filepath.Join(dir, "loom.om"), objConfig)
 	for _, layer := range []string{"upstream", "mine"} {
 		for _, name := range []string{"doc.md", "run.sh"} {
 			b, err := os.ReadFile(filepath.Join(fixture, layer, name))
@@ -35,7 +35,7 @@ func objRepo(t *testing.T, files map[string]string) (*lang.Config, string) {
 	for p, s := range files {
 		mustWrite(t, filepath.Join(dir, filepath.FromSlash(p)), s)
 	}
-	c, err := lang.LoadConfig(filepath.Join(dir, "build.lm"))
+	c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
 	if err != nil {
 		t.Fatalf("load settings: %v", err)
 	}

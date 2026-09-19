@@ -139,7 +139,7 @@ async function tree() {
     process.exit(1);
   }
 
-  write('loom.lm', 'base "up"\nself "me"\nmark markdown "<!-- B -->" "<!-- E -->"\n');
+  write('loom.om', 'base "up"\nself "me"\nmark markdown "<!-- B -->" "<!-- E -->"\n');
   write('up/doc.md', '## Overview\n\nup\n\n## Process\n\np\n');
   write('me/doc.md', '## Ours\n\nmine\n');
   write('me/doc.lm', 'base.Overview.after("Ours")\n');
@@ -149,9 +149,9 @@ async function tree() {
   write('me/run.js', 'function boot() {\n  up();\n  ours();\n}\n');
   write('me/run.lm', 'base.merge(self)\n');
 
-  ok(treeRoot(path.join(root, 'me', 'doc.lm')) === root, 'the tree root is the loom.lm directory');
+  ok(treeRoot(path.join(root, 'me', 'doc.lm')) === root, 'the tree root is the loom.om directory');
   ok(treeRoot(path.join(os.tmpdir(), 'nowhere.lm')) === null, 'a file in no tree has no root');
-  // The root is a directory, and the loom.lm is *in* it, not above it. Resolving from the parent
+  // The root is a directory, and the loom.om is *in* it, not above it. Resolving from the parent
   // walks straight past it — which is what the view did, since that is the path it addresses by.
   ok(treeRoot(root) === root, 'the root of a tree is its own root');
   ok(treeRoot(path.join(root, 'me')) === root, 'so is a directory inside it');
@@ -200,14 +200,14 @@ async function tree() {
   ok(!quiet.error && /adds nothing to it/.test(quiet.text), 'a template that changes nothing says so', quiet);
 
   // With an output directory the right side is where lm build writes, not a made-up name.
-  write('loom.lm', 'base "up"\nself "me"\noutput "../dist"\nmark markdown "<!-- B -->" "<!-- E -->"\n');
+  write('loom.om', 'base "up"\nself "me"\noutput "../dist"\nmark markdown "<!-- B -->" "<!-- E -->"\n');
   const out = await filePatch(lm, path.join(root, 'me', 'doc.lm'));
   ok(out.text.includes('diff --loom up/doc.md ../dist/doc.md'), 'the product side is the configured output path', out.text.split('\n').find((l) => l.startsWith('diff ')));
   ok(out.text.includes('up → ../dist'), 'and the header says which directories', out.text.split('\n')[1]);
-  write('loom.lm', 'base "up"\nself "me"\nmark markdown "<!-- B -->" "<!-- E -->"\n');
+  write('loom.om', 'base "up"\nself "me"\nmark markdown "<!-- B -->" "<!-- E -->"\n');
 
-  const notATemplate = await filePatch(lm, path.join(root, 'loom.lm'));
-  ok(notATemplate.error && /builds nothing lm knows about/.test(notATemplate.error), 'loom.lm is not a template', notATemplate);
+  const notATemplate = await filePatch(lm, path.join(root, 'loom.om'));
+  ok(notATemplate.error && /builds nothing lm knows about/.test(notATemplate.error), 'loom.om is not a template', notATemplate);
 
   // A template that does not weave must not silently drop out of the patch.
   write('me/doc.lm', 'base.Nowhere.after("Ours")\n');
@@ -217,7 +217,7 @@ async function tree() {
 
   // Nothing of ours: a patch that says so beats an empty document.
   const bare = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'loom-bare-')));
-  fs.writeFileSync(path.join(bare, 'loom.lm'), 'base "up"\nself "me"\n');
+  fs.writeFileSync(path.join(bare, 'loom.om'), 'base "up"\nself "me"\n');
   fs.mkdirSync(path.join(bare, 'up'));
   fs.mkdirSync(path.join(bare, 'me'));
   const empty = await treePatch(lm, path.join(bare, 'me'));
@@ -225,7 +225,7 @@ async function tree() {
   fs.rmSync(bare, { recursive: true, force: true });
 
   const stray = await treePatch(lm, path.join(os.tmpdir(), 'no-loom-here', 'x.lm'));
-  ok(stray.error && stray.error.includes('no loom.lm'), 'a file outside any tree is an error, not a crash', stray);
+  ok(stray.error && stray.error.includes('no loom.om'), 'a file outside any tree is an error, not a crash', stray);
 
   const none = await treePatch(null, path.join(root, 'me', 'doc.lm'));
   ok(none.error && none.error.includes('go install'), 'no lm says how to install it', none);

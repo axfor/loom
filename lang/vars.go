@@ -23,7 +23,7 @@ import (
 	"strings"
 )
 
-// VarsName is the default variables file, kept next to loom.lm.
+// VarsName is the default variables file, kept next to loom.om.
 const VarsName = "lm.e"
 
 // Vars is every variable in one variables file.

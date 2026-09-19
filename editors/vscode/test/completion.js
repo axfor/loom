@@ -15,7 +15,7 @@ const write = (rel, text) => {
   fs.writeFileSync(p, text);
 };
 
-write('loom.lm', 'base "upstream"\nself "mine"\n');
+write('loom.om', 'base "upstream"\nself "mine"\n');
 write('upstream/skills/testing/SKILL.md', [
   '---', 'name: testing', 'description: Upstream.', '---', '',
   '## Overview', '', 'text', '',
@@ -186,8 +186,8 @@ const find = (items, label) => items.find((i) => i.label === label);
   ok(l5[0] === 'main' && ['function', 'marker', 'line'].every((x) => l5.includes(x)), 'shell: functions and node kinds', l5);
   const l6 = labels(at(sh, 'base.marker("|")').items);
   ok(l6.join(',') === '# ── main ──', 'marker(" offers the banner lines', l6);
-  const l7 = labels(at(path.join(root, 'loom.lm'), 'base "upstream"\nte|').items);
-  ok(l7.includes('templates') && l7.includes('manifest'), 'loom.lm offers the settings', l7);
+  const l7 = labels(at(path.join(root, 'loom.om'), 'base "upstream"\nte|').items);
+  ok(l7.includes('templates') && l7.includes('manifest'), 'loom.om offers the settings', l7);
 }
 
 // Every name completion inserts must resolve back to the node it was offered for:

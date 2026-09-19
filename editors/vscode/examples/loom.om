@@ -1,4 +1,4 @@
-// loom.lm: which layer is upstream, which layer is ours, and where the product is written
+// loom.om: which layer is upstream, which layer is ours, and where the product is written
 base      "upstream"
 self      "xsdd"
 templates "templates"

@@ -136,7 +136,7 @@ checks that no upstream function went missing without a stated reason. See
 ## Reference
 
 - [Layout](#layout)
-- [Settings: loom.lm](#settings-loomlm)
+- [Settings: loom.om](#settings-loomom)
 - [Templates](#templates)
 - [Objects](#objects)
 - [Nodes](#nodes)
@@ -155,7 +155,7 @@ checks that no upstream function went missing without a stated reason. See
 ## Layout
 
 ```
-loom.lm                           settings
+loom.om                           settings
 lm.e                              variables (optional)
 upstream/                         base: the upstream project, untouched
 mine/                             self: our layer, laid out like the product
@@ -188,7 +188,7 @@ A product file comes from exactly one place, in this order:
 
 ---
 
-## Settings: loom.lm
+## Settings: loom.om
 
 One setting per line. `//` starts a comment.
 
@@ -534,7 +534,7 @@ url = https://git.inner.example/xsdd
 ```
 
 ```
-lm build               uses lm.e next to loom.lm, if it exists
+lm build               uses lm.e next to loom.om, if it exists
 lm build -e inner.e    uses inner.e only
 ```
 
@@ -653,7 +653,7 @@ lm update [-check]                           replace this lm with the latest rel
 lm version                                   the version, platform and Go version
 ```
 
-`lm` finds `loom.lm` by walking up from the current directory.
+`lm` finds `loom.om` by walking up from the current directory.
 
 `lm list` resolves identifier forms and section paths to real names, so a tool reading it can compare
 anchors with upstream headings directly.

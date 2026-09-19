@@ -115,7 +115,7 @@ var commentOf = map[string][2]string{
 // used — and the unused ones are what you are looking for.
 func AnchoredView(c *lang.Config, w io.Writer) error {
 	if c.Anchored == "" {
-		return fmt.Errorf("loom.lm has no anchored setting — it does not say where to write the view")
+		return fmt.Errorf("loom.om has no anchored setting — it does not say where to write the view")
 	}
 	tpls, err := lang.Templates(c)
 	if err != nil {

@@ -149,9 +149,12 @@ class Patches {
   }
 }
 
-// Loom documents are the ones lm can diagnose: templates and loom.lm (loom), variables (loom-env).
+// Loom documents are the ones lm can diagnose: templates (loom), the settings file (loom-om) and
+// variables (loom-env).
+const DIAGNOSED = ['loom', 'loom-om', 'loom-env'];
+
 function isLoom(doc) {
-  return doc.uri.scheme === 'file' && (doc.languageId === 'loom' || doc.languageId === 'loom-env');
+  return doc.uri.scheme === 'file' && DIAGNOSED.includes(doc.languageId);
 }
 
 // Linter keeps the squiggles on Loom documents up to date by running lm over them. Runs are
@@ -165,7 +168,7 @@ class Linter {
   }
 
   // typed says the trigger was a keystroke. lm is piped a template's unsaved text, so that one is
-  // diagnosed as it is written; loom.lm and a .e file it reads from disk, and checking those while
+  // diagnosed as it is written; loom.om and a .e file it reads from disk, and checking those while
   // the buffer is ahead of the file would squiggle text the author has already changed. They wait
   // for the save.
   schedule(doc, typed = false) {
@@ -215,12 +218,27 @@ class Linter {
 
 // patchTarget is the file a patch command was invoked for: the one the menu names, else the one in
 // the editor. A tree has to be found above it, or there is nothing to compare with upstream.
+// asItem turns what lib/completion.js offers into what VS Code shows. Templates and the settings
+// file are different languages with different providers, and both offer the same shape.
+function asItem(it) {
+  const c = new vscode.CompletionItem(it.label, KINDS[it.kind]);
+  c.detail = it.detail;
+  if (it.markdown) c.documentation = new vscode.MarkdownString(it.markdown);
+  else if (it.documentation) c.documentation = new vscode.MarkdownString().appendCodeblock(it.documentation, it.lang || '');
+  if (it.insertText != null) c.insertText = it.snippet ? new vscode.SnippetString(it.insertText) : it.insertText;
+  if (it.filterText) c.filterText = it.filterText;
+  if (it.sortText) c.sortText = it.sortText;
+  c.range = new vscode.Range(it.range.line, it.range.s, it.range.line, it.range.e);
+  if (it.retrigger) c.command = { command: 'editor.action.triggerSuggest', title: 'Suggest' };
+  return c;
+}
+
 function patchTarget(uri) {
   const editor = vscode.window.activeTextEditor;
   const target = uri instanceof vscode.Uri ? uri : editor && editor.document.uri;
   if (!target || target.scheme !== 'file') return null;
   if (!treeRoot(target.fsPath)) {
-    vscode.window.showInformationMessage('No loom.lm above this file — there is no tree to compare with upstream.');
+    vscode.window.showInformationMessage('No loom.om above this file — there is no tree to compare with upstream.');
     return null;
   }
   return target;
@@ -310,6 +328,9 @@ function activate(context) {
   linter.all(); // documents already open when the extension starts
 
   const selector = { language: 'loom' };
+  // The settings file is its own language now, and the only thing it shares with a template is that
+  // lm can complete and diagnose it: its nodes, methods and imports have no meaning there.
+  const settings = { language: 'loom-om' };
   context.subscriptions.push(
     vscode.languages.registerDefinitionProvider(selector, {
       provideDefinition(document, position) {
@@ -353,20 +374,14 @@ function activate(context) {
     }, { triggerCharacters: ['(', '{'], retriggerCharacters: [',', '\n'] }),
     vscode.languages.registerCompletionItemProvider(selector, {
       provideCompletionItems(document, position) {
-        return completions(document.uri.fsPath, document.getText(), position.line, position.character).map((it) => {
-          const c = new vscode.CompletionItem(it.label, KINDS[it.kind]);
-          c.detail = it.detail;
-          if (it.markdown) c.documentation = new vscode.MarkdownString(it.markdown);
-          else if (it.documentation) c.documentation = new vscode.MarkdownString().appendCodeblock(it.documentation, it.lang || '');
-          if (it.insertText != null) c.insertText = it.snippet ? new vscode.SnippetString(it.insertText) : it.insertText;
-          if (it.filterText) c.filterText = it.filterText;
-          if (it.sortText) c.sortText = it.sortText;
-          c.range = new vscode.Range(it.range.line, it.range.s, it.range.line, it.range.e);
-          if (it.retrigger) c.command = { command: 'editor.action.triggerSuggest', title: 'Suggest' };
-          return c;
-        });
+        return completions(document.uri.fsPath, document.getText(), position.line, position.character).map(asItem);
       },
     }, '.', '"', '/', '('),
+    vscode.languages.registerCompletionItemProvider(settings, {
+      provideCompletionItems(document, position) {
+        return completions(document.uri.fsPath, document.getText(), position.line, position.character).map(asItem);
+      },
+    }, '"'),
   );
 }
 

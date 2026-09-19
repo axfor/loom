@@ -56,12 +56,12 @@ function readText(p) {
 
 // ── settings ────────────────────────────────────────────────────────────────
 
-// findConfig walks up from the template to the nearest loom.lm and reads the three
+// findConfig walks up from the template to the nearest loom.om and reads the three
 // settings that decide where files live.
 function findConfig(from) {
   let dir = path.dirname(from);
   for (;;) {
-    const p = path.join(dir, 'loom.lm');
+    const p = path.join(dir, 'loom.om');
     if (isFile(p)) {
       const cfg = { root: dir, base: null, self: null, templates: null, output: null };
       for (const line of fs.readFileSync(p, 'utf8').split('\n')) {

@@ -1,6 +1,6 @@
 'use strict';
 
-// Completion for Loom templates and loom.lm: what can be written at the cursor?
+// Completion for Loom templates and loom.om: what can be written at the cursor?
 //
 //   base.|  self.|  cmd.|         the nodes of that file, its parts, node kinds, and the methods that apply
 //   base."Example 2".|            the subsections of that section, and the methods on it
@@ -11,7 +11,7 @@
 //   .section("|  .function("|     that kind of node in the file
 //   .as(|                         the types
 //   import "/|                    directories and files of the layer
-//   start of a line               base, import (in loom.lm: the settings)
+//   start of a line               base, import (in loom.om: the settings)
 //
 // Items carry the range they replace. A string is replaced as a whole, quotes included, so a
 // name with spaces is never inserted by halves. Like definition.js, no `vscode` import here.
@@ -79,7 +79,7 @@ function item(label, kind, fields) {
 }
 
 function completions(docPath, text, line, character) {
-  if (path.basename(docPath) === 'loom.lm') return settings(text, line, character);
+  if (path.basename(docPath) === 'loom.om') return settings(text, line, character);
   const t = loom.open(docPath, text);
   if (!t) return [];
   if (inCommentOrLiteral(t.toks, text, line, character)) return [];

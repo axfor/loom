@@ -1,6 +1,6 @@
 package lang
 
-// loom.lm: it shares the lexer with templates (lexer.go), one setting per line.
+// loom.om: it shares the lexer with templates (lexer.go), one setting per line.
 //
 //	base      "upstream"
 //	self      "xsdd"
@@ -30,7 +30,7 @@ import (
 // registry is listed to be refused with what to do instead, not to be taken as an unknown word
 var settingKeywords = []string{"base", "self", "templates", "output", "mark", "registry", "take", "mirror", "manifest"}
 
-// LoadConfig reads loom.lm.
+// LoadConfig reads loom.om.
 func LoadConfig(path string) (*Config, error) {
 	src, err := os.ReadFile(path)
 	if err != nil {

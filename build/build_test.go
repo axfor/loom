@@ -16,7 +16,7 @@ import (
 func treeRepo(t *testing.T, settings string, files map[string]string) (*lang.Config, string) {
 	t.Helper()
 	dir := t.TempDir()
-	mustWrite(t, filepath.Join(dir, "build.lm"), "base \"up\"\nself \"me\"\ntemplates \"t\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n"+settings)
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\ntemplates \"t\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n"+settings)
 	for p, s := range files {
 		full := filepath.Join(dir, filepath.FromSlash(p))
 		mustWrite(t, full, s)
@@ -31,7 +31,7 @@ func treeRepo(t *testing.T, settings string, files map[string]string) (*lang.Con
 			t.Fatal(err)
 		}
 	}
-	c, err := lang.LoadConfig(filepath.Join(dir, "build.lm"))
+	c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
 	if err != nil {
 		t.Fatalf("load settings: %v", err)
 	}
@@ -353,7 +353,7 @@ func TestCheckFindsStaleOutput(t *testing.T) {
 func TestTemplatesBesideOurFiles(t *testing.T) {
 	dir := t.TempDir()
 	files := map[string]string{
-		"build.lm":         "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n",
+		"loom.om":          "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n",
 		"up/doc.md":        "## Overview\n\nup\n",
 		"me/doc.md":        "## Ours\n\nme\n",
 		"me/doc.md.lm":     "base.Overview.after(\"Ours\")\n",
@@ -368,7 +368,7 @@ func TestTemplatesBesideOurFiles(t *testing.T) {
 	for p, s := range files {
 		mustWrite(t, filepath.Join(dir, filepath.FromSlash(p)), s)
 	}
-	c, err := lang.LoadConfig(filepath.Join(dir, "build.lm"))
+	c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
 	if err != nil {
 		t.Fatal(err)
 	}

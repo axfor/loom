@@ -22,7 +22,7 @@ const write = (rel, text) => {
   fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
   fs.writeFileSync(path.join(root, rel), text);
 };
-write('loom.lm', 'base "up"\nself "me"\n');
+write('loom.om', 'base "up"\nself "me"\n');
 write('up/a.md', '---\ndescription: Up.\n---\n\n## Overview\n');
 write('me/a.md', '---\ndescription: Ours.\n---\n\n## Ours\n');
 write('up/c.toml', 'description = "Up"\nprompt = """\n## Steps\n"""\n');

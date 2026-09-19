@@ -14,11 +14,11 @@ import (
 func besideRepo(t *testing.T, files map[string]string) (*lang.Config, string) {
 	t.Helper()
 	dir := t.TempDir()
-	mustWrite(t, filepath.Join(dir, "build.lm"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n")
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n")
 	for p, s := range files {
 		mustWrite(t, filepath.Join(dir, filepath.FromSlash(p)), s)
 	}
-	c, err := lang.LoadConfig(filepath.Join(dir, "build.lm"))
+	c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -11,7 +11,7 @@ import (
 
 // Ext is the template extension — the same suffix as the settings file, because one
 // syntax should have exactly one suffix. The settings file is recognized by its name
-// (loom.lm), templates by the directory they live in.
+// (loom.om), templates by the directory they live in.
 const Ext = ".lm"
 
 // LoadTemplate reads one template file.

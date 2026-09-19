@@ -347,7 +347,7 @@ async function treePatch(lm, from, timeoutMs = 20000) {
 async function start(lm, from, timeoutMs) {
   if (!lm) return { error: 'lm is not installed: go install github.com/axfor/loom/cmd/lm@latest, or set loom.path' };
   const cfg = configFor(from);
-  if (!cfg) return { error: 'no loom.lm above this file — nothing to compare with upstream' };
+  if (!cfg) return { error: 'no loom.om above this file — nothing to compare with upstream' };
   const listed = await listTemplates(lm, cfg.root, timeoutMs);
   if (listed.error) return { error: listed.error };
   return { cfg, entries: listed.entries };
@@ -368,7 +368,7 @@ function renderOne(f, cfg) {
   return head.join('\n') + f.text;
 }
 
-// direction names the two layers the patch runs between, by the directories loom.lm gives them.
+// direction names the two layers the patch runs between, by the directories loom.om gives them.
 function direction(cfg) {
   return `${cfg.base} → ${cfg.output || 'the product'}`;
 }
@@ -411,14 +411,14 @@ function plural(n, word) {
 //
 // loom.findConfig searches upward from the *parent* of what it is given, which is what a file
 // wants. The patch is addressed by its tree's root — a directory — and searching from its parent
-// walks straight past the loom.lm sitting in it. Joining a name onto the path makes a directory
+// walks straight past the loom.om sitting in it. Joining a name onto the path makes a directory
 // behave like a file inside it, and leaves a real file's search exactly where it was: a file has no
 // children, so the first step up lands on its own directory again.
 function configFor(from) {
-  return loom.findConfig(path.join(from, 'loom.lm'));
+  return loom.findConfig(path.join(from, 'loom.om'));
 }
 
-// treeRoot is the loom.lm directory a path belongs to — the patch is one document per tree, so the
+// treeRoot is the loom.om directory a path belongs to — the patch is one document per tree, so the
 // root is what identifies it.
 function treeRoot(from) {
   const cfg = configFor(from);

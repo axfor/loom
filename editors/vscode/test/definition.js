@@ -14,7 +14,7 @@ const write = (rel, text) => {
   fs.writeFileSync(p, text);
 };
 
-write('loom.lm', 'base      "upstream"\nself      "mine"\ntemplates "t"\n');
+write('loom.om', 'base      "upstream"\nself      "mine"\ntemplates "t"\n');
 write('upstream/skills/testing/SKILL.md', [
   '---', 'name: testing', 'description: Upstream.', '---', '',
   '## Overview', '', 'text', '',
@@ -199,7 +199,7 @@ check(sh, shText, 1, 'boot', ['mine/run.sh', 0]);
 // templates beside our files (no templates setting): the template path still maps to its product
 {
   const r2 = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-def2-'));
-  fs.writeFileSync(path.join(r2, 'loom.lm'), 'base "up"\nself "me"\n');
+  fs.writeFileSync(path.join(r2, 'loom.om'), 'base "up"\nself "me"\n');
   fs.mkdirSync(path.join(r2, 'up'), { recursive: true });
   fs.mkdirSync(path.join(r2, 'me'), { recursive: true });
   fs.writeFileSync(path.join(r2, 'up', 'a.md'), '# A\n\n## Install\n');
