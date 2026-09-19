@@ -264,7 +264,133 @@ base.Overview.after:
 
 公共缩进由编译器剥掉。作者只做了一件他本来就会做的事。
 
-## 6.3 文法
+## 6.3 实际长什么样
+
+全部取自 `agent-skills` 的真实文件。左边是今天，右边是这套设计。
+
+### 一份普通的 skill
+
+今天：
+
+```
+base.frontmatter.description.start(self.frontmatter.description)
+base.Overview.after("Position in SDLC（XSDD 调度层关系）")
+base.append(self.body)
+```
+
+设计：
+
+```go
+func weave(base, self markdown) {
+    base.frontmatter.description.start(self.frontmatter.description)
+    base.Overview.after(self["Position in SDLC（XSDD 调度层关系）"])
+    base.append(self.body)
+}
+```
+
+差别不大——**这是对的**。语言的下限不该因为加了上限而变难写。
+
+### 内容直接写在里面（今天做不到）
+
+反引号字面量会被行内 `` ` `` 终止，所以今天这段内容只能放在另一个 `.md` 文件里：
+
+```go
+func weave(base, self markdown) {
+    base.Overview.after:
+        ## Where this fits
+
+        跑 `lm build` 就能织进去：
+
+        ```sh
+        lm build -o ../plugins/XSDD
+        ```
+}
+```
+
+缩进定界，反引号和代码块都只是普通文本。
+
+### `xsdd/AGENTS.lm`：合并
+
+今天是一整个文件，正文只有一句 `base.merge(self)`。设计里它是一个签名：
+
+```go
+func weave(base, self markdown) markdown {
+    return self
+} // reason: 上游那份和我们的会跑两遍
+```
+
+**返回类型就说明了这个文件的保证量为零**（L5.2），不需要额外的关键字来标记它特殊。
+
+### 词汇表变富之后
+
+这一段今天**完全写不出来**——没有选择器，也没有 `move` / `demote` / `project`：
+
+```go
+func weave(base, self markdown) {
+    // 上游没有目录，我们从它自己的二级标题投影一份，放在开头
+    base.start.project(base.sections[level == 2]):
+        - [{name}](#{anchor})
+
+    // 上游把 Troubleshooting 放在中间，产物里要它在最后
+    base.Troubleshooting.move(base.sections.last.after)
+
+    // 因为上面多加了一层，所有 Step 节降一级
+    base.sections[name ~ "^Step "].demote()
+}
+```
+
+三条语句，三种保证强度，报告里各自列出来：
+
+| 语句 | 保证 |
+|---|---|
+| `project` | 来源未被修改 |
+| `move` | 字节多重集不变 |
+| `demote` | 除层级标记外逐字节不变 |
+
+**没有一条是「替换了一段文本」。** 这就是「结构化」和「文本处理」的区别。
+
+### 包与套用
+
+```go
+//loom:apply "skills/**"
+package skills
+
+/// 每个 skill：描述双语拼接，正文接在上游之后。
+func Frontmatter(base, self markdown) {
+    base.frontmatter.description.start(self.frontmatter.description)
+    base.append(self.body)
+}
+```
+
+命中 `skills/**` 的产物自动套用。那 24 个「除了样板没有一句自己的话」的模板**整个文件消失**。
+
+### 还写不出来的：`xsdd/docs/getting-started.lm`
+
+它今天是 16 条同形状的语句——逐节翻译，上游每节后面跟一节中文：
+
+```
+base.How_Skills_Work.after("Skill 如何工作")
+base."Quick Start (Any Agent)".after("Quick Start（任何 agent）")
+... 还有 14 行
+```
+
+它说的是**「两个序列对齐」**，而 L3 的词汇表里没有这个词。两种候选写法：
+
+```go
+// 候选一：内建算子
+base.sections.align(self.sections)
+
+// 候选二：受限遍历（只能走部分、只能产生写）
+for sec := range base.sections {
+    sec.after(self[sec.name])
+}
+```
+
+候选一不引入遍历，但每多一种模式就多一个词。候选二更诚实——写集合仍是每次迭代的并集，静态可知，不变式不破（L6.5）。
+
+**这是这份设计目前唯一确知的缺口。**
+
+## 6.4 文法
 
 ```ebnf
 file       = { comment | doc | import | func | directive } ;
@@ -295,7 +421,7 @@ kind       = "markdown" | "shell" | "toml" | "json" | "text" | ... ;
 
 **没有表达式、没有赋值、没有算术。** `return` 只能返回一份文档，不能返回算出来的文本——那条由 L5.2 的类型规则挡住。
 
-## 6.4 刻意不要的
+## 6.5 刻意不要的
 
 | 不要 | 为什么（全部来自 L0） |
 |---|---|
