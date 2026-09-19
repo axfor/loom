@@ -33,6 +33,8 @@ const KIND_CALLS = {
   json: { key: 'path' },
   text: { line: 'line' },
 };
+// isValueType mirrors lang.HasValues: these are the types whose nodes are keys holding a value.
+const isValueType = (typ) => typ === 'toml' || typ === 'yaml' || typ === 'json';
 const DEFAULT_KIND = { markdown: 'heading', shell: 'function', toml: 'key', yaml: 'key', json: 'path', text: 'line' };
 const TYPES = new Set(Object.keys(DEFAULT_KIND));
 
@@ -446,6 +448,14 @@ function walk(t, chain, upto) {
         r.node = { kind: 'fmkey', name: st.name, ident: false };
         continue;
       }
+      // a key path: base.jobs.build — yaml, toml and json address a nested key by the dotted path
+      // of its parents, so a name below a key extends that path rather than starting a lookup of
+      // its own. Without this the editor stopped at the first segment, and go-to-definition on
+      // the rest of the path did nothing.
+      if (!st.call && isValueType(r.typ) && r.node.kind === DEFAULT_KIND[r.typ] && !r.view) {
+        r.node = { kind: r.node.kind, name: `${r.node.name}.${st.name}`, ident: false };
+        continue;
+      }
       // a section path: base."Example 2"."Phase 1"
       if (st.call || r.node.kind !== 'heading') {
         r.bad = true;
@@ -788,6 +798,7 @@ module.exports = {
   identMatch,
   headings,
   nodesOf,
+  isValueType,
   yamlKeys,
   viewLines,
   findNode,

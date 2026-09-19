@@ -209,6 +209,15 @@ function stepItems(cx, chain, index, range, quoted) {
     } else if (r.node.kind === 'frontmatter') {
       // the keys of the frontmatter: base.frontmatter.description
       out.push(...nodeItems(src, 'fmkey', null, write, range));
+    } else if (r.node.kind === loom.DEFAULT_KIND[r.typ] && loom.isValueType(r.typ) && !r.view) {
+      // below a key, the keys nested under it: base.jobs.build. They are named by the whole path,
+      // so the item shows and inserts only the segment being added.
+      const prefix = `${r.node.name}.`;
+      for (const n of loom.nodesOf(src.lines.join('\n'), r.node.kind, r.typ)) {
+        if (!n.name.startsWith(prefix) || n.name.slice(prefix.length).includes('.')) continue;
+        const seg = n.name.slice(prefix.length);
+        out.push(item(seg, 'node', { detail: `${src.where}:${n.line + 1}`, ...write([seg]), range }));
+      }
     } else if (r.node.kind === 'heading') {
       // below a section, only its subsections: base."Example 2"."Phase 1"
       const sel = loom.findNode(text, r.node, r.view);

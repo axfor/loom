@@ -215,6 +215,22 @@ const find = (items, label) => items.find((i) => i.label === label);
   }
 }
 
+// ── below a key, the keys nested under it ──
+// The compiler addresses a nested key by the dotted path of its parents, so base.jobs.build is one
+// name. The editor stopped at the first segment and called the rest bad, which made go-to-definition
+// on it do nothing and left completion with no children to offer.
+{
+  write('upstream/w.yaml', 'name: n\njobs:\n  build:\n    runs-on: x\n  test:\n    runs-on: y\n');
+  write('mine/w.yaml', 'name: o\n');
+  const yml = path.join(root, 'mine/w.yaml.lm');
+  const l = labels(at(yml, 'base.jobs.|').items);
+  ok(l.includes('build') && l.includes('test'), 'below a key, its own children are offered', l);
+  ok(!l.includes('name'), 'and nothing from the top level', l);
+  ok(!l.some((x) => x.includes('.')), 'each child is offered by its own segment, not the whole path', l);
+  const deeper = labels(at(yml, 'base.jobs.build.|').items);
+  ok(deeper.includes('runs-on'), 'and it keeps going down', deeper);
+}
+
 // ── the two sides are written differently, as the compiler writes them ──
 // An anchor into upstream goes through NameText (a space becomes an underscore), because lm sync
 // rewrites that token when upstream renames something. Content of ours is always quoted, because
