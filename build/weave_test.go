@@ -647,3 +647,46 @@ func TestWeaveSelectorOnJSON(t *testing.T) {
 		t.Errorf("the error does not say why:\n%v", err)
 	}
 }
+
+// The anchor path refuses a name that matches two nodes, with a message that says why: taking the
+// first would silently act on the wrong one. Writing a value took the first without a word. A toml
+// key inside a table is not told apart by the table, so `name` is easily several.
+func TestValueRefusesAnAmbiguousKey(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\n")
+	mustWrite(t, filepath.Join(dir, "up", "t.toml"), "name = \"top\"\n[tool]\nname = \"inner\"\n")
+	mustWrite(t, filepath.Join(dir, "me", "t.toml"), "name = \"ours\"\n")
+
+	weave := func(tpl string) error {
+		mustWrite(t, filepath.Join(dir, "me", "t.toml.lm"), tpl)
+		c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		tm, err := lang.LoadTemplate(c, filepath.Join(dir, "me", "t.toml.lm"))
+		if err != nil {
+			return err
+		}
+		_, err = build.Weave(c, tm)
+		return err
+	}
+
+	for _, tpl := range []string{
+		"base.name.start(self.name)\n",
+		"base.name.set(self.name)\n",
+		"base.key(\"name\").append(self.name)\n",
+	} {
+		err := weave(tpl)
+		if err == nil {
+			t.Errorf("%s: writing into one of two keys of the same name was accepted", strings.TrimSpace(tpl))
+		} else if !strings.Contains(err.Error(), "matches 2 keys") {
+			t.Errorf("%s: %v", strings.TrimSpace(tpl), err)
+		}
+	}
+
+	// A name that is not ambiguous still works.
+	mustWrite(t, filepath.Join(dir, "up", "t.toml"), "name = \"top\"\nother = 1\n")
+	if err := weave("base.name.start(self.name)\n"); err != nil {
+		t.Errorf("a key that matches one node should still be written: %v", err)
+	}
+}

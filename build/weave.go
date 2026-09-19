@@ -786,6 +786,12 @@ func applyValue(c *lang.Config, t *lang.Template, tree ast.Tree, s lang.Stmt) er
 		val = `"` + strings.ReplaceAll(val, `"`, `\"`) + `"`
 	}
 	if s.Kind != "fmkey" {
+		// The same refusal the anchor path makes: a name that matches two nodes is not a name, and
+		// writing into the first would change a value nobody meant to change. A toml key inside a
+		// table is not told apart by the table, so `name` can easily be several.
+		if n := len(tree.Find(s.Kind, s.SetKey)); n > 1 {
+			return fmt.Errorf("%s: %q matches %d keys — no \"take the first one\": that would silently write over the wrong value; be more specific", s.Rng, s.SetKey, n)
+		}
 		if !tree.SetBody(s.SetKey, val) {
 			return fmt.Errorf("%s: upstream has no key %q", s.Rng, s.SetKey)
 		}
