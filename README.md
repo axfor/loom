@@ -1,20 +1,48 @@
 # Loom
 
-**You forked an upstream project and still want to follow it.** Loom is a small language for that.
+**A language for extending someone else's AI skills — and still taking their updates.**
 
-Upstream stays in its own directory, untouched, byte for byte. Your changes live in a second
-directory laid out the same way. Beside each of your files sits a short template saying where your
-content belongs in upstream's, and `lm build` weaves the two into the product you ship.
+A skill set is files: `SKILL.md` with its frontmatter and its sections, commands, hooks that
+register a handler in a json file, shell scripts they call. You want a section of your own inside
+their skill, your commands beside theirs, your handler on their hook. Then they release, and every
+one of those edits is yours to redo.
+
+Loom keeps the two apart. Upstream stays in its own directory, untouched, byte for byte. Yours
+lives in a second directory laid out the same way. Beside each of your files sits a short template
+saying where your content belongs in theirs, and `lm build` weaves them into the skill set you ship.
+
+**Extending, not forking.** Your layer holds only what is yours — no copy of upstream to keep in
+step, no context lines around your changes. Upstream's own names are the anchors: a markdown
+heading, a shell function, a toml key, a json path. `base.Overview.after("Where this fits")` means
+*after their overview*, and goes on meaning it when they rewrite the paragraph under it or move the
+section down the file.
+
+**Merging that does not need you.** An upstream release flows in: their fixes where you changed
+nothing, their new sections where your anchors still hold. A json registry is merged by the handler
+each entry calls, so your version of a hook replaces theirs and a hook they add arrives on its own.
+A script you edited line by line is carried onto each new upstream by `lm sync`, with conflict
+markers only where they touched the lines you touched.
+
+**Maintainable because nothing can go missing quietly.** The two layers never merge into one text,
+so "did upstream content get lost" is a byte comparison — and the build makes it every time, on
+every file. Upstream content can only be dropped or replaced with a written reason, and every
+reason shows up in the build report. When an anchor is gone or matches twice, the build stops
+rather than guessing.
+
+**Where this is going.** Today Loom is a language for extending a skill set you do not own. The
+longer aim is a language for writing skills in the first place: one source, built for every platform
+you target, since what differs between them is the layout and the wrapping, not the content.
+`mirror` is already the small version of that — one build writing the same commands into the two
+places two tools expect to find them.
 
 The name is the mechanism. The warp is upstream: kept whole, never cut. The weft is your layer,
-threaded through it. The cloth is the product — and because the two never merge into one text,
-**pull the weft out and the warp is still there.** That is not a thing to be careful about; it is a
-byte comparison, and the build makes it every time.
+threaded through it. The cloth is the product — **pull the weft out and the warp is still there.**
 
 ```
 lm build    build the whole tree and print the build report
 lm check    the same checks, writing nothing; -o dir also reports out-of-date output
 lm sync     take a new upstream release, carrying our edits onto it
+lm update   replace lm with the latest release
 ```
 
 ## One file, end to end
@@ -109,16 +137,15 @@ alarm, and only reading everything found the 10. That reading cost comes back wi
 With the layers apart, "did upstream content get lost" becomes a byte comparison, and Loom makes it
 at every build. That whole class of bug cannot happen, instead of being avoided by being careful.
 
-## Insert by name, not by line
+## When an anchor no longer fits
 
-A diff can change anything, but when upstream changes the lines next to yours it no longer fits,
-and someone has to redo it. Loom anchors on upstream's own **names**: markdown headings, shell
-functions and banner comments, toml keys, json paths.
+A diff can change anything, but when upstream changes the lines next to yours it no longer applies,
+and someone has to redo it. Anchoring on upstream's own names — markdown headings, shell functions
+and banner comments, toml keys, json paths — is what removes that person from the loop: with a busy
+upstream, it is the difference between a human stepping in every release and none.
 
-`base.Overview.after(...)` above still means *after the overview* when upstream rewrites the
-paragraph under that heading, adds three sections in front of it, or moves it down the file. Your
-content lands in the right place **and the upstream change flows into the product**. With a busy
-upstream, that is the difference between a human stepping in every release or not.
+It does not always hold. Upstream renames the heading you anchored on, or splits it in two, and
+there is no honest guess to make.
 
 When an anchor is not found, or matches more than once, the build stops. Loom does not guess, take
 the first match, or fit anything approximately: a product woven in the wrong place looks exactly like a
