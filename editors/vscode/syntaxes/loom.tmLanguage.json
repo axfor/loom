@@ -19,6 +19,9 @@
       "include": "#string"
     },
     {
+      "include": "#fence"
+    },
+    {
       "include": "#literal"
     },
     {
@@ -282,6 +285,196 @@
         {
           "match": ",",
           "name": "punctuation.separator.comma.loom"
+        }
+      ]
+    },
+    "fence": {
+      "patterns": [
+        {
+          "comment": "A fence tagged markdown: its content is that language, highlighted as such.",
+          "begin": "(`{3,})[ \\t]*(markdown)[ \\t]*$",
+          "end": "^[ \\t]*(\\1)",
+          "beginCaptures": {
+            "1": {
+              "name": "punctuation.definition.string.begin.loom"
+            },
+            "2": {
+              "name": "entity.name.type.format.loom"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.definition.string.end.loom"
+            }
+          },
+          "name": "meta.embedded.block.markdown.loom",
+          "patterns": [
+            {
+              "include": "text.html.markdown"
+            },
+            {
+              "include": "#placeholder"
+            }
+          ]
+        },
+        {
+          "comment": "A fence tagged sh|shell|bash: its content is that language, highlighted as such.",
+          "begin": "(`{3,})[ \\t]*(sh|shell|bash)[ \\t]*$",
+          "end": "^[ \\t]*(\\1)",
+          "beginCaptures": {
+            "1": {
+              "name": "punctuation.definition.string.begin.loom"
+            },
+            "2": {
+              "name": "entity.name.type.format.loom"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.definition.string.end.loom"
+            }
+          },
+          "name": "meta.embedded.block.sh|shell|bash.loom",
+          "patterns": [
+            {
+              "include": "source.shell"
+            },
+            {
+              "include": "#placeholder"
+            }
+          ]
+        },
+        {
+          "comment": "A fence tagged json: its content is that language, highlighted as such.",
+          "begin": "(`{3,})[ \\t]*(json)[ \\t]*$",
+          "end": "^[ \\t]*(\\1)",
+          "beginCaptures": {
+            "1": {
+              "name": "punctuation.definition.string.begin.loom"
+            },
+            "2": {
+              "name": "entity.name.type.format.loom"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.definition.string.end.loom"
+            }
+          },
+          "name": "meta.embedded.block.json.loom",
+          "patterns": [
+            {
+              "include": "source.json"
+            },
+            {
+              "include": "#placeholder"
+            }
+          ]
+        },
+        {
+          "comment": "A fence tagged yaml|yml: its content is that language, highlighted as such.",
+          "begin": "(`{3,})[ \\t]*(yaml|yml)[ \\t]*$",
+          "end": "^[ \\t]*(\\1)",
+          "beginCaptures": {
+            "1": {
+              "name": "punctuation.definition.string.begin.loom"
+            },
+            "2": {
+              "name": "entity.name.type.format.loom"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.definition.string.end.loom"
+            }
+          },
+          "name": "meta.embedded.block.yaml|yml.loom",
+          "patterns": [
+            {
+              "include": "source.yaml"
+            },
+            {
+              "include": "#placeholder"
+            }
+          ]
+        },
+        {
+          "comment": "A fence tagged toml: its content is that language, highlighted as such.",
+          "begin": "(`{3,})[ \\t]*(toml)[ \\t]*$",
+          "end": "^[ \\t]*(\\1)",
+          "beginCaptures": {
+            "1": {
+              "name": "punctuation.definition.string.begin.loom"
+            },
+            "2": {
+              "name": "entity.name.type.format.loom"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.definition.string.end.loom"
+            }
+          },
+          "name": "meta.embedded.block.toml.loom",
+          "patterns": [
+            {
+              "include": "source.toml"
+            },
+            {
+              "include": "#placeholder"
+            }
+          ]
+        },
+        {
+          "comment": "A fence tagged js|javascript: its content is that language, highlighted as such.",
+          "begin": "(`{3,})[ \\t]*(js|javascript)[ \\t]*$",
+          "end": "^[ \\t]*(\\1)",
+          "beginCaptures": {
+            "1": {
+              "name": "punctuation.definition.string.begin.loom"
+            },
+            "2": {
+              "name": "entity.name.type.format.loom"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.definition.string.end.loom"
+            }
+          },
+          "name": "meta.embedded.block.js|javascript.loom",
+          "patterns": [
+            {
+              "include": "source.js"
+            },
+            {
+              "include": "#placeholder"
+            }
+          ]
+        },
+        {
+          "comment": "A fence with no tag, or one for a language nothing here embeds.",
+          "begin": "(`{3,})[ \\t]*(\\w*)[ \\t]*$",
+          "end": "^[ \\t]*(\\1)",
+          "beginCaptures": {
+            "1": {
+              "name": "punctuation.definition.string.begin.loom"
+            },
+            "2": {
+              "name": "entity.name.type.format.loom"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.definition.string.end.loom"
+            }
+          },
+          "name": "string.quoted.other.raw.loom",
+          "patterns": [
+            {
+              "include": "#placeholder"
+            }
+          ]
         }
       ]
     }

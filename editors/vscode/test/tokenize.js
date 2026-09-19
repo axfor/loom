@@ -29,6 +29,11 @@ const registry = new vsctm.Registry({
   onigLib,
   loadGrammar: async (scope) => {
     if (scope === 'source.shell') return vsctm.parseRawGrammar(host, 'shell.json');
+    // The embedded grammars are VS Code's own; here a shell stands in, so the test checks that
+    // the fence hands over to them rather than what they then do.
+    if (!files[scope] && (scope.startsWith('text.') || scope.startsWith('source.'))) {
+      return vsctm.parseRawGrammar(JSON.stringify({ scopeName: scope, patterns: [] }), 'stub.json');
+    }
     const rel = files[scope];
     if (!rel) return null;
     const p = path.join(root, rel);
@@ -190,6 +195,32 @@ function expectNot(grammar, line, text, scope) {
   expect(om, 'import ship "/x"', 'import', 'invalid.illegal.unknown-setting.loom');
   expect(om, 'bogus "x"', 'bogus', 'invalid.illegal.unknown-setting.loom');
   expectNot(om, 'base      "upstream"', 'base', 'invalid.illegal.unknown-setting.loom');
+
+  // A fence carries a language tag, and its content is highlighted as that language — which is
+  // what makes content written inside a template bearable to edit.
+  expect(lm, 'base.X.after(```markdown', '```', 'punctuation.definition.string.begin.loom');
+  expect(lm, 'base.X.after(```markdown', 'markdown', 'entity.name.type.format.loom');
+  // Multi-line: the tokenizer's state has to be carried from line to line, which is how a
+  // fence keeps holding its language across the lines inside it.
+  const across = (lines, at) => {
+    let rules = vsctm.INITIAL;
+    let scopes = [];
+    for (const l of lines) {
+      const r = lm.tokenizeLine(l, rules);
+      rules = r.ruleStack;
+      scopes = r.tokens.map((t) => t.scopes.join(' '));
+    }
+    return scopes.join(' | ');
+  };
+  const md = across(['base.X.after(```markdown', '## A heading']);
+  if (/meta\.embedded\.block\.markdown/.test(md)) pass++;
+  else { fail++; console.log('  ❌ inside a markdown fence the content is markdown:', md); }
+  const shf = across(['base.X.after(```sh', 'echo hi']);
+  if (/meta\.embedded\.block\.sh/.test(shf)) pass++;
+  else { fail++; console.log('  ❌ a sh fence embeds shell:', shf); }
+  const plain = across(['base.X.after(```', 'just text']);
+  if (/string\.quoted\.other\.raw/.test(plain)) pass++;
+  else { fail++; console.log('  ❌ an untagged fence is still a literal:', plain); }
 
   // Injection: placeholders in a host language
   expect(sh, 'echo "Repository: {{@url}}"', 'url', 'variable.other.placeholder.loom');

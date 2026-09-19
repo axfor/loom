@@ -36,7 +36,8 @@ type Tok struct {
 	Kind Kind
 	Text string // source text for names; the unquoted value for strings and literals
 	Pos  Pos
-	Off  int // byte range [Off, End) in the source
+	Tag  string // the language written after an opening fence, if any
+	Off  int    // byte range [Off, End) in the source
 	End  int
 }
 
@@ -119,6 +120,57 @@ func Lex(file string, src []byte) ([]Tok, error) {
 			}
 			out = append(out, Tok{Kind: KString, Text: b.String(), Pos: here})
 		case r == '`':
+			// Three or more backticks open a fence, closed by as many again: the content is
+			// taken as it is, so a document with inline `code` or a nested ``` block in it can
+			// be written here. A single backtick keeps the older, shorter form, which ends at
+			// the next backtick and therefore cannot hold either.
+			n := 0
+			for i+n < len(s) && s[i+n] == '`' {
+				n++
+			}
+			if n >= 3 {
+				for k := 0; k < n; k++ {
+					adv()
+				}
+				// A language tag after the opening fence says what the content is; it is not
+				// part of the content.
+				tagStart := i
+				for i < len(s) && s[i] != '\n' {
+					adv()
+				}
+				tag := strings.TrimSpace(s[tagStart:i])
+				if i < len(s) {
+					adv() // the newline
+				}
+				start := i
+				fence := strings.Repeat("`", n)
+				end := -1
+				for j := i; j < len(s); j++ {
+					if s[j] != '`' || (j > 0 && s[j-1] != '\n') {
+						continue
+					}
+					k := j
+					for k < len(s) && s[k] == '`' {
+						k++
+					}
+					if k-j == n {
+						end = j
+						break
+					}
+				}
+				if end < 0 {
+					return nil, fmt.Errorf("%s: unterminated fence: missing a closing %s at the start of a line", here, fence)
+				}
+				body := s[start:end]
+				for i < end {
+					adv()
+				}
+				for k := 0; k < n; k++ {
+					adv()
+				}
+				out = append(out, Tok{Kind: KRaw, Text: dedent(strings.TrimSuffix(body, "\n")), Pos: here, Tag: tag})
+				break
+			}
 			adv()
 			start := i
 			for i < len(s) && s[i] != '`' {
@@ -169,7 +221,7 @@ func Lex(file string, src []byte) ([]Tok, error) {
 		}
 	}
 	end := Pos{File: file, Line: line, Col: col}
-	out = append(out, Tok{KNewline, "\n", end, len(s), len(s)}, Tok{KEOF, "", end, len(s), len(s)})
+	out = append(out, Tok{Kind: KNewline, Text: "\n", Pos: end, Off: len(s), End: len(s)}, Tok{Kind: KEOF, Pos: end, Off: len(s), End: len(s)})
 	return out, nil
 }
 

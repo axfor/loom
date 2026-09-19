@@ -445,6 +445,27 @@ In the block form each argument is on its own line, without commas. An empty blo
 
 ### Literals
 
+A single backtick ends at the next one, which is enough for a line and not enough for a document:
+real markdown is full of inline `code` and fenced blocks. **Three or more backticks open a fence**,
+closed by as many again at the start of a line, and a tag says what the content is:
+
+````
+base."Where this fits".before(```markdown
+## Where this fits
+
+Run `lm build` to weave it:
+
+```sh
+lm build -o ../dist
+```
+```)
+````
+
+Nothing inside needs escaping. A fence inside the content is held by opening with more backticks
+than it uses — the same rule markdown itself has. The common indentation is removed, and the tag
+gives the editor the language to highlight the content as, so writing content inside a template
+reads the way writing it in its own file does.
+
 ```
 base.start(`> Generated from mine/README.md — do not edit`)
 
