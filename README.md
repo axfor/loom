@@ -1,4 +1,8 @@
-# Loom
+<p align="center">
+  <img src="editors/vscode/icons/loom.png" width="96" height="96" alt="Loom">
+</p>
+
+# LOOM
 
 **A language for extending someone else's AI skills — and still taking their updates.**
 
