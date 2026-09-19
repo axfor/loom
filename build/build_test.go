@@ -766,3 +766,40 @@ func TestAnchorCompletionForShell(t *testing.T) {
 		t.Errorf("a second build changed the template again: %q", again)
 	}
 }
+
+// Losing upstream content is the one thing the build must never allow quietly, and a merge is
+// where it is easiest to do: our file is the product, so an upstream node our file does not have
+// simply is not there. That was checked for markdown sections and shell functions. A toml or yaml
+// key is as much a named node as either, and was not checked at all.
+func TestMergeLosesNothingInAnyKeyedType(t *testing.T) {
+	for _, c := range []struct{ ext, up, ours, word string }{
+		{"md", "## Keep\n\nk\n\n## Gone\n\ng\n", "## Keep\n\nk\n", "section"},
+		{"sh", "#!/bin/sh\nkeep() {\n  echo k\n}\ngone() {\n  echo g\n}\n", "#!/bin/sh\nkeep() {\n  echo k\n}\n", "function"},
+		{"toml", "keep = 1\ngone = 2\n", "keep = 1\n", "key"},
+		{"yaml", "keep: 1\ngone: 2\n", "keep: 1\n", "key"},
+	} {
+		t.Run(c.ext, func(t *testing.T) {
+			dir := t.TempDir()
+			mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\n")
+			mustWrite(t, filepath.Join(dir, "up", "f."+c.ext), c.up)
+			mustWrite(t, filepath.Join(dir, "me", "f."+c.ext), c.ours)
+			mustWrite(t, filepath.Join(dir, "me", "f."+c.ext+".lm"), "base.merge(self)\n")
+
+			cfg, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = build.PlanBuild(cfg, true)
+			if err == nil {
+				t.Fatal("a merge that drops an upstream node was accepted")
+			}
+			if !strings.Contains(err.Error(), "upstream content lost") {
+				t.Errorf("unexpected error: %v", err)
+			}
+			// The message calls the node what it is, rather than calling everything a section.
+			if !strings.Contains(err.Error(), c.word+" \"gone\"") && !strings.Contains(err.Error(), c.word+" \"Gone\"") {
+				t.Errorf("the message does not name a %s: %v", c.word, err)
+			}
+		})
+	}
+}

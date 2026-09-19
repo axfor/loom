@@ -702,8 +702,9 @@ it, and the build refuses them rather than ignore them.
 1. Loads every template. Every error found is reported, not just the first (at most 20 are shown).
 2. Completes anchors (below) and writes them back into templates.
 3. Weaves each template and checks it:
-   - **lost content**: for markdown sections and shell functions, every upstream node must still be
-     in the product (marks stripped) or be accounted for by a `drop` / `replace` with a reason.
+   - **lost content**: for every kind of node the build can name — markdown sections, shell
+     functions, toml and yaml keys — every upstream node must still be in the product (marks
+     stripped) or be accounted for by a `drop` / `replace` with a reason.
      Otherwise the build fails. A whole-file replace with a reason accounts for the whole file.
    - **dropping a section with subsections** requires dropping (or otherwise accounting for) each
      subsection, since a section stops at the next heading.

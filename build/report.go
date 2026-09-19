@@ -151,6 +151,9 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 		}
 	}
 
+	// The kind whose nodes are counted by name, upstream against product. Every type whose nodes
+	// ast can enumerate belongs here: leaving toml and yaml out meant a merge could drop a key of
+	// upstream's and nothing would notice, which is the one thing this file exists to prevent.
 	var upTree ast.Tree
 	kind := ""
 	switch t.Type {
@@ -158,6 +161,8 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 		kind = "heading"
 	case "shell":
 		kind = "function"
+	case "toml", "yaml":
+		kind = "key"
 	}
 	// A tree for every type, not just the two that have names worth accounting for: the byte count
 	// below has to locate a dropped node to subtract it, and without a tree it either crashes or,
@@ -426,10 +431,7 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 	}
 	for _, name := range order {
 		if missing := need[name] - have[name] - covered[name]; missing > 0 {
-			what := "section"
-			if kind == "function" {
-				what = "function"
-			}
+			what := nodeWord(kind)
 			errs = append(errs, fmt.Errorf("%s: upstream content lost: in %s, %s %q is not in the product and no drop / replace gives a reason. "+
 				"Weave it in, or write: base.%s.drop(reason: \"...\")", t.Path, t.Target, what, name, lang.NameText(name)))
 		}
@@ -706,4 +708,13 @@ func insertable(typ, src string) string {
 		return strings.TrimRight(b, "\n")
 	}
 	return strings.TrimRight(src, "\n")
+}
+
+// nodeWord is what to call a node of this kind in a message to a person: a markdown heading is a
+// section, and a key is a key.
+func nodeWord(kind string) string {
+	if kind == "heading" {
+		return "section"
+	}
+	return kind
 }
