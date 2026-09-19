@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -87,11 +88,13 @@ const (
 	vString vkind = iota
 	vRaw
 	vExpr
+	vNumber
 )
 
 type oValue struct {
 	kind vkind
 	str  string
+	num  int
 	expr *oExpr
 	pos  Pos
 }
@@ -319,6 +322,13 @@ func (p *oparser) value() (oValue, error) {
 	case KRaw:
 		p.next()
 		return oValue{kind: vRaw, str: t.Text, pos: t.Pos}, nil
+	case KNumber:
+		p.next()
+		n, err := strconv.Atoi(t.Text)
+		if err != nil {
+			return oValue{}, fmt.Errorf("%s: %s is too large a number", t.Pos, t.Text)
+		}
+		return oValue{kind: vNumber, num: n, pos: t.Pos}, nil
 	case KIdent:
 		e, err := p.expr()
 		if err != nil {
@@ -326,7 +336,7 @@ func (p *oparser) value() (oValue, error) {
 		}
 		return oValue{kind: vExpr, expr: e, pos: t.Pos}, nil
 	}
-	return oValue{}, fmt.Errorf("%s: expected an argument: \"name\", `literal`, or something like self.xxx, got %s", t.Pos, t)
+	return oValue{}, fmt.Errorf("%s: expected an argument: \"name\", `literal`, a number, or something like self.xxx, got %s", t.Pos, t)
 }
 
 // ── Interpretation: syntax tree → engine statements ───────────────────────────
@@ -792,15 +802,28 @@ func (in *interp) predicate(st oStep, kind string) (*Select, error) {
 				return nil, fmt.Errorf("%s: match: %v", a.pos, err)
 			}
 			sel.Match = a.val.str
+		case a.name == "level":
+			// Only a markdown heading has a level. Saying so here, rather than letting the
+			// predicate quietly match nothing, is the difference between a typo and a mystery.
+			if kind != "heading" {
+				return nil, fmt.Errorf("%s: level: is for markdown headings; a %s has no level", a.pos, kind)
+			}
+			if a.val.kind != vNumber {
+				return nil, fmt.Errorf("%s: level: takes a number, 1 to 6", a.pos)
+			}
+			if a.val.num < 1 || a.val.num > 6 {
+				return nil, fmt.Errorf("%s: level: %d — markdown headings run from 1 to 6", a.pos, a.val.num)
+			}
+			sel.Level = a.val.num
 		case a.name != "":
-			return nil, fmt.Errorf("%s: unknown predicate `%s:` (match: is the only one that takes a value)", a.pos, a.name)
+			return nil, fmt.Errorf("%s: unknown predicate `%s:` (match: and level: are the ones that take a value)", a.pos, a.name)
 		case a.val.kind == vExpr && len(a.val.expr.steps) == 0 && a.val.expr.root == "empty":
 			sel.Empty = true
 		default:
-			return nil, fmt.Errorf("%s: a predicate is match: \"...\" or empty", a.pos)
+			return nil, fmt.Errorf("%s: a predicate is match: \"...\", level: N, or empty", a.pos)
 		}
 	}
-	if sel.Match == "" && !sel.Empty {
+	if sel.Match == "" && !sel.Empty && sel.Level == 0 {
 		return nil, fmt.Errorf("%s: %s needs a predicate, or it would select the whole file: %s(match: \"...\")", st.pos, st.name, st.name)
 	}
 	return sel, nil

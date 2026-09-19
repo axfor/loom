@@ -3,6 +3,7 @@ package build_test
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -542,6 +543,77 @@ func TestWeaveProject(t *testing.T) {
 	} {
 		if _, err := weave(c.tpl); err == nil {
 			t.Errorf("%s: accepted, want %q", strings.TrimSpace(c.tpl), c.want)
+		} else if !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: %v\nwant %q", strings.TrimSpace(c.tpl), err, c.want)
+		}
+	}
+}
+
+// level: picks by how deep a heading sits rather than by what it is called. It is the one
+// predicate that reads structure instead of text, which is why it is refused on node kinds
+// that have no level: a predicate that can only ever match nothing is a typo, not a query.
+func TestWeaveSelectorLevel(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\n")
+	mustWrite(t, filepath.Join(dir, "up", "doc.md"),
+		"# Top\n\nt\n\n## Step 1\n\na\n\n### Detail\n\nd\n\n## Step 2\n\nb\n\n### Note\n\nn\n")
+	mustWrite(t, filepath.Join(dir, "up", "conf.toml"), "a = 1\nb = 2\n")
+
+	weave := func(file, tpl string) (string, error) {
+		mustWrite(t, filepath.Join(dir, "me", file), tpl)
+		c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		tm, err := lang.LoadTemplate(c, filepath.Join(dir, "me", file))
+		if err != nil {
+			return "", err
+		}
+		return build.Weave(c, tm)
+	}
+
+	// Compared as whole lines: "## Top" contains "# Top", so a substring check would pass
+	// even if every heading had been demoted.
+	headings := func(s string) []string {
+		var out []string
+		for _, l := range strings.Split(s, "\n") {
+			if strings.HasPrefix(l, "#") {
+				out = append(out, l)
+			}
+		}
+		return out
+	}
+
+	got, err := weave("doc.lm", "base.sections(level: 3).demote()\n")
+	if err != nil {
+		t.Fatalf("level: %v", err)
+	}
+	want := []string{"# Top", "## Step 1", "#### Detail", "## Step 2", "#### Note"}
+	if h := headings(got); !reflect.DeepEqual(h, want) {
+		t.Errorf("level: 3 reached the wrong headings\ngot  %q\nwant %q", h, want)
+	}
+
+	// Two predicates narrow each other rather than widening: name and depth must both hold.
+	got, err = weave("doc.lm", "base.sections(level: 2, match: \"^Step 1\").demote()\n")
+	if err != nil {
+		t.Fatalf("level with match: %v", err)
+	}
+	want = []string{"# Top", "### Step 1", "### Detail", "## Step 2", "### Note"}
+	if h := headings(got); !reflect.DeepEqual(h, want) {
+		t.Errorf("the two predicates did not narrow each other\ngot  %q\nwant %q", h, want)
+	}
+
+	for _, c := range []struct{ file, tpl, want string }{
+		{"doc.lm", "base.sections(level: 0).demote()\n", "1 to 6"},
+		{"doc.lm", "base.sections(level: 7).demote()\n", "1 to 6"},
+		{"doc.lm", "base.sections(level: \"2\").demote()\n", "takes a number"},
+		{"doc.lm", "base.sections(level: 4).demote()\n", "matched nothing"},
+		// A line has no level, and neither has a toml key: say so rather than match nothing.
+		{"doc.lm", "base.lines(level: 2).drop(reason: \"x\")\n", "a line has no level"},
+		{"conf.lm", "base.keys(level: 1).drop(reason: \"x\")\n", "a key has no level"},
+	} {
+		if _, err := weave(c.file, c.tpl); err == nil {
+			t.Errorf("%s: accepted, want an error mentioning %q", strings.TrimSpace(c.tpl), c.want)
 		} else if !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: %v\nwant %q", strings.TrimSpace(c.tpl), err, c.want)
 		}

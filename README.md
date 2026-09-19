@@ -491,13 +491,21 @@ every node it finds:
 ```
 base.sections(match: "^Step ").demote()
 base.sections(empty).drop(reason: "upstream left the shells of sections it never wrote")
+base.sections(level: 3).demote()
 base.functions(match: "^_").drop(reason: "private helpers we replace wholesale")
 ```
 
 | Predicate | Matches |
 |---|---|
 | `match: "..."` | the node's name against a regular expression |
+| `level: N` | markdown headings at depth N, 1 to 6 |
 | `empty` | nodes with nothing under them |
+
+Several predicates narrow each other: `sections(level: 2, match: "^Step ")` is the level-two
+headings called Step, not the union of the two.
+
+Only a markdown heading has a level, so `level:` on a line, a function or a key is refused where it
+is written rather than left to match nothing.
 
 A predicate that matches nothing is an error, not a statement that quietly did nothing.
 

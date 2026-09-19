@@ -222,6 +222,13 @@ function expectNot(grammar, line, text, scope) {
   if (/string\.quoted\.other\.raw/.test(plain)) pass++;
   else { fail++; console.log('  ❌ an untagged fence is still a literal:', plain); }
 
+  // Predicates: match: and level: are named arguments too, and level: takes a number
+  expect(lm, 'base.sections(match: "^Step ").demote()', 'match', 'variable.parameter.loom');
+  expect(lm, 'base.sections(level: 3).demote()', 'level', 'variable.parameter.loom');
+  expect(lm, 'base.sections(level: 3).demote()', '3', 'constant.numeric.loom');
+  expect(lm, 'base.sections(levle: 3).demote()', 'levle', 'invalid.illegal.unknown-argument.loom');
+  expectNot(lm, 'base.sections(match: "^Step ").demote()', 'match', 'invalid.illegal.unknown-argument.loom');
+
   // Injection: placeholders in a host language
   expect(sh, 'echo "Repository: {{@url}}"', 'url', 'variable.other.placeholder.loom');
   expect(sh, 'echo "{{@@url}}"', '{{@@url}}', 'constant.character.escape.placeholder.loom');

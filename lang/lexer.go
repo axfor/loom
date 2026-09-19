@@ -3,7 +3,7 @@ package lang
 // Lexer shared by templates (object syntax) and loom.om (one setting per line).
 //
 // Token kinds: names (base / Install / Install_XSDD), strings "...", literals `...`,
-// punctuation . , : ( ) { }, and newlines. Comments (// to end of line) and whitespace
+// numbers, punctuation . , : ( ) { }, and newlines. Comments (// to end of line) and whitespace
 // are dropped here; only newlines are kept, because a newline ends a statement.
 
 import (
@@ -19,6 +19,7 @@ const (
 	KIdent  Kind = iota
 	KString      // "..."
 	KRaw         // `...`
+	KNumber      // 123
 	KDot
 	KComma
 	KColon
@@ -49,6 +50,8 @@ func (t Tok) String() string {
 		return fmt.Sprintf("%q", t.Text)
 	case KRaw:
 		return "literal"
+	case KNumber:
+		return "`" + t.Text + "`"
 	case KNewline:
 		return "newline"
 	case KEOF:
@@ -203,6 +206,12 @@ func Lex(file string, src []byte) ([]Tok, error) {
 		case r == '}':
 			adv()
 			out = append(out, Tok{Kind: KRBrace, Text: "}", Pos: here})
+		case unicode.IsDigit(r):
+			start := i
+			for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+				adv()
+			}
+			out = append(out, Tok{Kind: KNumber, Text: s[start:i], Pos: here})
 		case r == '_' || unicode.IsLetter(r):
 			start := i
 			for i < len(s) {

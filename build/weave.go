@@ -876,6 +876,9 @@ func selected(tree ast.Tree, sel *lang.Select) ([]ast.Named, error) {
 		if re != nil && !re.MatchString(n.Name) {
 			continue
 		}
+		if sel.Level != 0 && n.Level != sel.Level {
+			continue
+		}
 		if sel.Empty && strings.TrimSpace(strings.Join(tree.Lines()[n.Line+1:n.End], "")) != "" {
 			continue
 		}

@@ -313,6 +313,19 @@ function argItems(cx, argOf, range, quoted) {
     if (!src) return [];
     return nodeItems(src, kind, null, (parts) => (single(parts) ? asString(parts) : null), range);
   }
+  // .sections(|) / .keys(|) / .lines(|): a group takes predicates, not a name
+  const cls = (loom.CLASS_CALLS[r.typ] || {})[st.name];
+  if (cls) {
+    if (quoted) return [];
+    const out = [
+      item('match:', 'argument', { detail: 'names matching this regular expression', insertText: 'match: "$1"', snippet: true, range, sortText: '0' }),
+      item('empty', 'argument', { detail: 'only nodes with nothing under them', range, sortText: '2' }),
+    ];
+    if (cls === 'heading') {
+      out.push(item('level:', 'argument', { detail: 'headings at this depth, 1 to 6', insertText: 'level: ${1:2}', snippet: true, range, sortText: '1' }));
+    }
+    return out;
+  }
   if (st.name === 'as') {
     return quoted ? [] : [...loom.TYPES].map((ty) => item(ty, 'type', { range }));
   }

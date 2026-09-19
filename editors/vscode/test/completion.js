@@ -213,6 +213,24 @@ const find = (items, label) => items.find((i) => i.label === label);
   }
 }
 
+// ── inside a class call: a group takes predicates, not a name ──
+{
+  const { items } = at(md, 'base.sections(|)');
+  const l = labels(items);
+  ok(l.includes('match:') && l.includes('empty') && l.includes('level:'), 'a markdown group offers all three predicates', l);
+  ok(!l.includes('Overview'), 'a group takes predicates, so no names are offered', l);
+  ok(find(items, 'level:').insertText === 'level: ${1:2}', 'level: inserts a depth to fill in');
+  ok(find(items, 'match:').insertText === 'match: "$1"', 'match: inserts a regular expression to fill in');
+}
+{
+  // Only a heading has a level, so only a heading group offers it.
+  const l = labels(at(toml, 'base.keys(|)').items);
+  ok(l.includes('match:') && l.includes('empty'), 'a toml group offers the predicates it has', l);
+  ok(!l.includes('level:'), 'a key has no level, so level: is not offered', l);
+  const lines = labels(at(md, 'base.lines(|)').items);
+  ok(!lines.includes('level:'), 'a line has no level either', lines);
+}
+
 fs.rmSync(root, { recursive: true, force: true });
 console.log(`loom completion: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

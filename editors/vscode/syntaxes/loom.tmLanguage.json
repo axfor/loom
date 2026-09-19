@@ -28,6 +28,9 @@
       "include": "#named-argument"
     },
     {
+      "include": "#number"
+    },
+    {
       "include": "#step"
     },
     {
@@ -145,7 +148,7 @@
     "named-argument": {
       "patterns": [
         {
-          "match": "\\b(reason)\\s*(:)",
+          "match": "\\b(reason|match|level)\\s*(:)",
           "captures": {
             "1": {
               "name": "variable.parameter.loom"
@@ -156,7 +159,7 @@
           }
         },
         {
-          "comment": "reason: is the only named argument",
+          "comment": "reason: on an edit, match: and level: in a predicate — anything else is a typo",
           "match": "([\\p{L}_][\\p{L}\\p{N}_]*)\\s*(:)",
           "captures": {
             "1": {
@@ -477,6 +480,11 @@
           ]
         }
       ]
+    },
+    "number": {
+      "comment": "a predicate's level: takes one",
+      "match": "\\b[0-9]+\\b",
+      "name": "constant.numeric.loom"
     }
   }
 }

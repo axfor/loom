@@ -65,6 +65,7 @@ type Stmt struct {
 type Select struct {
 	Kind  string
 	Match string // regular expression the name must match; empty = any
+	Level int    // markdown heading level the node must be; 0 = any
 	Empty bool   // only nodes with nothing under them
 }
 
