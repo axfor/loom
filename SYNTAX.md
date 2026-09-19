@@ -1,5 +1,9 @@
 # Loom 语法
 
+> **面向各种资源文件的结构化编程语言。一切资源可结构化、对象化引用。**
+
+任何一种资源文件——markdown、shell、js、json、yaml、toml——编译器都把它解析成**一个对象**：有名字的部分构成的结构。语言就在这些对象上编程：引用、放置、变换。
+
 完整规格。设计依据见 [DESIGN.md](DESIGN.md)，这里只讲怎么写。
 
 ---
@@ -492,7 +496,92 @@ base.sections.align(self.sections)
 
 ---
 
-## 8. `return`：整份都是我们的
+## 8. 结果与判断
+
+### 8.1 默认硬停，接住才归你
+
+写操作**可以**返回结果，但只有你显式接住时才返回：
+
+```go
+base.Overview.after(self.job)          没接 → 失败即停止构建，报锚点找不到
+ok = base.Overview.after(self.job)     接住 → 构建不停，你负责
+if !ok {
+    return err.format("上游没有 Overview: %s", ok)
+}
+```
+
+**这条默认值是整个设计的关键。** 失败要被吞掉，必须有人**显式写下接住它的那个变量**——不可能手滑吞掉。
+
+接住了不用也是错误（和 Go 的未使用变量一样）：
+
+```go
+ok = base.Overview.after(self.job)     ⛔ ok 声明了没用到
+```
+
+否则「接住」就成了吞掉的同义词。
+
+### 8.2 结果里有什么
+
+`ok` 不是裸 bool，它带着为什么：
+
+```go
+if !ok {
+    return err.format("%s", ok)        → "锚点 Overview 在 upstream/SKILL.md 里找不到"
+}
+```
+
+| 问 | 得到 |
+|---|---|
+| `!ok` | 失败了吗 |
+| `%s` 格式化 | 失败原因，带 `文件:行:列` |
+
+### 8.3 结构判断：只读，随时可用
+
+问文档**长什么样**不需要先写再看结果：
+
+```go
+if base.has.Overview {
+    base.Overview.after(self.job)
+}
+
+if base.sections[level == 2].any {
+    base.start.project(base.sections[level == 2]):
+        - [{name}](#{anchor})
+}
+```
+
+能问的就是 §4.2 那组谓词，加上 `.any` / `.count`。**只读，不产生写，永远安全。**
+
+两种写法都行，但含义不同：
+
+| 写法 | 说的是 |
+|---|---|
+| `if base.has.Overview { … }` | **我知道它可能没有**，没有就跳过 |
+| `ok = …; if !ok { … }` | **我要自己处理失败**，包括报我自己的错 |
+
+前者更清楚，优先用。
+
+### 8.4 `return`：三种
+
+```go
+return self                        产物就是我们的文件（§9）
+return err.format("...")           构建失败，输出这条消息
+return                             提前结束，已经写下的算数
+```
+
+`err.format` 里的格式化**只进消息，不进产物**——所以它不影响产物的可溯源性（DESIGN L0）。
+
+### 8.5 允许判断之后，保证还在吗
+
+在。验证是「把写过的跨度抠掉，剩下的等于来源」，而**写集合是构建时记录的**，不是事先算出来的。所以条件分支不影响上游完整性。
+
+真正被条件影响的是**可预测性**——同一份模板对不同版本的上游可能写不同的东西。这不是错误，但报告里要说清楚：
+
+```
+SKILL.md   extended  +2   跳过 1 处（base.has.Overview 为假）
+```
+
+## 9. `return self`：整份都是我们的
 
 ```go
 // xsdd/AGENTS.lm
@@ -507,7 +596,7 @@ return self   // reason: 上游那份和我们的会跑两遍
 
 ---
 
-## 9. 类型
+## 10. 类型
 
 每个地址都有类型：**（种类，类别）**。
 
@@ -529,7 +618,7 @@ base.Overview.after(self.boot)
 
 ---
 
-## 10. 文法
+## 11. 文法
 
 ```ebnf
 file       = { comment | import | fn | stmt | call | return } [ resources ] ;
@@ -540,9 +629,14 @@ call       = ident "(" [ args ] ")" ;
 resources  = "---" NEWLINE { resource } ;
 resource   = "Self" [ "as" ident ] ":" NEWLINE indented-fences ;
 
-stmt       = target "(" [ args ] ")"
-           | target ":" block ;
-return     = "return" target [ "//" reason ] ;
+stmt       = [ ident "=" ] target "(" [ args ] ")"   (* 接住结果才不硬停 *)
+           | target ":" block
+           | if
+           | call ;
+if         = "if" cond "{" { stmt } "}" [ "else" "{" { stmt } "}" ] ;
+cond       = [ "!" ] ( ident | target ) ;            (* 结果，或只读的结构查询 *)
+return     = "return" [ target | err ] [ "//" reason ] ;
+err        = "err" "." "format" "(" string { "," arg } ")" ;
 
 target     = root { selector | "." word } ;
 root       = "base" | "self" | ident ;   (* import 进来的名字、函数参数 *)
@@ -576,7 +670,7 @@ kind       = "markdown" | "shell" | "toml" | "json" | "text" ;
 
 ---
 
-## 11. 编译器拒绝什么
+## 12. 编译器拒绝什么
 
 | 情形 | 报什么 |
 |---|---|
@@ -593,7 +687,7 @@ kind       = "markdown" | "shell" | "toml" | "json" | "text" ;
 
 ---
 
-## 12. 编译器替你做什么
+## 13. 编译器替你做什么
 
 | 你不写 | 它算 |
 |---|---|
@@ -605,7 +699,7 @@ kind       = "markdown" | "shell" | "toml" | "json" | "text" ;
 
 ---
 
-## 13. 和今天的对照
+## 14. 和今天的对照
 
 | 今天 | 全新 |
 |---|---|
