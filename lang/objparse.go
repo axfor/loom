@@ -59,6 +59,12 @@ var kindCalls = map[string]map[string]string{
 // found. Anything that needs a target or a source of its own is not one of them.
 var groupMethods = []string{"drop", "promote", "demote"}
 
+// namedArgs is every argument name the language knows: reason: on an edit, after: / before: on a
+// move, match: / level: in a predicate. It is one list because it has to be mirrored exactly —
+// the editor's grammar highlights these and marks anything else a typo — and because a
+// misspelled argument is worth a suggestion rather than a list to read.
+var namedArgs = []string{"reason", "after", "before", "match", "level"}
+
 var editMethods = []string{"after", "before", "start", "append", "replace", "drop", "move", "promote", "demote", "set", "merge"}
 
 func typeWords() []string { return []string{"markdown", "toml", "yaml", "json", "shell", "text"} }
@@ -578,6 +584,9 @@ func (in *interp) method(r receiver, st oStep) error {
 			continue
 		}
 		if a.name != "reason" {
+			if near := nearest(a.name, namedArgs); near != "" {
+				return fmt.Errorf("%s: unknown named argument `%s:` — did you mean `%s:`?", a.pos, a.name, near)
+			}
 			return fmt.Errorf("%s: unknown named argument `%s:` (reason: for replace / drop, after: / before: for move)", a.pos, a.name)
 		}
 		if st.name != "replace" && st.name != "drop" {
@@ -816,6 +825,9 @@ func (in *interp) predicate(st oStep, kind string) (*Select, error) {
 			}
 			sel.Level = a.val.num
 		case a.name != "":
+			if near := nearest(a.name, namedArgs); near != "" {
+				return nil, fmt.Errorf("%s: unknown predicate `%s:` — did you mean `%s:`?", a.pos, a.name, near)
+			}
 			return nil, fmt.Errorf("%s: unknown predicate `%s:` (match: and level: are the ones that take a value)", a.pos, a.name)
 		case a.val.kind == vExpr && len(a.val.expr.steps) == 0 && a.val.expr.root == "empty":
 			sel.Empty = true

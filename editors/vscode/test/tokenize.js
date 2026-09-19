@@ -229,6 +229,16 @@ function expectNot(grammar, line, text, scope) {
   expect(lm, 'base.sections(levle: 3).demote()', 'levle', 'invalid.illegal.unknown-argument.loom');
   expectNot(lm, 'base.sections(match: "^Step ").demote()', 'match', 'invalid.illegal.unknown-argument.loom');
 
+  // Settings the compiler added but the editor never heard of: loom.om is painted as broken.
+  expect(om, 'loom "1.0"', 'loom', 'keyword.control.config.loom');
+  expect(om, 'frontmatter set description', 'frontmatter', 'keyword.control.config.loom');
+  expect(om, 'mark yaml "# B" "# E"', 'yaml', 'entity.name.type.format.loom');
+  expect(lm, 'base.as(yaml).key("a").drop(reason: "x")', 'yaml', 'entity.name.type.format.loom');
+
+  // move's arguments are named arguments too — the grammar had been calling them typos.
+  expect(lm, 'base.X.move(after: base.Y)', 'after', 'variable.parameter.loom');
+  expect(lm, 'base.X.move(before: base.Y)', 'before', 'variable.parameter.loom');
+
   // Injection: placeholders in a host language
   expect(sh, 'echo "Repository: {{@url}}"', 'url', 'variable.other.placeholder.loom');
   expect(sh, 'echo "{{@@url}}"', '{{@@url}}', 'constant.character.escape.placeholder.loom');

@@ -5,6 +5,11 @@
 //
 // No `vscode` import, so all of it runs (and is tested) in plain Node. Every rule here mirrors
 // the compiler (ast/*.go, objparse.go, weave.go); where the two disagree, the compiler is right.
+//
+// The tables below are held to that by lang/mirror_test.go, which runs this module and compares
+// what it exports against the compiler's own tables. A mirror that drifts raises no error of its
+// own — it produces an editor that quietly lies about a correct template — so something has to
+// watch, and that is what watches.
 
 const fs = require('fs');
 const path = require('path');

@@ -148,7 +148,7 @@
     "named-argument": {
       "patterns": [
         {
-          "match": "\\b(reason|match|level)\\s*(:)",
+          "match": "\\b(reason|after|before|match|level)\\s*(:)",
           "captures": {
             "1": {
               "name": "variable.parameter.loom"
@@ -159,7 +159,7 @@
           }
         },
         {
-          "comment": "reason: on an edit, match: and level: in a predicate — anything else is a typo",
+          "comment": "reason: on an edit, after: / before: on a move, match: / level: in a predicate — anything else is a typo",
           "match": "([\\p{L}_][\\p{L}\\p{N}_]*)\\s*(:)",
           "captures": {
             "1": {
@@ -252,7 +252,7 @@
       ]
     },
     "format": {
-      "match": "\\b(markdown|toml|json|shell|text)\\b",
+      "match": "\\b(markdown|toml|yaml|json|shell|text)\\b",
       "name": "entity.name.type.format.loom"
     },
     "object": {

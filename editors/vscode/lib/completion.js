@@ -46,11 +46,13 @@ const SNIPPETS = {
 };
 
 const SETTINGS = [
+  ['loom', 'loom "$1"', 'the language version this tree is written against'],
   ['base', 'base "$1"', 'the upstream layer directory'],
   ['self', 'self "$1"', 'our layer directory'],
   ['templates', 'templates "$1"', 'where templates live (default: next to our files)'],
   ['output', 'output "$1"', 'the product directory'],
-  ['mark', 'mark ${1|markdown,shell,toml,json,text|} "$2" "$3"', 'the begin / end marks around our content'],
+  ['mark', 'mark ${1|markdown,shell,toml,yaml,json,text|} "$2" "$3"', 'the begin / end marks around our content'],
+  ['frontmatter', 'frontmatter ${1|set,start,append|}', 'what to do with a frontmatter key of ours that upstream also has'],
   ['registry', 'registry "$1" "$2"', 'a group of files registered by a regex'],
   ['take', 'take "$1"', 'upstream files copied into the product as they are'],
   ['mirror', 'mirror "$1" "$2"', 'copy one product directory to another'],
