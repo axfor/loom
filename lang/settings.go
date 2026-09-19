@@ -24,11 +24,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
 // registry is listed to be refused with what to do instead, not to be taken as an unknown word
-var settingKeywords = []string{"base", "self", "templates", "output", "mark", "registry", "take", "mirror", "manifest"}
+var settingKeywords = []string{"loom", "base", "self", "templates", "output", "mark", "registry", "take", "mirror", "manifest"}
 
 // LoadConfig reads loom.om.
 func LoadConfig(path string) (*Config, error) {
@@ -85,6 +86,14 @@ func parseSettings(path string, src []byte) (*Config, error) {
 			seen[kw] = first.Pos
 		}
 		switch kw {
+		case "loom":
+			if len(as) != 1 || as[0].Kind != KString {
+				return nil, fmt.Errorf("%s: `loom` takes the language version this tree is written for: loom \"%s\"", first.Pos, Version)
+			}
+			if err := checkVersion(as[0].Text, as[0].Pos); err != nil {
+				return nil, err
+			}
+			c.Loom = as[0].Text
 		case "base", "self", "templates", "output", "manifest":
 			if len(as) != 1 || as[0].Kind != KString {
 				return nil, fmt.Errorf("%s: `%s` takes one quoted directory: %s \"...\"", first.Pos, kw, kw)
@@ -211,4 +220,34 @@ func matchSegs(ps, ss []string) bool {
 
 func cleanRel(p string) string {
 	return strings.Trim(filepath.ToSlash(filepath.Clean(p)), "/")
+}
+
+// checkVersion refuses a tree that asks for a language this compiler does not speak. A tree
+// written for an older one is fine: nothing it can say has changed meaning.
+func checkVersion(v string, pos Pos) error {
+	want, err := parseVersion(v)
+	if err != nil {
+		return fmt.Errorf("%s: `loom` takes a version like \"%s\", got %q", pos, Version, v)
+	}
+	have, _ := parseVersion(Version)
+	if want[0] > have[0] || (want[0] == have[0] && want[1] > have[1]) {
+		return fmt.Errorf("%s: this tree is written for Loom %s and this lm speaks %s — run `lm update`", pos, v, Version)
+	}
+	return nil
+}
+
+func parseVersion(v string) ([2]int, error) {
+	var out [2]int
+	parts := strings.SplitN(v, ".", 2)
+	if len(parts) != 2 {
+		return out, fmt.Errorf("not major.minor")
+	}
+	for i, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 0 {
+			return out, fmt.Errorf("not a number")
+		}
+		out[i] = n
+	}
+	return out, nil
 }

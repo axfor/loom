@@ -238,6 +238,8 @@ A product file comes from exactly one place, in this order:
 One setting per line. `//` starts a comment.
 
 ```
+loom      "1.0"
+
 base      "upstream"
 self      "mine"
 output    "../dist"
@@ -257,6 +259,7 @@ manifest  ".build-manifest"
 
 | Setting | Meaning |
 |---|---|
+| `loom` | the language version this tree is written for; an lm that speaks an older one refuses it and says to update. Leaving it out is allowed and means "whatever this lm speaks" |
 | `base` | upstream directory (required); in a template, `base` is the file at the product's path in it |
 | `self` | our layer's directory; in a template, `self` is the file at the product's path in it |
 | `templates` | template directory; without it, templates live next to our files in `self` |

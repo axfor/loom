@@ -12,6 +12,14 @@ import (
 // ConfigName is the loom's settings file.
 const ConfigName = "loom.om"
 
+// Version is the language this compiler speaks. A tree may declare the version it was
+// written for; one that asks for something newer is refused, with what to do about it.
+//
+// Additions do not raise it — a tree written for 1.0 still builds, because everything 1.0
+// could say means the same thing now. It goes up when something already written stops
+// meaning what it meant.
+const Version = "1.0"
+
 // Marks is a pair of wrapping marks. Weft content is wrapped in them on its way into the product, so
 // "100% of the warp preserved" can be checked mechanically: strip the marked blocks, and what remains
 // must be byte-identical to the warp copy.
@@ -37,6 +45,7 @@ type Config struct {
 	Warp      string
 	Weft      string
 	Templates string
+	Loom      string // the language version this tree declares; empty = unstated
 	Output    string // output directory (default output of lm build)
 	Anchored  string
 
