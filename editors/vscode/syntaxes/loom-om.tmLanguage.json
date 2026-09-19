@@ -59,7 +59,7 @@
     },
     "setting": {
       "comment": "A setting starts the line. loom.om takes one per line and nothing else.",
-      "match": "^\\s*(loom|frontmatter|keys|base|self|templates|output|mark|registry|take|mirror|manifest)\\b",
+      "match": "^\\s*(loom|frontmatter|keys|body|base|self|templates|output|mark|registry|take|mirror|manifest)\\b",
       "captures": {
         "1": {
           "name": "keyword.control.config.loom"
@@ -68,7 +68,7 @@
     },
     "unknown-setting": {
       "comment": "Any other word at the start of a line: lm rejects it, and so should the colours.",
-      "match": "^\\s*(?!(?:loom|frontmatter|keys|base|self|templates|output|mark|registry|take|mirror|manifest)\\b)([\\p{L}_][\\p{L}\\p{N}_]*)\\b",
+      "match": "^\\s*(?!(?:loom|frontmatter|keys|body|base|self|templates|output|mark|registry|take|mirror|manifest)\\b)([\\p{L}_][\\p{L}\\p{N}_]*)\\b",
       "captures": {
         "1": {
           "name": "invalid.illegal.unknown-setting.loom"

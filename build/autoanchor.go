@@ -15,6 +15,7 @@ package build
 // missing a piece, with no error at all.
 
 import (
+	"errors"
 	"fmt"
 	"github.com/axfor/loom/lang"
 	"os"
@@ -36,22 +37,44 @@ type anchorGap struct {
 
 // findGaps finds our sections that a template doesn't weave into the product, and infers where they go.
 func findGaps(c *lang.Config, t *lang.Template) ([]anchorGap, error) {
+	gaps, missing, err := placeOurs(c, t)
+	if err != nil || len(missing) == 0 {
+		return gaps, err
+	}
+	// Nothing of ours could be anchored to a neighbour: every section is missing and no gap was
+	// found. That is the one case `body` answers — our file's headings share nothing with
+	// upstream's, so there is no neighbour to infer from and never will be.
+	if c.Body != "" && len(gaps) == 0 {
+		return nil, errWholeBody
+	}
+	return nil, fmt.Errorf("%s: in our layer's %s, %d sections are not woven into the product (%s), and the template has no section for them to follow — "+
+		"can't infer an anchor; say where they go: base.<upstream section>.after(\"...\")",
+		t.Path, t.Target, len(missing), quoteAll(missing))
+}
+
+// errWholeBody says that nothing of ours has a place and the tree has said what to do about it:
+// take the body whole. It is a signal rather than a failure, so the caller writes the statement.
+var errWholeBody = errors.New("our body goes in whole")
+
+// placeOurs works out where each section of ours belongs, by the upstream section it follows or
+// precedes. What it cannot place it names, and leaves the decision to the caller.
+func placeOurs(c *lang.Config, t *lang.Template) ([]anchorGap, []string, error) {
 	if t.Type != "markdown" || c.Weft == "" || (t.From != "" && t.From != c.Warp) {
-		return nil, nil
+		return nil, nil, nil
 	}
 	for _, s := range t.Stmts {
 		if s.Op == "merge" {
-			return nil, nil
+			return nil, nil, nil
 		}
 	}
 	src, ok, err := c.Read(c.Weft, weftRel(c, t, c.Weft, t.Target))
 	if err != nil || !ok {
-		return nil, err
+		return nil, nil, err
 	}
 	tree := ast.NewMarkdown(src)
 	nodes := ast.Addressable(tree, "heading")
 	if len(nodes) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	// Sections the template takes from self, keyed by position in our file (several sections may share a name).
@@ -70,11 +93,11 @@ func findGaps(c *lang.Config, t *lang.Template) ([]anchorGap, error) {
 			}
 			switch r.Kind {
 			case "body", "all":
-				return nil, nil // the whole file is woven in
+				return nil, nil, nil // the whole file is woven in
 			case "heading":
 				span, _, err := locate(tree, "heading", r.Within, r.Anchor, r.Ident, lang.Stmt{Rng: r.Rng})
 				if err != nil {
-					return nil, nil // weaving reports this error
+					return nil, nil, nil // weaving reports this error
 				}
 				if _, seen := refs[span[0]]; !seen {
 					refs[span[0]] = r
@@ -102,7 +125,7 @@ func findGaps(c *lang.Config, t *lang.Template) ([]anchorGap, error) {
 		for i := k; i < j; i++ {
 			a, err := argFor(tree, nodes, i)
 			if err != nil {
-				return nil, fmt.Errorf("%s: %v", t.Path, err)
+				return nil, nil, fmt.Errorf("%s: %v", t.Path, err)
 			}
 			labels, args = append(labels, nodes[i].Name), append(args, a)
 		}
@@ -118,12 +141,7 @@ func findGaps(c *lang.Config, t *lang.Template) ([]anchorGap, error) {
 		}
 		k = j
 	}
-	if len(missing) > 0 {
-		return nil, fmt.Errorf("%s: in our layer's %s, %d sections are not woven into the product (%s), and the template has no section for them to follow — "+
-			"can't infer an anchor; say where they go: base.<upstream section>.after(\"...\")",
-			t.Path, t.Target, len(missing), quoteAll(missing))
-	}
-	return gaps, nil
+	return gaps, missing, nil
 }
 
 // argFor is the template argument for section k. A name unique in the file is written as "name";
@@ -417,6 +435,19 @@ func completeAnchors(c *lang.Config, t *lang.Template, write bool, r *Report) (*
 		}
 	}
 	gaps, err := findGaps(c, t)
+	if errors.Is(err, errWholeBody) {
+		if !write {
+			return t, fmt.Errorf("%s: none of our sections can follow an upstream one — lm build writes `base.%s(self.body)`, since loom.om says `body %s`",
+				t.Path, c.Body, c.Body)
+		}
+		src = append(src, []byte(fmt.Sprintf("base.%s(self.body)\n", c.Body))...)
+		if err := os.WriteFile(t.Path, src, 0o644); err != nil {
+			return nil, err
+		}
+		r.Anchored = append(r.Anchored, ReportLine{lang.Rel(c, t.Path),
+			fmt.Sprintf("our body taken whole (loom.om says body %s)", c.Body)})
+		return lang.LoadTemplate(c, t.Path)
+	}
 	if err != nil || len(gaps) == 0 {
 		return t, err
 	}

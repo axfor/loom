@@ -54,6 +54,7 @@ const SETTINGS = [
   ['mark', 'mark ${1|markdown,shell,toml,yaml,json,text|} "$2" "$3"', 'the begin / end marks around our content'],
   ['frontmatter', 'frontmatter ${1|set,start,append|}', 'what to do with a frontmatter key of ours that upstream also has'],
   ['keys', 'keys ${1|set,start,append|}', 'the same, for a top-level key of a toml or yaml file'],
+  ['body', 'body ${1|start,append|}', 'where our body goes when none of it can follow an upstream section'],
   ['registry', 'registry "$1" "$2"', 'a group of files registered by a regex'],
   ['take', 'take "$1"', 'upstream files copied into the product as they are'],
   ['mirror', 'mirror "$1" "$2"', 'copy one product directory to another'],

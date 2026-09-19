@@ -29,7 +29,7 @@ import (
 )
 
 // registry is listed to be refused with what to do instead, not to be taken as an unknown word
-var settingKeywords = []string{"loom", "frontmatter", "keys", "base", "self", "templates", "output", "mark", "registry", "take", "mirror", "manifest"}
+var settingKeywords = []string{"loom", "frontmatter", "keys", "body", "base", "self", "templates", "output", "mark", "registry", "take", "mirror", "manifest"}
 
 // LoadConfig reads loom.om.
 func LoadConfig(path string) (*Config, error) {
@@ -111,6 +111,14 @@ func parseSettings(path string, src []byte) (*Config, error) {
 				return nil, fmt.Errorf("%s: `keys` takes set, start or append — what to do with a top-level key of ours that upstream also has: keys start", first.Pos)
 			}
 			c.Keys = as[0].Text
+		case "body":
+			// Where our headings share nothing with upstream's — a translation, most often —
+			// there is no neighbour to infer a place from, and the build says so. This says it
+			// once for the tree instead: take our body whole, at the start or at the end.
+			if len(as) != 1 || as[0].Kind != KIdent || !contains([]string{"start", "append"}, as[0].Text) {
+				return nil, fmt.Errorf("%s: `body` takes start or append — where our body goes when none of it can follow an upstream section: body append", first.Pos)
+			}
+			c.Body = as[0].Text
 		case "base", "self", "templates", "output", "manifest":
 			if len(as) != 1 || as[0].Kind != KString {
 				return nil, fmt.Errorf("%s: `%s` takes one quoted directory: %s \"...\"", first.Pos, kw, kw)

@@ -592,3 +592,80 @@ func TestValueTypeDropIsCountedNotCrashed(t *testing.T) {
 		t.Error("nothing was counted as proved, though the rest of the file is untouched")
 	}
 }
+
+// `body` answers the one case anchor completion cannot: our headings share nothing with
+// upstream's — a translation, most often — so no section of ours has a neighbour to follow and
+// none ever will. The build says so today and stops; with the setting the tree has said once
+// what to do, and the statement is written down like any other.
+func TestBodyTakenWhole(t *testing.T) {
+	dir := t.TempDir()
+	tpl := filepath.Join(dir, "me", "doc.lm")
+	setup := func(settings, template string) *lang.Config {
+		t.Helper()
+		mustWrite(t, filepath.Join(dir, "loom.om"), settings)
+		mustWrite(t, filepath.Join(dir, "up", "doc.md"), "# Title\n\n## Overview\n\nup\n\n## Usage\n\nu\n")
+		mustWrite(t, filepath.Join(dir, "me", "doc.md"), "# Title\n\n## 概述\n\no\n\n## 用法\n\ny\n")
+		mustWrite(t, tpl, template)
+		c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+
+	c := setup("base \"up\"\nself \"me\"\n", "")
+	if _, err := build.PlanBuild(c, true); err == nil || !strings.Contains(err.Error(), "can't infer an anchor") {
+		t.Errorf("without the setting this is still a build error, not a guess: %v", err)
+	}
+
+	c = setup("body append\nbase \"up\"\nself \"me\"\n", "")
+	plan, err := build.PlanBuild(c, true)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if got := readFile(t, tpl); got != "base.append(self.body)\n" {
+		t.Errorf("the statement was not written into the template: %q", got)
+	}
+	var noted bool
+	for _, l := range plan.Report.Anchored {
+		if strings.Contains(l.Detail, "body taken whole") {
+			noted = true
+		}
+	}
+	if !noted {
+		t.Errorf("writing it was not reported: %+v", plan.Report.Anchored)
+	}
+	if _, err := build.PlanBuild(c, true); err != nil {
+		t.Fatalf("second build: %v", err)
+	}
+	if again := readFile(t, tpl); again != "base.append(self.body)\n" {
+		t.Errorf("a second build wrote again: %q", again)
+	}
+
+	// Where a section of ours can follow an upstream one, the neighbour rule still decides: the
+	// setting answers having no neighbour, it does not switch that rule off.
+	mustWrite(t, filepath.Join(dir, "me", "doc.md"), "# Title\n\n## Overview\n\nours\n\n## 用法\n\ny\n")
+	mustWrite(t, tpl, "base.Overview.after(self.Overview)\n")
+	if _, err := build.PlanBuild(c, true); err != nil {
+		t.Fatalf("build with a placeable section: %v", err)
+	}
+	if got := readFile(t, tpl); strings.Contains(got, "self.body") {
+		t.Errorf("the whole body was taken though a section could be placed:\n%s", got)
+	}
+
+	// And where some sections can be placed and others cannot, taking the body whole would write
+	// the placeable ones twice — once in their inferred place and once in the body. 甲 follows a
+	// section that is woven in, so it has a place; 乙 follows one that is replaced, so it has none.
+	mustWrite(t, filepath.Join(dir, "me", "doc.md"),
+		"# Title\n\n## Overview\n\nours\n\n## 甲\n\na\n\n## Usage\n\nmine\n\n## 乙\n\nb\n")
+	mustWrite(t, tpl, "base.Overview.after(self.Overview)\nbase.Usage.replace(self.Usage, reason: \"ours entirely\")\n")
+	_, err = build.PlanBuild(c, true)
+	if err == nil {
+		t.Error("a section with no neighbour should still stop the build when others have one")
+	} else if !strings.Contains(err.Error(), "can't infer an anchor") {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if got := readFile(t, tpl); strings.Contains(got, "self.body") {
+		t.Errorf("the body was taken whole while some sections had a place:\n%s", got)
+	}
+}
