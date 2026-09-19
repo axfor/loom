@@ -1,76 +1,46 @@
-# What Loom is for
+# Loom 是什么
 
-A design note about the shape of the language, written while deciding what it should become. The
-README says what it does today; this says what it is, which is larger.
+一份设计笔记，写于决定这门语言该走向哪里的时候。README 讲它今天做什么；这份讲它是什么，后者更大。
 
-## The thesis
+## 论点
 
-> Take documents and data that are scattered across kinds and places, and organise them into one
-> structured, **referenceable** fabric.
+> 把散落在各种类型和位置的**文档与数据**，组织成一张结构化、**可引用**的布。
 
-Weaving an upstream layer and your own into a product is one thing you can do once that fabric
-exists. It is not the point. It is the first use.
+把上游层和我们自己的层织成产物，是这张布存在之后能做的一件事。那不是目的，是第一个用法。
 
-Three words carry the weight.
+三个词各自扛着分量。
 
-**Scattered.** Markdown, shell, toml, json, yaml, csv, source — a skill set, a config tree, a
-documentation set is all of them at once, and every tool that touches them treats each kind as a
-separate world with its own editor, its own patcher, its own way of going wrong.
+**散落。** Markdown、shell、toml、json、yaml、csv、源码——一套 skill、一棵配置树、一份文档集，同时是这些东西。而碰它们的每个工具都把每种类型当成独立的世界：各自的编辑器、各自的打补丁方式、各自出错的方式。
 
-**Structured.** A document is not a string. It is a set of parts with names: a heading and what
-follows it, a function, a key, a frontmatter field, a row. Every one of those already has a name its
-author gave it. Nothing needs inventing; the names are there to be picked up.
+**结构化。** 文档不是字符串。它是一组**有名字的部分**：一个标题和它底下的内容、一个函数、一个键、一个 frontmatter 字段、一行记录。这些名字**作者已经写好了**，不需要发明——只需要捡起来。
 
-**Referenceable.** This is the part that makes it a fabric rather than a pile. If every part of
-every document can be named, then one document can point at part of another instead of copying it,
-a product can be assembled from many sources rather than two layers, and the question "what depends
-on this section" becomes answerable.
+**可引用。** 这一条才让它成为一张布而不是一堆纸。如果每份文档的每个部分都能被命名，那么一份文档就可以**指向**另一份的某个部分而不是复制它；一个产物可以由多个来源装配，而不只是两层叠加；「什么依赖了这一节」这个问题才有答案。
 
-## Why the guarantee comes free
+## 保证为什么是白送的
 
-Every operation in the language resolves a name to a range of a document and splices around it.
-Nothing else. Because no operation can touch a range that was not named, "did anything unnamed
-change" is decidable — not by running the build and looking, but by construction.
+语言里每一个操作，都是把一个名字解析成文档的一段范围，然后在它周围拼接。没有别的。因为**没有任何操作能碰到没被命名的范围**，所以「有没有什么没被命名的东西变了」是**可判定的**——不是靠构建完再看，而是由构造决定。
 
-That is worth stating plainly because it is the whole advantage, and it generalises past weaving:
+值得把这句话单独说清楚，因为它就是全部的优势所在，而且它超出编织本身仍然成立：
 
-> A view over the fabric cannot silently lose what it did not name.
+> **一个视图不可能悄悄丢掉它没有命名的东西。**
 
-`lm build` asserts it today by comparing bytes. Whatever the fabric grows into — more sources than
-two, products assembled rather than woven, documents that reference instead of copy — that sentence
-is the thing to keep true. Anything that cannot keep it true belongs behind a written reason and a
-line in the report saying nobody verified it.
+今天 `lm build` 用字节比对来断言这件事。这张布将来长成什么样——来源多于两层、产物是装配而非编织、文档之间互相引用而不复制——**要守住的都是这一句**。任何守不住它的东西，都必须待在「写明理由 + 报告里单列一行说没人验过」的位置。
 
-## What the fabric still lacks
+## 这张布还缺什么
 
-**Kinds.** Five so far. A kind costs roughly a hundred lines — text 27, shell 93, toml 99, markdown
-111; json is 207 plus a 220-line parser only because merging a registry needs real parsing. What
-limits "all documents" is a switch statement, not the design.
+**类型。** 目前五种。一种类型约一百行——text 27、shell 93、toml 99、markdown 111；json 是 207 加一个 220 行的解析器，只因为合并 registry 需要真解析。**限制「一切文档」的是一条 switch 语句，不是设计。**
 
-**Identity.** A thread is tied to the words its author wrote: a section is addressed by its heading
-text, a function by its name. Rename the heading upstream and every reference to it breaks. Today
-that fails loudly, which is the right answer for a build and the wrong one for a fabric meant to be
-referenced over years. A referenceable corpus eventually needs names that survive an edit — and
-that is a real design problem, not a feature request.
+**身份。** 线是系在作者写的字上的：一个节的地址是它的标题文字，一个函数的地址是它的函数名。上游改个标题，指向它的引用全断。今天这件事会**大声失败**——对一次构建这是对的答案，对一张要被引用很多年的布是错的。一个可引用的语料库最终需要**扛得住编辑的身份**。这是真正的设计问题，不是一个功能请求。
 
-**Saying something once.** Across the 81 templates of the one project using Loom, 291 statements
-carry 68 occurrences of four identical lines, and 24 of the templates contain nothing that is not
-boilerplate. There is no way to state a rule once and have it apply. Abstraction that expands into
-the same closed set of operations keeps the guarantee; abstraction that returns computed text does
-not, and would put the answer to "did anything unnamed change" back to "run it and look".
+**说一次的能力。** 在唯一使用 Loom 的那个项目里，81 个模板、291 条语句，其中 68 条是四行逐字相同的样板，24 个模板里没有一句是它自己特有的。没有任何机制能把一条规则只说一次。**展开成同一套封闭操作**的抽象不破坏保证；**返回计算文本**的抽象会，它把「有没有东西悄悄变了」打回「跑一遍看看」。
 
-**Direction.** References point one way, at build time, and vanish. The fabric knows that a template
-names a heading; it cannot answer who names this heading, what would break if it moved, or what a
-product is made of, without being asked to build.
+**方向。** 引用是单向的、只活在构建期、之后就蒸发。这张布知道「某个模板引用了某个标题」，却答不出：谁引用了这个标题、它移走会炸掉什么、这个产物由什么组成——除非重新构建一遍。
 
-## The question that decides the next step
+## 决定下一步的那个问题
 
-The argument rests on one claim: that what people want to do to documents can be said as *name a
-part, and place something in relation to it*. It is falsifiable, and worth testing before any syntax
-is drawn.
+整个论证压在一个尚未验证的判断上：**人们想对文档做的事，都能说成「命名一个部分，并相对它放置些什么」**。这是可证伪的，值得在画任何语法之前先验。
 
-> Is there a real change you wanted to make, and could not express as naming a part of a document?
+> **有没有一个你真的想做、却没法表达成「命名文档的某个部分」的改动？**
 
-If there is, that is where the design starts, and it is worth more than any proposed syntax. If
-there is not, then what is missing is narrower than it looks — more kinds, stable identity, the
-ability to say something once — and the order to build them in is the order they are listed above.
+如果有——设计就从那里开始，它比任何语法草案都值钱。
+如果没有——那缺的东西比看上去窄得多：更多类型、稳定的身份、说一次的能力。而该动手的顺序，就是上面列出的顺序。
