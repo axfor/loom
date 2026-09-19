@@ -467,6 +467,12 @@ func (in *interp) select_(r *receiver, st oStep) error {
 			r.kind, r.anchor, r.ident, r.pos = "fmkey", st.name, false, st.pos
 			return nil
 		}
+		// Key path: base.jobs.test — yaml and json address a nested key by the dotted path of
+		// its parents, so a name below a key extends that path instead of starting a new lookup.
+		if !st.call && hasValues(r.typ) && r.kind == defaultKind[r.typ] && r.viewOf == "" {
+			r.anchor, r.ident, r.pos = r.anchor+"."+st.name, false, st.pos
+			return nil
+		}
 		// Section path: base."Example 2"."Phase 1" — look for the child within the parent's whole section
 		if st.call || r.typ != "markdown" || r.kind != "heading" || (!st.str && (st.name == "frontmatter" || st.name == "body")) {
 			return fmt.Errorf("%s: below a node you can only select a markdown section by name, base.\"Parent\".\"Child\", or a frontmatter key, base.frontmatter.description", st.pos)

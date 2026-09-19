@@ -189,7 +189,7 @@ func TestWeaveYaml(t *testing.T) {
 	write("loom.om", "base \"up\"\nself \"me\"\n")
 	write("up/ci.yaml", "name: build\n\njobs:\n  test:\n    runs-on: ubuntu-latest\n")
 	write("me/ci.yaml", "  lint:\n    runs-on: ubuntu-latest\n")
-	write("me/ci.lm", "base.\"jobs.test\".after(self.lint)\n")
+	write("me/ci.lm", "base.jobs.test.after(self.lint)\n")
 
 	c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
 	if err != nil {
@@ -208,6 +208,20 @@ func TestWeaveYaml(t *testing.T) {
 	want := "name: build\n\njobs:\n  test:\n    runs-on: ubuntu-latest\n\n  lint:\n    runs-on: ubuntu-latest\n"
 	if got != want {
 		t.Errorf("got:\n%q\nwant:\n%q", got, want)
+	}
+
+	// The quoted whole path means the same thing, for a segment a dot cannot spell.
+	write("me/ci.lm", "base.\"jobs.test\".after(self.lint)\n")
+	tpl2, err := lang.LoadTemplate(c, filepath.Join(dir, "me", "ci.lm"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	quoted, err := build.Weave(c, tpl2)
+	if err != nil {
+		t.Fatalf("weave (quoted path): %v", err)
+	}
+	if quoted != got {
+		t.Errorf("the quoted path wove something else:\n%q", quoted)
 	}
 }
 
