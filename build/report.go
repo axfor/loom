@@ -53,7 +53,7 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 	whole := t.From != "" && t.From != c.Warp
 	merged := false
 	var inserted []string
-	var drops, replaces, moves []lang.Stmt
+	var drops, replaces, moves, levels []lang.Stmt
 	var walk func(ss []lang.Stmt)
 	walk = func(ss []lang.Stmt) {
 		for _, s := range ss {
@@ -66,6 +66,8 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 				replaces = append(replaces, s)
 			case "move":
 				moves = append(moves, s)
+			case "promote", "demote":
+				levels = append(levels, s)
 			case "after", "before", "append", "prepend":
 				for _, ref := range s.Srcs {
 					inserted = append(inserted, refName(ref))
@@ -136,6 +138,10 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 		r.Moved = append(r.Moved, ReportLine{t.Target + " § " + realName(s),
 			s.Move.Side + " " + s.Move.Anchor + " · bytes unchanged"})
 	}
+	for _, s := range levels {
+		r.Moved = append(r.Moved, ReportLine{t.Target + " § " + realName(s),
+			s.Op + "d · only the heading level changed"})
+	}
 	switch {
 	case whole:
 		r.Overridden = append(r.Overridden, ReportLine{t.Target, "whole file · " + t.UseReason})
@@ -170,7 +176,7 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 		// The frontmatter may be changed by set / start / append, so only the body is compared.
 		// A move reorders upstream, so the body cannot match it line for line — what a move
 		// promises instead is checked just below, and it is a stronger promise.
-		if t.Type == "markdown" && !whole && !merged && len(drops)+len(replaces)+len(moves) == 0 {
+		if t.Type == "markdown" && !whole && !merged && len(drops)+len(replaces)+len(moves)+len(levels) == 0 {
 			body := func(s string) string {
 				b, _ := ast.NewMarkdown(s).BodyOf("body")
 				return strings.TrimRight(b, "\n")
@@ -198,6 +204,26 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 			if got != want {
 				errs = append(errs, fmt.Errorf("%s: %s was moved and its own bytes changed — a move may change where a node is, never what it is", s.Rng, s.Anchor))
 			}
+		}
+	}
+
+	// What promote and demote promise: only the heading markers moved. Strip the markers from
+	// both sides and the section must be identical — its text, its code fences, everything.
+	for _, s := range levels {
+		if !upOK {
+			break
+		}
+		want, err := nodeText(upTree, s.Kind, s.Within, s.Anchor, s.Ident, s)
+		if err != nil {
+			continue
+		}
+		got, err := nodeText(ast.New(t.Type, outText), s.Kind, s.Within, s.Anchor, s.Ident, s)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s: %s was %sd but is not in the product", s.Rng, s.Anchor, s.Op))
+			continue
+		}
+		if unlevel(got) != unlevel(want) {
+			errs = append(errs, fmt.Errorf("%s: %s was %sd and something other than its heading level changed", s.Rng, s.Anchor, s.Op))
 		}
 	}
 
@@ -430,7 +456,7 @@ func (r *Report) Print(w io.Writer) {
 	section("extended         ", r.Extended, "files ", "upstream kept whole, ours inserted", 5)
 	section("overridden       ", r.Overridden, "files ", "ours replaces part or all of upstream", -1)
 	section("dropped          ", r.Dropped, "places", "left out on purpose", -1)
-	section("moved            ", r.Moved, "places", "put elsewhere, byte for byte", -1)
+	section("restructured     ", r.Moved, "places", "moved or re-levelled, content unchanged", -1)
 	fmt.Fprintf(w, "added             %4d files   only in our layer\n", len(r.Added))
 	fmt.Fprintf(w, "not taken         %4d files   in upstream, not listed in take\n", len(r.Untaken))
 	for i, p := range r.Untaken {
@@ -509,4 +535,16 @@ func nodeText(tree ast.Tree, kind string, within []lang.Seg, anchor string, iden
 		lines = lines[:len(lines)-1]
 	}
 	return strings.Join(lines, "\n"), nil
+}
+
+// unlevel drops the leading # markers of the first line, so two sections can be compared
+// for everything except the level promote and demote are allowed to change.
+func unlevel(sec string) string {
+	i := strings.IndexByte(sec, '\n')
+	head := sec
+	rest := ""
+	if i >= 0 {
+		head, rest = sec[:i], sec[i:]
+	}
+	return strings.TrimLeft(head, "#") + rest
 }

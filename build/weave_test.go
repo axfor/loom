@@ -373,3 +373,54 @@ func TestMoveTargetInsideItself(t *testing.T) {
 		t.Errorf("wrong error: %v", err)
 	}
 }
+
+// promote and demote change one thing: the heading markers. Everything the section holds —
+// its text, a code fence with a # in it — comes through untouched, and the build checks it.
+func TestWeaveHeadingLevel(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\n")
+	mustWrite(t, filepath.Join(dir, "up", "doc.md"),
+		"## Setup\n\ntext with `code`\n\n```sh\n# not a heading\n```\n\n## Other\n\no\n")
+
+	weave := func(tpl string) (string, error) {
+		mustWrite(t, filepath.Join(dir, "me", "doc.lm"), tpl)
+		c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		tm, err := lang.LoadTemplate(c, filepath.Join(dir, "me", "doc.lm"))
+		if err != nil {
+			return "", err
+		}
+		return build.Weave(c, tm)
+	}
+
+	got, err := weave("base.Setup.demote()\n")
+	if err != nil {
+		t.Fatalf("demote: %v", err)
+	}
+	if !strings.HasPrefix(got, "### Setup\n") {
+		t.Errorf("demote did not add a level: %q", got[:20])
+	}
+	for _, keep := range []string{"text with `code`", "# not a heading", "## Other"} {
+		if !strings.Contains(got, keep) {
+			t.Errorf("demote disturbed %q", keep)
+		}
+	}
+
+	got, err = weave("base.Setup.promote()\n")
+	if err != nil {
+		t.Fatalf("promote: %v", err)
+	}
+	if !strings.HasPrefix(got, "# Setup\n") {
+		t.Errorf("promote did not remove a level: %q", got[:20])
+	}
+
+	// The ends of the range are refused rather than silently doing nothing.
+	if _, err := weave("base.Setup.promote()\nbase.Setup.promote()\n"); err == nil {
+		t.Error("promoting past the top level was accepted")
+	}
+	if _, err := weave("base.Setup.demote()\nbase.Other.demote()\nbase.Setup.after(self.x)\n"); err == nil {
+		t.Error("expected an error for the unknown self.x, got none")
+	}
+}

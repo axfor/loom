@@ -409,6 +409,7 @@ exactly one heading.
 | `replace` | `base` | whole-file replace: `base.replace(self, reason: "...")` | a file object, `reason:` |
 | `drop` | node | leave the node out of the product on purpose | `reason:` |
 | `move` | node | put the node somewhere else in the same file | `after:` or `before:`, naming a node of upstream |
+| `promote` / `demote` | markdown section | take the heading up or down one level | none |
 | `set` | `frontmatter` | take our whole frontmatter: `base.frontmatter.set(self.frontmatter)` | `self.frontmatter` |
 | `set` | key value | the value becomes ours: `base.frontmatter."argument-hint".set(self.frontmatter."argument-hint")`, `base.description.set(self.description)`; adds a frontmatter key upstream does not have | one value |
 | `merge` | `base` | the product is upstream's file and ours together. For a script ours is the product and `lm sync` carries the edits onto each new upstream ([Following upstream](#following-upstream)); for a json registry the entries are merged by identity, ours winning where both register the same handler ([Registries](#registries)) | `self` |
@@ -469,9 +470,23 @@ base.Troubleshooting.move(after: base.B)
 base."Quick Start".move(before: base.Install)
 ```
 
-A move is the one thing here that promises *more* than an insertion does. An insertion promises
-upstream is untouched around it; a move promises the node itself came through unchanged, which is
-why it is checked rather than assumed.
+`promote` and `demote` are the same kind of thing for heading level — when you wrap upstream's
+sections under one of your own, everything below has to shift a level:
+
+```
+base.Setup.demote()
+```
+
+Only the `#` markers change. The build strips the markers from both sides and the section must be
+identical otherwise, so a code fence with a `#` in it, or anything else inside, cannot quietly move.
+
+These are the operations that promise *more* than an insertion does. An insertion promises upstream
+is untouched around it; these promise the node itself came through unchanged — byte for byte for a
+move, everything-but-the-level for a re-levelling — which is why each is checked rather than
+assumed, and why neither needs a reason. The report lists them under `restructured`.
+
+Two statements that write over the same lines are a conflict, not a question of precedence: the
+build stops and names both, because whichever lost would leave no trace.
 
 ### Views
 

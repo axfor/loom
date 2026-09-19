@@ -9,11 +9,15 @@ package build
 import (
 	"fmt"
 	"github.com/axfor/loom/lang"
+	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/axfor/loom/ast"
 )
+
+// reHeading splits a heading into its # markers and the rest.
+var reHeading = regexp.MustCompile(`^(#{1,6})(\s.*)$`)
 
 type edit struct {
 	s, e int
@@ -245,6 +249,35 @@ func apply(c *lang.Config, t *lang.Template, stmts []lang.Stmt, tree ast.Tree, r
 			}
 			edits = append(edits, edit{at, at, repl, len(edits)})
 			edits = append(edits, edit{src[0], src[1], nil, len(edits)})
+		case "promote", "demote":
+			// Only the heading markers change. Everything else the section holds — its own text,
+			// its code fences, its trailing blank lines — is spliced back exactly as it was, which
+			// is what the build checks afterwards.
+			if t.From != "" && t.From != c.Warp {
+				continue
+			}
+			span, _, err := locate(tree, s.Kind, s.Within, s.Anchor, s.Ident, s)
+			if err != nil {
+				return err
+			}
+			lines := append([]string{}, tree.Lines()[span[0]:span[1]]...)
+			g := reHeading.FindStringSubmatch(lines[0])
+			if g == nil {
+				return fmt.Errorf("%s: %s is not a heading", s.Rng, s.Anchor)
+			}
+			level := len(g[1])
+			if s.Op == "promote" && level == 1 {
+				return fmt.Errorf("%s: %s is already a top-level heading", s.Rng, s.Anchor)
+			}
+			if s.Op == "demote" && level == 6 {
+				return fmt.Errorf("%s: %s is already the deepest heading markdown has", s.Rng, s.Anchor)
+			}
+			if s.Op == "promote" {
+				lines[0] = lines[0][1:]
+			} else {
+				lines[0] = "#" + lines[0]
+			}
+			edits = append(edits, edit{span[0], span[1], lines, len(edits)})
 		case "append", "prepend":
 			// Each item in the list is its own edit — exactly equivalent to writing several append statements.
 			for _, ref := range s.Srcs {
@@ -298,6 +331,24 @@ func apply(c *lang.Config, t *lang.Template, stmts []lang.Stmt, tree ast.Tree, r
 				edits = append(edits, edit{hits[0][0], hits[0][1], strings.Split(fm, "\n"), len(edits)})
 			} else {
 				edits = append(edits, edit{0, 0, append(strings.Split(fm, "\n"), ""), len(edits)})
+			}
+		}
+	}
+	// Two statements writing over the same lines is a conflict, not a precedence question:
+	// the product would depend on which ran last, and the one that lost would be invisible.
+	// Insertions are empty spans and stack in template order, so only spans that cover
+	// something can collide.
+	for i := range edits {
+		if edits[i].s == edits[i].e {
+			continue
+		}
+		for j := i + 1; j < len(edits); j++ {
+			if edits[j].s == edits[j].e {
+				continue
+			}
+			if edits[i].s < edits[j].e && edits[j].s < edits[i].e {
+				return fmt.Errorf("%s: two statements write over the same lines (%d-%d and %d-%d) — one of them would be lost",
+					t.Path, edits[i].s+1, edits[i].e, edits[j].s+1, edits[j].e)
 			}
 		}
 	}

@@ -41,7 +41,7 @@ var kindCalls = map[string]map[string]string{
 }
 
 // editMethods are the methods that change base.
-var editMethods = []string{"after", "before", "start", "append", "replace", "drop", "move", "set", "merge"}
+var editMethods = []string{"after", "before", "start", "append", "replace", "drop", "move", "promote", "demote", "set", "merge"}
 
 func typeWords() []string { return []string{"markdown", "toml", "yaml", "json", "shell", "text"} }
 
@@ -638,6 +638,14 @@ func (in *interp) method(r receiver, st oStep) error {
 			return fmt.Errorf("%s: move takes a different node as its target", at)
 		}
 		out = append(out, Stmt{Op: "move", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, Within: r.within, Move: moveTo, Rng: at})
+	case "promote", "demote":
+		if !r.node || len(pos) != 0 {
+			return fmt.Errorf("%s: %s applies to a node and takes nothing: base.X.%s()", at, st.name, st.name)
+		}
+		if r.typ != "markdown" || r.kind != "heading" {
+			return fmt.Errorf("%s: %s is about heading level, so it applies to a markdown section", at, st.name)
+		}
+		out = append(out, Stmt{Op: st.name, Kind: r.kind, Anchor: r.anchor, Ident: r.ident, Within: r.within, Rng: at})
 	case "set":
 		if !r.node || len(pos) != 1 {
 			return fmt.Errorf("%s: set applies to a node and takes one value: base.frontmatter.set(self.frontmatter)", at)
