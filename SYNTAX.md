@@ -6,29 +6,39 @@
 
 ## 0. 先看全貌
 
-```go
+````go
 // xsdd/skills/testing/SKILL.lm
 // 产物是 skills/testing/SKILL.md
 
-base.frontmatter.description.start(self.frontmatter.description)
+base.frontmatter.description.start(self.description)
 
-base.Overview.after(self."Where this fits")
+base.Overview.after(self.job)
 
 base.Verification.before:
     ## 自检清单
 
-    跑 `lm check` 确认：
-
-    ```sh
-    lm check -o ../plugins/XSDD
-    ```
+    跑 `lm check` 确认产物是最新的。
 
 base."How it compares".drop(reason: "上游在和别的项目比，与我们无关")
 
-base.append(self.body)
-```
+---
+Self:
+    ```markdown
+    # job
 
-一个 `.lm` 文件产出一个产物。**文件本身就是函数体**——没有 `func`、没有 `package`、没有 `import`。
+    它在 XSDD 的 build 阶段之后、review 之前。
+    ```
+
+    ```yaml
+    description: 先写会失败的测试。
+    ```
+````
+
+一个 `.lm` 产出一个产物，**内容和位置写在同一个文件里**。
+
+- 顶层语句按顺序执行，**文件就是函数体**
+- `---` 之后是**资源段**：`Self` 声明我们这一层由什么构成，`self` 是它的实例
+- 没有 `package`；`fn`（§6.5）只用来在文件内分组，`import`（§6.6）只引内容
 
 ---
 
@@ -231,15 +241,34 @@ base.append(self.frontmatter)                       整个 frontmatter
 base."X".after(a, b, c)                            多个，按序
 ```
 
-### 6.2 内容段：`self` 写在文件里
+### 6.2 资源段：`Self` 写在文件里
 
-文件底部用 `---` 分隔出**内容段**，`self` 在这里定义。围栏带语言标签，标签就是种类。
+文件底部用 `---` 分隔出**资源段**，`Self` 在这里声明。
+
+**`Self:` 之后是缩进块**——和写内容的 `after:` 是同一条规则：冒号 + 换行 + 缩进，缩进定界。语言里只有这一条块规则。
+
+缩进之内是若干带语言标签的围栏，**标签就是种类**。
+
+**`Self` 是类，`self` 是实例。** 底部的 `Self:` 声明我们这一层由什么构成；语句里的 `self` 是它的实例，寻址走实例。
+
+```go
+base.Overview.after(self.job)     ← 实例，小写
+
+---
+Self:                              ← 类型声明，大写
+    ```markdown
+    # job
+    ...
+    ```
+```
+
+`base` 同理：它是上游那份文档的实例。今天上游没有可声明的类型（它是别人的），所以只有小写的 `base`。
 
 ```go
 base.Overview.after(self.job)
 
 ---
-self:
+Self:
     ```markdown
     # job
 
@@ -263,24 +292,26 @@ self.job                 种类省掉 —— 只有一份有 job 时，编译器
 
 **省掉种类时，编译器在所有份里找**。找到一个就用它；找到两个就报错，要求写出种类。不猜。
 
-### 具名内容段
+### 具名资源
 
 ```go
 base.Overview.after(self.n1.job)
 base.Overview.after(self.n2.ddd)
 
 ---
-self as n1:
+Self as n1:
     ```markdown
     # job
     第一份
     ```
 ---
-self as n2:
+Self as n2:
     ```json
     { "ddd": 11 }
     ```
 ```
+
+`Self as n1:` 声明一组具名资源，实例上就是 `self.n1`。
 
 地址的完整形状：
 
@@ -296,7 +327,7 @@ self [.段名] [.种类] .部分
 
 ````go
 ---
-self:
+Self:
     `````markdown
     # 用法
 
@@ -308,7 +339,7 @@ self:
 
 ### 内容还能留在外部文件
 
-没有内容段时，`self` 仍然是**我们层里同路径的那份文件**，和今天一样。
+没有资源段时，小写 `self` 仍然是**我们层里同路径的那份文件**，和今天一样。
 
 两种都留着，因为它们各有各的场合：
 
@@ -317,11 +348,11 @@ self:
 | 写在 `.lm` 里 | 内容短、和位置语句一起读才说得清 |
 | 留在外部文件 | 内容长（几百行的 skill）、要 markdown 编辑器和预览、要被 `lm sync` 三方合并 |
 
-**一个 `.lm` 只能选一种**，两种都有是错误——否则「`self` 到底指谁」就没有唯一答案。
+**一个 `.lm` 只能选一种**：要么在本文件里 `Self:` 声明，要么让 `self` 指向外部文件。两个都有时 `self` 就有两个来源，是错误。
 
 ### 于是一个产物一个文件
 
-内容段把今天的两个文件合成一个：
+资源段把今天的两个文件合成一个：
 
 ```
 今天                          全新
@@ -340,6 +371,53 @@ xsdd/skills/testing/SKILL.lm  →  xsdd/skills/testing/SKILL.lm
 | 编织类产物（67） | 2 个文件 | **1 个** |
 | `return self` 类（14） | 2 个文件 | 2 个（内容必须是真文件） |
 | `loom.om` / `lm.e` | 树一级 | 不变 |
+
+### 6.5 函数：在文件内组织
+
+一个 `.lm` 只产出一个产物，所以不需要跨文件复用；但一个文件里语句多起来时，要能分组：
+
+```go
+fn frontmatter() {
+    base.frontmatter.description.start(self.frontmatter.description)
+    base.append(self.body)
+}
+
+fn sections() {
+    base.Overview.after(self.job)
+    base.Verification.before(self.checklist)
+}
+
+frontmatter()
+sections()
+```
+
+**顶层语句按出现顺序执行**（文件就是函数体，§0）。`fn` 定义的要被调用才执行，没有隐含的入口。
+
+函数**没有返回值**。写操作不返回成功与否——这是这门语言唯一一条硬禁令，理由见 §11.1。
+
+参数可以传地址：
+
+```go
+fn bilingual(up, ours) {
+    up.after(ours)
+}
+
+bilingual(base.Overview, self.job)
+```
+
+### 6.6 `import`：引用别处的内容
+
+```go
+import "/commands/ship"          名字取自文件名：ship
+import b "/commands/build"       改个名
+
+base.append(ship.body)
+base.Overview.after(b.json.steps)
+```
+
+`import` 引入的是**我们这一层的另一份内容**，用法和 `self` 一样——它也是实例，也可以有种类和部分。
+
+`import` 只能引内容，**不能引函数**：函数是文件内的组织手段，跨文件会让「只有一类 `.lm`」站不住（§6.2）。
 
 ## 6.3 块
 
@@ -482,14 +560,20 @@ base.Overview.after(self.boot)
 ## 10. 文法
 
 ```ebnf
-file       = { comment | stmt | return } ;
+file       = { comment | import | fn | stmt | call | return } [ resources ] ;
+
+import     = "import" [ ident ] string ;
+fn         = "fn" ident "(" [ ident { "," ident } ] ")" "{" { stmt | call } "}" ;
+call       = ident "(" [ args ] ")" ;
+resources  = "---" NEWLINE { resource } ;
+resource   = "Self" [ "as" ident ] ":" NEWLINE indented-fences ;
 
 stmt       = target "(" [ args ] ")"
            | target ":" block ;
 return     = "return" target [ "//" reason ] ;
 
 target     = root { selector | "." word } ;
-root       = "base" | "self" ;
+root       = "base" | "self" | ident ;   (* import 进来的名字、函数参数 *)
 selector   = "[" predicate "]" ;                (* 方括号只用于谓词 *)
 word       = class | axis | place | op | "as" "(" kind ")" | name ;
 name       = ident | string ;                   (* 名字，原样匹配；不加引号时语言的词优先 *)
