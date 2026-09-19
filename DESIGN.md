@@ -390,7 +390,76 @@ for sec := range base.sections {
 
 **这是这份设计目前唯一确知的缺口。**
 
-## 6.6 未决：五个语法决定
+## 6.6 全新语法：三个方案
+
+不是微调今天的写法，是重画。共同前提：**名字只有一种写法**。
+
+今天有两种——标识符形式 `base.How_Skills_Work`（下划线代空格）和字符串形式 `base."How it compares"`，外加一条「标识符撞名时报错、改用字符串」的规则。Go 里没有这种东西：动态名字用索引取。**全新设计应该整条删掉它**，只留索引。
+
+三个方案的差别在**「部分」怎么被取到**。同一个真实文件（`xsdd/docs/getting-started.lm`，逐节翻译）。
+
+### 甲 · 索引取部分，位置是方法
+
+```go
+package docs
+
+func GettingStarted(up, mine markdown) {
+    up["How Skills Work"].after(mine["Skill 如何工作"])
+    up["Quick Start (Any Agent)"].after(mine["Quick Start（任何 agent）"])
+    up["1. Clone the repository"].after(mine["1. clone 仓库"])
+    // …还有 13 行
+}
+```
+
+索引结果是**一个部分**，部分上挂位置方法。最贴近 Go 的 map + 方法。
+16 行还是 16 行。
+
+### 乙 · 文档是接收者，锚点是参数
+
+```go
+func GettingStarted(up, mine markdown) {
+    up.after("How Skills Work", mine["Skill 如何工作"])
+    up.after("Quick Start (Any Agent)", mine["Quick Start（任何 agent）"])
+    // …
+}
+```
+
+所有操作都是**文档的方法**，锚点退化成普通参数。好处：`up` 的方法集是固定的、可补全、可类型检查；不需要「索引出来的东西是什么类型」这一层。
+坏处：读起来「在谁之后」被埋进参数里，没有甲直观。
+
+### 丙 · 选择器是唯一入口，单个是特例
+
+```go
+func GettingStarted(up, mine markdown) {
+    up.sections().align(mine.sections())
+}
+```
+
+取一个部分是「取一组」的退化情况：
+
+```go
+up.sections("Overview").after(mine.sections("Where this fits"))
+up.sections(level(2)).demote()
+```
+
+**16 行变 1 行**——因为它承认了这个文件真正在说的是「两个序列对齐」（L3 的缺口）。
+坏处：最简单的事也要经过选择器，下限被抬高了。
+
+---
+
+### 三者的取舍
+
+| | 名字怎么取 | 最简单的一句 | 16 行的那个文件 | 最像 |
+|---|---|---|---|---|
+| 甲 | 索引 → 部分 | `up["X"].after(y)` | 16 行 | Go 的 map |
+| 乙 | 参数 | `up.after("X", y)` | 16 行 | Go 的方法集 |
+| 丙 | 选择器 | `up.sections("X").after(y)` | **1 行** | jQuery / XPath |
+
+**甲和乙是同一个语言的两种写法**，差别只在锚点放哪。**丙是另一个语言**——它把「一组」当成基本情况，于是词汇表（L3）和它天然贴合，但简单的事变啰嗦。
+
+一个折中是**甲 + 丙**：索引取一个，`.sections(...)` 取一组，两者都在。代价是有两条取部分的路。
+
+## 6.7 未决：五个语法决定
 
 其余语法都是这五条的后果。决定一条就在「状态」里记一笔，不要只留在对话里。
 
@@ -462,7 +531,7 @@ base.merge(self)   // 今天
 
 **B 替代：编译器推断**——根本不写套用，按结构自己算。更符合 L7.1，但假设不成立时必须响亮失败。
 
-## 6.7 文法
+## 6.8 文法
 
 ```ebnf
 file       = { comment | doc | import | func | directive } ;
@@ -493,7 +562,7 @@ kind       = "markdown" | "shell" | "toml" | "json" | "text" | ... ;
 
 **没有表达式、没有赋值、没有算术。** `return` 只能返回一份文档，不能返回算出来的文本——那条由 L5.2 的类型规则挡住。
 
-## 6.8 刻意不要的
+## 6.9 刻意不要的
 
 | 不要 | 为什么（全部来自 L0） |
 |---|---|
