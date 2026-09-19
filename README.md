@@ -4,7 +4,15 @@
 
 # LOOM
 
-**A language for extending someone else's AI skills — and still taking their updates.**
+> ### A structured programming language for resource files of every kind.
+> **Every resource becomes structure. Every part of it is referenced as an object.**
+
+Markdown, shell, JavaScript, JSON, YAML, TOML — each is parsed into an object of named parts, and
+the language programs against those objects: reference them, place them, transform them. The names
+are the ones their authors already wrote — a heading, a function, a key — so nothing has to be
+annotated first.
+
+**Today that language extends someone else's AI skills, and still takes their updates.**
 
 A skill set is files: `SKILL.md` with its frontmatter and its sections, commands, hooks that
 register a handler in a json file, shell scripts they call. You want a section of your own inside
@@ -33,11 +41,17 @@ every file. Upstream content can only be dropped or replaced with a written reas
 reason shows up in the build report. When an anchor is gone or matches twice, the build stops
 rather than guessing.
 
-**Where this is going.** Today Loom is a language for extending a skill set you do not own. The
-longer aim is a language for writing skills in the first place: one source, built for every platform
-you target, since what differs between them is the layout and the wrapping, not the content.
-`mirror` is already the small version of that — one build writing the same commands into the two
-places two tools expect to find them.
+**Where this is going.** Extending a skill set you do not own is the first use of the fabric, not
+the point of it. Once every resource is an object of named parts, a product can be assembled from
+many sources rather than two layers, one document can reference part of another instead of copying
+it, and "what depends on this section" becomes a question with an answer. The nearer aim along that
+line is writing skills in the first place — one source, built for every platform you target, since
+what differs between them is the layout and the wrapping, not the content. `mirror` is already the
+small version of that, one build writing the same commands into the two places two tools expect to
+find them.
+
+The design that follows from this is worked out in [DESIGN.md](DESIGN.md), and the language it
+implies in [SYNTAX.md](SYNTAX.md). Neither is built yet.
 
 The name is the mechanism. The warp is upstream: kept whole, never cut. The weft is your layer,
 threaded through it. The cloth is the product — **pull the weft out and the warp is still there.**
