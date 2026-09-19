@@ -422,7 +422,182 @@ kind       = "markdown" | "shell" | "toml" | "json" | "text" ;
 
 ---
 
-# 附录 · 一棵完整的树
+# 附录 A · 语法全构件
+
+一个文件，把文法（§10）里每一个构件都用一遍。**不是真实用例**，是查阅用的对照表。
+
+```go
+// ───────────────────────────────────────────────────────────
+// 注释：// 到行尾。下面这行是文档注释的位置，目前没有单独形式。
+// ───────────────────────────────────────────────────────────
+
+
+// ── 选择：按名字 ─────────────────────────────────────────────
+
+base["Overview"]                        一个节
+base["Quick Start (Any Agent)"]         名字里有标点，照写
+base["Example 2"]["Phase 1"]            嵌套：在 Example 2 那一章里找
+base.frontmatter["description"]         frontmatter 是语言的词，键名是数据
+base["servers"]["github"]["url"]        json / toml 的路径，逐层方括号
+
+
+// ── 选择：按类别（取全部） ───────────────────────────────────
+
+base.sections                           markdown：全部节
+base.lines                              全部行
+base.frontmatter                        整个 frontmatter
+base.body                               正文（frontmatter 之后的全部）
+base.functions                          shell：全部函数
+base.markers                            shell：全部横幅注释
+base.keys                               toml / json：全部键
+base.values                             全部值
+
+
+// ── 选择：按谓词 ─────────────────────────────────────────────
+
+base.sections[level == 2]               层级
+base.sections[level >= 3]               比较：== != < <= > >=
+base.sections[name == "Setup"]          名字相等
+base.sections[name ~ "^Step [0-9]+"]    名字匹配正则
+base.sections[empty]                    内容为空
+base.functions[calls "curl"]            shell 函数里调用了 curl
+base.sections[has["Verification"]]      含有名为 Verification 的子部分
+
+base.sections[level == 2 && !empty]                     与、非
+base.sections[name ~ "^Step " || name == "Setup"]       或
+base.sections[!(level == 1 || empty)]                   括号
+
+
+// ── 选择：轴 ─────────────────────────────────────────────────
+
+base["Overview"].children               子部分
+base["Overview"].next                   下一个同级
+base["Overview"].prev                   上一个同级
+base["Overview"].parent                 所属的上级
+base.sections.first                     第一个
+base.sections.last                      最后一个
+base.sections[level == 2].first.children   轴可以接着走
+
+
+// ── 打开一层 ─────────────────────────────────────────────────
+
+base["prompt"].as(markdown)                    值里是 markdown
+base["prompt"].as(markdown)["Steps"]           打开后照常寻址
+base["script"].as(shell).functions[calls "rm"] 打开后照常选择
+
+
+// ── 派生地址（长度为零的跨度） ───────────────────────────────
+
+base["Overview"].after                  该节之后
+base["Overview"].before                 之前
+base.start                              文档开头
+base.end                                文档结尾
+
+
+// ═══ 以上全是「指向哪」。以下是「做什么」。═══════════════════
+
+
+// ── 放置：上游 100% 保留 ─────────────────────────────────────
+
+base["Overview"].after(self["Where this fits"])         引用我们的一个节
+base["Overview"].before(self["前言"])
+base.start(self["Read this first"])
+base.end(self["Appendix"])
+base.append(self["Appendix"])                           end 的别名
+base["Overview"].after(self["A"], self["B"], self["C"]) 多个，按序
+base["Overview"].wrap(self["开头"], self["结尾"])        两端各一次
+
+base.append(self.body)                                  我们的正文
+base.append(self.frontmatter)                           整个 frontmatter
+
+base["Overview"].after:                                 块：缩进定界
+    ## 直接写在这里
+
+    反引号 `lm build`、代码块都只是普通文本：
+
+    ```sh
+    lm build -o ../plugins/XSDD
+    ```
+
+    仓库是 {{@url}}。占位符照常展开，{{@@url}} 是字面的 {{@url}}。
+
+
+// ── 结构变换：保证比放置还强 ─────────────────────────────────
+
+base["Troubleshooting"].move(base.sections.last.after)   移动：字节多重集不变
+base["A"].swap(base["B"])                                互换
+base.sections[name ~ "^Step "].demote()                  一组：每个都降一级
+base["Overview"].promote()                               升一级
+base["Setup"].split(base["Setup"].children.first)        在某处拆开
+base["Setup"].join()                                     与下一个并起来
+
+
+// ── 改写：降低保证量，必须给理由 ─────────────────────────────
+
+base["How it compares"].drop(reason: "上游在和别的项目比，与我们无关")
+base["Install"].replace(self["安装"], reason: "上游的装法在内网不通")
+base["Notes"].unwrap(reason: "这层包裹在产物里没有意义")
+
+
+// ── 值 ───────────────────────────────────────────────────────
+
+base.frontmatter["description"].set(self.frontmatter["description"])    换成我们的
+base.frontmatter["description"].start(self.frontmatter["description"])  我们的 + 上游的
+base.frontmatter["description"].end(self.frontmatter["description"])    上游的 + 我们的
+
+
+// ── 投影：产出新文档，来源不动 ───────────────────────────────
+
+base.start.project(base.sections[level == 2]):
+    - [{name}](#{anchor})
+
+base.append.project(base.functions):
+    ### {name}
+
+    {body}
+
+
+// ── 对齐：两个序列一一对应 ───────────────────────────────────
+
+base.sections.align(self.sections)
+
+
+// ── 按身份合并：json registry ────────────────────────────────
+
+base.merge(self)
+
+
+// ── 整份都是我们的：顶层 return，之后不能再有语句 ─────────────
+
+return self   // reason: 两份 AGENTS 会被 agent 同时读到，必须只有一份
+```
+
+## 构件清单核对
+
+| 文法条目 | 上面出现在 |
+|---|---|
+| `comment` | 全文 |
+| `selector` 字符串 | 「按名字」 |
+| `selector` 谓词 | 「按谓词」全部七种 + `&&` `\|\|` `!` 括号 |
+| `class` | 「按类别」八个 |
+| `axis` | 「轴」六个 |
+| `as(kind)` | 「打开一层」 |
+| `place` | 「派生地址」四个 + `append` |
+| `op` 放置类 | `after` `before` `start` `end` `append` `wrap` |
+| `op` 变换类 | `move` `swap` `promote` `demote` `split` `join` |
+| `op` 改写类 | `replace` `drop` `unwrap` |
+| `op` 值 | `set` `start` `end` |
+| `op` 其他 | `project` `align` `merge` |
+| `arg` 引用 | `self["X"]` `self.body` `self.frontmatter` |
+| `arg` 多个 | `after(a, b, c)` |
+| `arg` `reason:` | 「改写」三条 |
+| `block` | 「块」与两处 `project` |
+| `{{@name}}` | 块里 |
+| `return` | 末行 |
+
+**文法里没有出现在这里的构件：零。**
+
+# 附录 B · 一棵完整的树
 
 四个产物，四种情况：编织、对齐、整份是我们的、按身份合并。
 
@@ -641,3 +816,5 @@ base.merge(self)
 | `hooks/hooks.json` | `merge` | 条目级 | ✅ |
 
 **保证量从上到下递减，而每一行都在构建报告里写着。** 这就是 L4「保证是量，不是档」在一棵真实的树上长什么样。
+
+---
