@@ -213,6 +213,41 @@ const find = (items, label) => items.find((i) => i.label === label);
   }
 }
 
+// ── after a fenced literal ──
+// A fence is one token, backticks and all. Counting to the next single backtick instead — which
+// is what the lexer did — puts everything after a line of prose containing one ` out of step,
+// and the whole rest of the file goes dead in the editor while the compiler builds it happily.
+{
+  const src = [
+    'base.Overview.after(```markdown',
+    'Use the ` character to mark code in markdown.',
+    '```)',
+    'base.|',
+  ].join('\n');
+  const l = labels(at(md, src).items);
+  ok(l.includes('Overview') && l.includes('How it compares'), 'an odd backtick inside a fence does not blind the rest of the file', l);
+}
+{
+  // A longer fence holds a shorter one: the inner ``` is content, not the closer.
+  const src = [
+    'base.Overview.after(````markdown',
+    'A ` in prose, then a block:',
+    '```sh',
+    'echo hi',
+    '```',
+    '````)',
+    'base.|',
+  ].join('\n');
+  const l = labels(at(md, src).items);
+  ok(l.includes('Overview'), 'a nested fence is content, not the end of the outer one', l);
+}
+{
+  // Half-written is the normal state of a template being edited: the open fence runs to the end
+  // of the file, so what is inside it is content, not half a statement to resolve.
+  const { items } = at(md, ['base.Overview.after(```markdown', 'base.How it| compares'].join('\n'));
+  ok(labels(items).length === 0, 'inside an unterminated fence nothing is offered', labels(items));
+}
+
 // ── inside a class call: a group takes predicates, not a name ──
 {
   const { items } = at(md, 'base.sections(|)');

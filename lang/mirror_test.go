@@ -23,13 +23,28 @@ import (
 
 const ext = "../editors/vscode"
 
-// mirror runs the extension's own module and returns the tables it exports.
-func mirror(t *testing.T) map[string]any {
+// node finds the interpreter, and registers the mirror's own sources as inputs of this test.
+// Without that last part the guard is worth little: go test caches a result against the files the
+// test process opened, and the JavaScript is read by a child process, which the cache cannot see —
+// so editing exactly the file being watched would replay a stale pass.
+func node(t *testing.T) string {
 	t.Helper()
-	node, err := exec.LookPath("node")
+	exe, err := exec.LookPath("node")
 	if err != nil {
 		t.Skip("node is not installed; the editor mirror cannot be checked here")
 	}
+	for _, f := range []string{"lib/loom.js", "lib/completion.js"} {
+		if _, err := os.ReadFile(filepath.Join(ext, f)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return exe
+}
+
+// mirror runs the extension's own module and returns the tables it exports.
+func mirror(t *testing.T) map[string]any {
+	t.Helper()
+	node := node(t)
 	const dump = `const m = require("./lib/loom.js");
 		const set = (s) => [...s].sort();
 		console.log(JSON.stringify({
@@ -168,11 +183,7 @@ func alt(t *testing.T, file, key string, want []string) {
 
 // The editor also offers settings in completion, from a list of its own.
 func TestEditorOffersEverySetting(t *testing.T) {
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("node is not installed; the editor mirror cannot be checked here")
-	}
-	cmd := exec.Command(node, "-e", `const s = require("fs").readFileSync("lib/completion.js", "utf8");
+	cmd := exec.Command(node(t), "-e", `const s = require("fs").readFileSync("lib/completion.js", "utf8");
 		const m = s.match(/const SETTINGS = \[([\s\S]*?)\n\];/);
 		console.log(JSON.stringify([...m[1].matchAll(/\['([a-z]+)'/g)].map((x) => x[1]).sort()));`)
 	cmd.Dir = ext
@@ -189,5 +200,93 @@ func TestEditorOffersEverySetting(t *testing.T) {
 	if strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Errorf("the editor offers a different set of settings than the compiler accepts;\nanything missing here is a setting nobody is told about\n  editor:   %s\n  compiler: %s",
 			strings.Join(got, " "), strings.Join(want, " "))
+	}
+}
+
+// The tables were only half of it. The editor lexes Loom itself, in JavaScript, and that half had
+// drifted too: it read a fence by counting to the next single backtick, so one ` in a line of
+// prose put everything after it out of step and the rest of the file went dead in the editor
+// while the compiler built it happily. The number token added for level: was dropped outright.
+//
+// Neither is a table, so nothing above would have caught either. This feeds both lexers the same
+// templates and compares what comes back.
+func TestEditorLexesTheSameWay(t *testing.T) {
+	exe := node(t)
+	cases := map[string]string{
+		"plain":        "base.Intro.after(self.Notes)\n",
+		"string":       "base.\"How it compares\".drop(reason: \"upstream only\")\n",
+		"escape":       "base.X.after(\"a \\\" b \\\\ c\")\n",
+		"comment":      "// a note\nbase.X.drop(reason: \"r\") // trailing\n",
+		"number":       "base.sections(level: 3).demote()\n",
+		"short":        "base.X.after(`one line`)\n",
+		"fence":        "base.X.after(```markdown\n## H\n\ntext\n```)\n",
+		"fence odd":    "base.X.after(```markdown\nUse the ` character.\n```)\nbase.Y.drop(reason: \"r\")\n",
+		"fence nested": "base.X.after(````markdown\nA ` then:\n```sh\necho hi\n```\n````)\nbase.Y.drop(reason: \"r\")\n",
+		"fence tagged": "base.X.after(```sh\necho `date`\n```)\n",
+		"unterminated": "base.X.after(```markdown\nstill typing\n",
+		"empty":        "",
+	}
+	kinds := map[Kind]string{
+		KIdent: "id", KString: "str", KRaw: "raw", KNumber: "num", KDot: ".", KComma: ",",
+		KColon: ":", KLParen: "(", KRParen: ")", KLBrace: "{", KRBrace: "}", KNewline: "nl", KEOF: "eof",
+	}
+
+	var names []string
+	for name := range cases {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	in, err := json.Marshal(cases)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The editor's token has a kind and, for names and strings, a value. Newlines it keeps; the
+	// synthetic one the compiler appends before EOF it does not, so both sides drop that.
+	cmd := exec.Command(exe, "-e", `const m = require("./lib/loom.js");
+		let src = ""; process.stdin.on("data", (d) => (src += d)).on("end", () => {
+			const cases = JSON.parse(src), out = {};
+			for (const [k, text] of Object.entries(cases)) {
+				out[k] = m.lex(text).map((t) => t.t + (t.v !== undefined && t.t !== "raw" ? ":" + t.v : ""));
+			}
+			console.log(JSON.stringify(out));
+		});`)
+	cmd.Dir = ext
+	cmd.Stdin = strings.NewReader(string(in))
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("lexing with the editor: %v", err)
+	}
+	var js map[string][]string
+	if err := json.Unmarshal(out, &js); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, name := range names {
+		src := cases[name]
+		toks, err := Lex(name, []byte(src))
+		if err != nil {
+			// The editor is deliberately tolerant of a half-written template, so where the
+			// compiler refuses there is nothing to compare.
+			continue
+		}
+		var want []string
+		for k, tk := range toks {
+			// The compiler always appends a newline before EOF, whether the file ended with one
+			// or not, because a newline is what ends a statement. The editor's parser is tolerant
+			// and needs no such thing, so that one token is dropped before comparing.
+			if k == len(toks)-2 {
+				continue
+			}
+			s := kinds[tk.Kind]
+			if tk.Kind == KIdent || tk.Kind == KString || tk.Kind == KNumber {
+				s += ":" + tk.Text
+			}
+			want = append(want, s)
+		}
+		if got := js[name]; strings.Join(got, " ") != strings.Join(want, " ") {
+			t.Errorf("%s: the editor reads this template differently than the compiler does\n  source:   %q\n  editor:   %s\n  compiler: %s",
+				name, src, strings.Join(got, " "), strings.Join(want, " "))
+		}
 	}
 }

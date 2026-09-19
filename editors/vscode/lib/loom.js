@@ -216,6 +216,29 @@ function lex(text) {
       // it covers belong to it, so the line counter still has to walk through them.
       const startLine = line;
       const s = i - lineStart;
+      let n = 0;
+      while (text[i + n] === '`') n++;
+      if (n >= 3) {
+        // A fence, as the compiler reads it: opened by three or more backticks and closed by as
+        // many at the start of a line. Everything between is content, backticks included — which
+        // is the point, and why counting to the next single backtick cannot be the rule. Get this
+        // wrong and one ` in a line of prose puts the rest of the file out of step.
+        let j = i + n;
+        while (j < text.length && text[j] !== '\n') j++; // the language tag, if any
+        const fence = '`'.repeat(n);
+        let end = text.indexOf('\n' + fence, j);
+        while (end >= 0 && text[end + 1 + n] === '`') end = text.indexOf('\n' + fence, end + 1);
+        const stop = end < 0 ? text.length : end + 1 + n;
+        for (let k = i; k < stop; k++) {
+          if (text[k] === '\n') {
+            line++;
+            lineStart = k + 1;
+          }
+        }
+        toks.push({ t: 'raw', line: startLine, s, endLine: line, e: stop - lineStart, closed: end >= 0 });
+        i = stop;
+        continue;
+      }
       let j = i + 1;
       while (j < text.length && text[j] !== '`') {
         if (text[j] === '\n') {
@@ -226,6 +249,13 @@ function lex(text) {
       }
       toks.push({ t: 'raw', line: startLine, s, endLine: line, e: j + 1 - lineStart });
       i = j + 1;
+      continue;
+    }
+    if (c >= '0' && c <= '9') {
+      let j = i;
+      while (j < text.length && text[j] >= '0' && text[j] <= '9') j++;
+      push('num', i, j, text.slice(i, j));
+      i = j;
       continue;
     }
     ident.lastIndex = i;
