@@ -48,6 +48,12 @@ upstream, the way a code review shows it.
 The preview runs the compiler itself, `lm weave -stdin`, so what you see is what `lm build` writes. The `lm` used
 is the `loom.path` setting, else `lm` on `PATH`, else Go's install directory (`~/go/bin/lm`).
 
+Without lm there is nothing any of these views can show, so the first time it cannot be found the
+extension says so in a notification — with the release page and the `loom.path` setting one click
+away — rather than only inside the document that asked for it. It is said once, not once per
+keystroke, and again if `loom.path` is changed and still wrong. `lm update` keeps an installed one
+current.
+
 ## Patch
 
 The third button shows the template in front of you as a unified diff — the `+` / `-` form

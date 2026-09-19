@@ -38,6 +38,33 @@ const SEVERITY = {
   warning: vscode.DiagnosticSeverity.Warning,
 };
 
+// Where a release can be had. Every view here is the compiler's own output, so without lm there is
+// nothing any of them can show.
+const RELEASES = 'https://github.com/axfor/loom/releases/latest';
+
+// Said once, not once per keystroke: diagnostics re-run on every save, and one notification per run
+// would be a wall of them. Reset when loom.path changes, so a fix is noticed.
+let toldAboutLm = false;
+
+// lmPath resolves the compiler and, the first time it is missing, says so where it will be seen.
+// A document that reads "lm is not installed" is easy to miss behind the editor that asked for it,
+// and a Loom repository is usually opened before lm has ever been installed.
+function lmPath() {
+  const lm = findLm(vscode.workspace.getConfiguration('loom').get('path'));
+  if (lm || toldAboutLm) return lm;
+  toldAboutLm = true;
+  const download = 'Download the latest release';
+  const configure = 'Set loom.path';
+  vscode.window.showErrorMessage(
+    'Loom: lm is not installed. Install the latest release — the preview, the patch and the errors underlined as you type are all woven by the compiler itself.',
+    download, configure,
+  ).then((choice) => {
+    if (choice === download) vscode.env.openExternal(vscode.Uri.parse(RELEASES));
+    else if (choice === configure) vscode.commands.executeCommand('workbench.action.openSettings', 'loom.path');
+  });
+  return null;
+}
+
 const PREVIEW = 'loom-preview';
 const PATCH = 'loom-patch';
 
@@ -66,7 +93,7 @@ class Previews {
     } catch (err) {
       return `⛔ ${err.message}\n`;
     }
-    const r = await weave(findLm(vscode.workspace.getConfiguration('loom').get('path')), template, text);
+    const r = await weave(lmPath(), template, text);
     return r.error !== undefined ? `⛔ ${r.error}\n` : r.product;
   }
 
@@ -106,7 +133,7 @@ class Patches {
 
   async provideTextDocumentContent(uri) {
     this.open.add(uri.toString());
-    const lm = findLm(vscode.workspace.getConfiguration('loom').get('path'));
+    const lm = lmPath();
     const r = uri.authority === 'tree' ? await treePatch(lm, uri.query) : await filePatch(lm, uri.query);
     return r.error !== undefined ? `⛔ ${r.error}\n` : r.text;
   }
@@ -159,7 +186,7 @@ class Linter {
     const key = doc.uri.toString();
     const generation = (this.runs.get(key) || 0) + 1;
     this.runs.set(key, generation);
-    const lm = findLm(vscode.workspace.getConfiguration('loom').get('path'));
+    const lm = lmPath();
     const found = await diagnose(lm, doc.uri.fsPath, doc.getText());
     if (this.runs.get(key) !== generation) return;
     this.diagnostics.set(doc.uri, found.map((d) => {
@@ -260,6 +287,14 @@ function activate(context) {
       linter.schedule(e.document, true);
     }),
     vscode.workspace.onDidOpenTextDocument((d) => linter.schedule(d)),
+    // A changed loom.path deserves a fresh look, and a fresh complaint if it is still wrong.
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (!e.affectsConfiguration('loom.path')) return;
+      toldAboutLm = false;
+      previews.refresh();
+      patches.refresh();
+      linter.all();
+    }),
     vscode.workspace.onDidSaveTextDocument(onDisk),
     watcher.onDidChange(onDisk),
     watcher.onDidCreate(onDisk),
