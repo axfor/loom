@@ -231,7 +231,117 @@ base.append(self.frontmatter)                       整个 frontmatter
 base."X".after(a, b, c)                            多个，按序
 ```
 
-### 6.2 块
+### 6.2 内容段：`self` 写在文件里
+
+文件底部用 `---` 分隔出**内容段**，`self` 在这里定义。围栏带语言标签，标签就是种类。
+
+```go
+base.Overview.after(self.job)
+
+---
+self:
+    ```markdown
+    # job
+
+    这一节直接写在 .lm 里。
+    ```
+
+    ```json
+    { "ddd": 11 }
+    ```
+```
+
+### `self` 是命名空间，不是一份文档
+
+一个内容段里可以放**多份不同种类**的文档。寻址时种类是一层：
+
+```go
+self.markdown.job        markdown 那份里的 job
+self.json.ddd            json 那份里的 ddd
+self.job                 种类省掉 —— 只有一份有 job 时，编译器自己找
+```
+
+**省掉种类时，编译器在所有份里找**。找到一个就用它；找到两个就报错，要求写出种类。不猜。
+
+### 具名内容段
+
+```go
+base.Overview.after(self.n1.job)
+base.Overview.after(self.n2.ddd)
+
+---
+self as n1:
+    ```markdown
+    # job
+    第一份
+    ```
+---
+self as n2:
+    ```json
+    { "ddd": 11 }
+    ```
+```
+
+地址的完整形状：
+
+```
+self [.段名] [.种类] .部分
+      ^^^^^^ ^^^^^^
+      都可省，省了就推断；推断不出唯一解就报错
+```
+
+### 围栏里再有围栏
+
+内容里本来就有代码块时，外层围栏写更多反引号——和 markdown 自己的规则一样：
+
+````go
+---
+self:
+    `````markdown
+    # 用法
+
+    ```sh
+    lm build
+    ```
+    `````
+````
+
+### 内容还能留在外部文件
+
+没有内容段时，`self` 仍然是**我们层里同路径的那份文件**，和今天一样。
+
+两种都留着，因为它们各有各的场合：
+
+| | 什么时候 |
+|---|---|
+| 写在 `.lm` 里 | 内容短、和位置语句一起读才说得清 |
+| 留在外部文件 | 内容长（几百行的 skill）、要 markdown 编辑器和预览、要被 `lm sync` 三方合并 |
+
+**一个 `.lm` 只能选一种**，两种都有是错误——否则「`self` 到底指谁」就没有唯一答案。
+
+### 于是一个产物一个文件
+
+内容段把今天的两个文件合成一个：
+
+```
+今天                          全新
+xsdd/skills/testing/SKILL.md
+xsdd/skills/testing/SKILL.lm  →  xsdd/skills/testing/SKILL.lm
+```
+
+拿真实的树算：**81 个产物里 67 个能并成一个文件**。
+
+剩下 14 个并不了，原因是实打实的：它们是 `return self` 那一类，我们的文件**就是**产物——一个 `.sh` 得能跑、能 lint，一个 `.js` 得能被编辑器当 JavaScript 理解，而且 `lm sync` 要对它做三方合并。把它塞进围栏里，这三件事全没了。所以它们保持「真实文件 + 一行 `.lm`」。
+
+树一级的两样东西也不并：`loom.om` 说的是**哪些目录是层**，`lm.e` 说的是变量——它们都不属于任何一个产物，没有可并进去的地方。
+
+| | 今天 | 全新 |
+|---|---|---|
+| 编织类产物（67） | 2 个文件 | **1 个** |
+| `return self` 类（14） | 2 个文件 | 2 个（内容必须是真文件） |
+| `loom.om` / `lm.e` | 树一级 | 不变 |
+
+## 6.3 块
 
 冒号 + 换行 + 缩进。**缩进是定界符，所以内容里不需要任何转义**：
 
@@ -380,9 +490,9 @@ return     = "return" target [ "//" reason ] ;
 
 target     = root { selector | "." word } ;
 root       = "base" | "self" ;
-selector   = "." ( string | predicate ) "" ;
+selector   = "[" predicate "]" ;                (* 方括号只用于谓词 *)
 word       = class | axis | place | op | "as" "(" kind ")" | name ;
-name       = ident ;   (* 文档里的名字，原样匹配；与上面几类撞名时报错 *)
+name       = ident | string ;                   (* 名字，原样匹配；不加引号时语言的词优先 *)
 
 class      = "sections" | "lines" | "functions" | "markers"
            | "keys" | "values" | "frontmatter" | "body" ;
