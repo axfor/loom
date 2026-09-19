@@ -236,286 +236,46 @@ func weave(base, self markdown) markdown {
 
 # L6 · 语法
 
-## 6.1 参考 Go
+完整规格见 **[SYNTAX.md](SYNTAX.md)**。这里只留下它为什么长这样。
 
-| Go 的什么 | 这里对应什么 |
-|---|---|
-| `func` + 大括号 | 一个产物由一个函数织成 |
-| `base, self markdown` | 类型就是文档种类 |
-| 首字母大小写区分导出 | **大写来自文档**（作者写的标题），**小写属于语言**（`after` / `append`） |
-| map 取值 `m["k"]` | 名字带空格标点时用下标 |
-| 没有异常 | 不猜：找不到、匹配到两个，都是编译错误 |
-| gofmt | `lm fmt`，唯一的规范形式 |
+## 6.1 三条决定
 
-## 6.2 块：缩进定界
-
-真实文档里全是 `` `code` `` 和代码块，任何"选个终止符"的字面量都会被它们终止。缩进是**唯一永远不需要转义**的定界符：
-
-```go
-base.Overview.after:
-    ## Where this fits
-
-    Run `lm build` to weave it.
-
-    ```sh
-    echo hello
-    ```
-```
-
-公共缩进由编译器剥掉。作者只做了一件他本来就会做的事。
-
-## 6.3 实际长什么样
-
-全部取自 `agent-skills` 的真实文件。左边是今天，右边是这套设计。
-
-### 一份普通的 skill
-
-今天：
-
-```
-base.frontmatter.description.start(self.frontmatter.description)
-base.Overview.after("Position in SDLC（XSDD 调度层关系）")
-base.append(self.body)
-```
-
-设计：
-
-```go
-func weave(base, self markdown) {
-    base.frontmatter.description.start(self.frontmatter.description)
-    base.Overview.after(self["Position in SDLC（XSDD 调度层关系）"])
-    base.append(self.body)
-}
-```
-
-差别不大——**这是对的**。语言的下限不该因为加了上限而变难写。
-
-### 内容直接写在里面（今天做不到）
-
-反引号字面量会被行内 `` ` `` 终止，所以今天这段内容只能放在另一个 `.md` 文件里：
-
-```go
-func weave(base, self markdown) {
-    base.Overview.after:
-        ## Where this fits
-
-        跑 `lm build` 就能织进去：
-
-        ```sh
-        lm build -o ../plugins/XSDD
-        ```
-}
-```
-
-缩进定界，反引号和代码块都只是普通文本。
-
-### `xsdd/AGENTS.lm`：合并
-
-今天是一整个文件，正文只有一句 `base.merge(self)`。设计里它是一个签名：
-
-```go
-func weave(base, self markdown) markdown {
-    return self
-} // reason: 上游那份和我们的会跑两遍
-```
-
-**返回类型就说明了这个文件的保证量为零**（L5.2），不需要额外的关键字来标记它特殊。
-
-### 词汇表变富之后
-
-这一段今天**完全写不出来**——没有选择器，也没有 `move` / `demote` / `project`：
-
-```go
-func weave(base, self markdown) {
-    // 上游没有目录，我们从它自己的二级标题投影一份，放在开头
-    base.start.project(base.sections[level == 2]):
-        - [{name}](#{anchor})
-
-    // 上游把 Troubleshooting 放在中间，产物里要它在最后
-    base.Troubleshooting.move(base.sections.last.after)
-
-    // 因为上面多加了一层，所有 Step 节降一级
-    base.sections[name ~ "^Step "].demote()
-}
-```
-
-三条语句，三种保证强度，报告里各自列出来：
-
-| 语句 | 保证 |
-|---|---|
-| `project` | 来源未被修改 |
-| `move` | 字节多重集不变 |
-| `demote` | 除层级标记外逐字节不变 |
-
-**没有一条是「替换了一段文本」。** 这就是「结构化」和「文本处理」的区别。
-
-### 包与套用
-
-```go
-//loom:apply "skills/**"
-package skills
-
-/// 每个 skill：描述双语拼接，正文接在上游之后。
-func Frontmatter(base, self markdown) {
-    base.frontmatter.description.start(self.frontmatter.description)
-    base.append(self.body)
-}
-```
-
-命中 `skills/**` 的产物自动套用。那 24 个「除了样板没有一句自己的话」的模板**整个文件消失**。
-
-### 还写不出来的：`xsdd/docs/getting-started.lm`
-
-它今天是 16 条同形状的语句——逐节翻译，上游每节后面跟一节中文：
-
-```
-base.How_Skills_Work.after("Skill 如何工作")
-base."Quick Start (Any Agent)".after("Quick Start（任何 agent）")
-... 还有 14 行
-```
-
-它说的是**「两个序列对齐」**，而 L3 的词汇表里没有这个词。两种候选写法：
-
-```go
-// 候选一：内建算子
-base.sections.align(self.sections)
-
-// 候选二：受限遍历（只能走部分、只能产生写）
-for sec := range base.sections {
-    sec.after(self[sec.name])
-}
-```
-
-候选一不引入遍历，但每多一种模式就多一个词。候选二更诚实——写集合仍是每次迭代的并集，静态可知，不变式不破（L6.5）。
-
-**这是这份设计目前唯一确知的缺口。**
-
-## 6.4 全新语法（已定）
-
-### 三条决定
-
-**只有一类 `.lm`：每个文件恰好产出一个产物。** 没有规则文件、没有包、没有库。
+**只有一类 `.lm`**：每个文件恰好产出一个产物。没有规则文件、没有包、没有库。
 **复用交给编译器**：重复的不是「规则」，是编译器本该看出来的东西（L7）。
-**名字只有一种写法**：索引。今天那套「标识符形式 + 下划线代空格 + 撞名时改用字符串」整条删掉——Go 里没有这种东西。
+**名字只有一种写法**：索引。今天那套「标识符形式 + 下划线代空格 + 撞名改用字符串」整条删掉。
 
-这三条一起把 `func` / `package` / `import` 全部消掉了：既然一个文件恰好一个函数、参数类型由扩展名决定、又没有跨文件复用，**那个壳就只剩仪式**。
+这三条一起消掉了 `func` / `package` / `import`——一个文件恰好一个函数、参数类型由扩展名决定、又没有跨文件复用，壳就只剩仪式。
 
 > **文件就是函数体。**
 
-### 一条语法规则
+## 6.2 一条总规则
 
 > **方括号是选择，点号是语言。**
 
-方括号里是**文档里的东西**（作者写的名字、谓词）；点号后面是**语言的词**（位置、操作、轴）。看一眼就知道哪部分是数据、哪部分是语法——不需要靠大小写约定。
+方括号里是文档里的东西（名字、谓词），点号后面是语言的词（类别、位置、操作、轴）。看一眼就知道哪是数据哪是语法，不靠大小写约定。
 
-### 长什么样
-
-```go
-// xsdd/skills/testing/SKILL.lm
-base.frontmatter.description.start(self.frontmatter.description)
-base["Overview"].after(self["Where this fits"])
-base.append(self.body)
-```
-
-内容直接写在里面，缩进定界：
-
-```go
-base["Overview"].after:
-    ## Where this fits
-
-    跑 `lm build` 就能织进去：
-
-    ```sh
-    lm build -o ../plugins/XSDD
-    ```
-```
-
-合并——`return` 在顶层，因为文件就是函数体：
-
-```go
-// xsdd/AGENTS.lm
-return self   // reason: 上游那份和我们的会跑两遍
-```
-
-**返回就是写根跨度**，保证量为零（L4.2）。不需要 `merge` 这个词，也不需要额外记住它特殊。
-
-选择与结构变换：
-
-```go
-base.sections[level == 2].demote()
-base["Troubleshooting"].move(base.sections.last.after)
-base.start.project(base.sections[level == 2]):
-    - [{name}](#{anchor})
-```
-
-逐节翻译（`xsdd/docs/getting-started.lm`，今天 16 行）：
-
-```go
-base.sections.align(self.sections)
-```
-
-### 为什么是这个形状
+## 6.3 为什么是这个形状
 
 | 决定 | 因为 |
 |---|---|
 | 没有 `func` 壳 | 一个文件一个产物，壳里永远只有一种签名 |
-| 没有 `package` / `import` | 没有跨文件复用（决定 1） |
-| `return` 表达合并 | 返回 = 写根跨度 = 保证量为零，是 L4 的直接后果 |
+| 没有 `package` / `import` | 没有跨文件复用（6.1） |
+| `return` 表达整体替换 | 返回 = 写根跨度 = 保证量为零，是 L4.2 的直接后果 |
 | 方括号选择 | 名字是数据，不是标识符 |
-| 点号是语言 | 位置、操作、轴都是语言的词，数量有限、可补全、可类型检查 |
 | 缩进块 | 真实文档里全是反引号和代码块，缩进是唯一不需要转义的定界符 |
+| 谓词只能问结构 | 能算的东西一旦进来，写集合就不再静态可知（L0） |
 
-### 和今天比
-
-```
-base.How_Skills_Work.after("Skill 如何工作")        今天
-base["How Skills Work"].after(self["Skill 如何工作"])  全新
-```
-
-长了一点。换来的是：**删掉了标识符/字符串双形式和那条撞名规则**，并且 `base[...]` 和 `base.sections[...]` 是同一件事的两种写法——取一个和取一组，语法同形。
-
-## 6.5 文法
-
-```ebnf
-file       = { comment | doc | import | func | directive } ;
-
-func       = "func" ident "(" params ")" [ kind ] "{" { stmt } "}" ;
-params     = { ident { "," ident } kind } ;
-directive  = "//loom:" ident { string } ;
-
-stmt       = target ( "(" [ args ] ")" | ":" block ) | call | "return" target ;
-call       = qname "(" [ args ] ")" ;
-target     = root { "." step } [ selector ] [ "." op ] ;
-root       = "base" | "self" | ident ;
-step       = ident | string | "as" "(" kind ")" ;
-selector   = "[" predicate "]" | "." axis ;
-axis       = "children" | "next" | "prev" | "parent" ;
-op         = "after" | "before" | "start" | "append" | "wrap" | "replace"
-           | "drop" | "move" | "reorder" | "swap" | "promote" | "demote"
-           | "split" | "join" | "unwrap" | "merge" | "project" ;
-
-args       = arg { "," arg } ;
-arg        = string | target | ident | "reason" ":" string ;
-block      = NEWLINE indented-lines ;
-
-doc        = "///" ... NEWLINE ;
-comment    = "//" ... NEWLINE ;
-kind       = "markdown" | "shell" | "toml" | "json" | "text" | ... ;
-```
-
-**没有表达式、没有赋值、没有算术。** `return` 只能返回一份文档，不能返回算出来的文本——那条由 L5.2 的类型规则挡住。
-
-## 6.6 刻意不要的
+## 6.4 刻意不要的
 
 | 不要 | 为什么（全部来自 L0） |
 |---|---|
 | 表达式、字符串拼接 | 算出来的文本没有写集合 |
-| 任意控制流（`while`、任意条件） | 迭代次数不由文档决定，写集合算不出 |
-| 变量与赋值 | 同上；`{{@name}}` 是**替换**不是变量，不参与寻址 |
-| 继承 / 覆盖链 | L5.5 已是并集、重叠是错误——优先级会把**可检测的冲突**变成**沉默的行为** |
+| 任意控制流 | 迭代次数不由文档决定 |
+| 变量与赋值 | 同上；`{{@name}}` 是替换不是变量 |
+| 继承 / 覆盖链 | L5.5 已是并集、重叠是错误——优先级会把可检测的冲突变成沉默的行为 |
 | 一文件多产物 | 「这个产物由什么组成」能被回答的前提 |
 
-**遍历部分不在此列。** 对文档的部分逐个产生写，写集合是每次迭代的并集，迭代空间来自源文档——读一遍源就知道。破坏不变式的是**算出来的文本**，不是**重复的写**。要不要有，取决于 L3 的词汇表能否覆盖真实用例。
+**遍历部分不在此列**：写集合是每次迭代的并集，迭代空间来自源文档。破坏不变式的是算出来的文本，不是重复的写。`align`（SYNTAX §7.6）就是它的第一个内建形式。
 
 ---
 
