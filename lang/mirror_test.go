@@ -15,6 +15,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -450,6 +451,172 @@ func TestEditorWritesTheSameText(t *testing.T) {
 	for k, p := range paths {
 		if got, want := js["typeOf"][k], TypeOf(p); got != want {
 			t.Errorf("typeOf(%q): editor %q, compiler %q", p, got, want)
+		}
+	}
+}
+
+// Import resolution is the last piece of the mirror, and the one with the most branches: from the
+// layer root or from the file's own directory, with the extension or without, refusing what is
+// ambiguous, missing, or outside the layer. The real tree exercises almost none of it — nine
+// imports, eight of them the same shape — so the cases are built here.
+func TestEditorResolvesImportsTheSameWay(t *testing.T) {
+	exe := node(t)
+	dir := t.TempDir()
+	write := func(rel, text string) {
+		t.Helper()
+		p := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("loom.om", "base \"up\"\nself \"me\"\n")
+	for _, f := range []string{
+		"up/a/b.md",         // an exact path
+		"up/a/only.md",      // one extension: found without it
+		"up/a/dup.md",       // two extensions: ambiguous without it
+		"up/a/dup.sh",       //
+		"up/a/tpl.lm",       // a template is never content
+		"up/x/y/sib.md",     // next to the product
+		"up/x/over.md",      // one directory up from it
+		"up/over.md",        // two up: still inside the layer
+		"up/a/thing.md.bak", // a stem a written-out extension must not reach
+	} {
+		write(f, "x\n")
+	}
+	// Outside the layer entirely: a path that escapes must not find this, and the only way to
+	// prove the guard does anything is to put something there for it to find.
+	write("escape.md", "x\n")
+
+	// The product is up/x/y/doc.md, so ./ and ../ are relative to x/y.
+	const target = "x/y/doc.md"
+	specs := []string{
+		"/a/b.md", "/a/only", "/a/dup", "/a/missing", "/a/tpl", "/",
+		"./sib.md", "./sib", "./missing.md",
+		"../over.md", "../../over.md", "../../../escape.md",
+		"a/b.md", "", "/a/../a/b.md", "/a/thing.md",
+	}
+
+	c, err := LoadConfig(filepath.Join(dir, "loom.om"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	in, err := json.Marshal(map[string]any{"root": dir, "target": target, "specs": specs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(exe, "-e", `const m = require("./lib/loom.js"), path = require("path");
+		let src = ""; process.stdin.on("data", (d) => (src += d)).on("end", () => {
+			const { root, target, specs } = JSON.parse(src);
+			const cfg = m.findConfig(path.join(root, "loom.om"));
+			console.log(JSON.stringify(specs.map((s) => {
+				const abs = m.resolveImport(cfg, "base", s, target);
+				return abs == null ? "" : path.relative(path.join(root, "up"), abs).split(path.sep).join("/");
+			})));
+		});`)
+	cmd.Dir = ext
+	cmd.Stdin = strings.NewReader(string(in))
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("resolving imports with the editor: %v\n%s", err, stderr(err))
+	}
+	var js []string
+	if err := json.Unmarshal(out, &js); err != nil {
+		t.Fatal(err)
+	}
+
+	for k, spec := range specs {
+		want, err := c.resolveImport("base", spec, path.Dir(target))
+		if err != nil {
+			want = "" // refused; the editor says so by returning nothing
+		}
+		if js[k] != want {
+			t.Errorf("import %q: editor %q, compiler %q", spec, js[k], want)
+		}
+	}
+}
+
+// A template's product path: its path under the templates directory without .lm, with the
+// extension filled in from the layers when it was left out. One name is the product; several are
+// an error that asks for the full name, never a guess.
+func TestEditorFindsTheSameTarget(t *testing.T) {
+	exe := node(t)
+	dir := t.TempDir()
+	write := func(rel string) {
+		t.Helper()
+		p := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("loom.om")
+	if err := os.WriteFile(filepath.Join(dir, "loom.om"), []byte("base \"up\"\nself \"me\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{
+		"up/doc.md",      // the extension can be left out of the template name
+		"up/dup.md",      // two files of the same name: ambiguous
+		"up/dup.sh",      //
+		"up/keep.md",     // written out in full below
+		"me/only.toml",   // the other layer counts too
+		"me/doc.md",      //
+		"me/keep.md",     //
+		"me/doc.lm",      // the templates themselves
+		"me/keep.md.lm",  //
+		"me/dup.lm",      //
+		"me/only.lm",     //
+		"me/new.lm",      // no layer has a file: the name as written
+		"me/deep/a.lm",   // a subdirectory
+		"up/deep/a.json", //
+		"up/stray.lm",    // a template-shaped file outside the template directory
+	} {
+		write(f)
+	}
+
+	rels := []string{
+		"me/doc.lm", "me/keep.md.lm", "me/dup.lm", "me/only.lm", "me/new.lm", "me/deep/a.lm",
+		"up/doc.md",   // not a template at all
+		"up/stray.lm", // .lm, but not under the template directory
+	}
+	c, err := LoadConfig(filepath.Join(dir, "loom.om"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	in, err := json.Marshal(map[string]any{"root": dir, "rels": rels})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(exe, "-e", `const m = require("./lib/loom.js"), path = require("path");
+		let src = ""; process.stdin.on("data", (d) => (src += d)).on("end", () => {
+			const { root, rels } = JSON.parse(src);
+			const cfg = m.findConfig(path.join(root, "loom.om"));
+			console.log(JSON.stringify(rels.map((r) => m.targetOf(cfg, path.join(root, r)) ?? "")));
+		});`)
+	cmd.Dir = ext
+	cmd.Stdin = strings.NewReader(string(in))
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("finding targets with the editor: %v\n%s", err, stderr(err))
+	}
+	var js []string
+	if err := json.Unmarshal(out, &js); err != nil {
+		t.Fatal(err)
+	}
+
+	for k, rel := range rels {
+		want, err := TargetOf(c, filepath.Join(dir, filepath.FromSlash(rel)))
+		if err != nil {
+			want = ""
+		}
+		if js[k] != want {
+			t.Errorf("target of %s: editor %q, compiler %q", rel, js[k], want)
 		}
 	}
 }
