@@ -585,8 +585,11 @@ if base.has.Overview {
 }
 
 if base.sections[level == 2].any {
-    base.start.project(base.sections[level == 2]):
+    base.start.project(base.sections[level == 2]){
+        ```markdown
         - [{name}](#{anchor})
+        ```
+    }
 }
 ```
 
