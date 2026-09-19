@@ -669,3 +669,58 @@ func TestBodyTakenWhole(t *testing.T) {
 		t.Errorf("the body was taken whole while some sections had a place:\n%s", got)
 	}
 }
+
+// The promise the language is named for: with our marks stripped, an insert-only product is
+// upstream byte for byte. It was checked for markdown alone, so on every other kind of file the
+// report asserted byte-identity it had never looked at.
+func TestInsertOnlyIsCheckedForEveryType(t *testing.T) {
+	dir := t.TempDir()
+	setup := func(settings, up, ours, template string) *lang.Config {
+		t.Helper()
+		mustWrite(t, filepath.Join(dir, "loom.om"), settings)
+		mustWrite(t, filepath.Join(dir, "up", "r.sh"), up)
+		mustWrite(t, filepath.Join(dir, "me", "r.sh"), ours)
+		mustWrite(t, filepath.Join(dir, "me", "r.sh.lm"), template)
+		c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	const ours = "helper() {\n  echo ours\n}\n"
+	const tpl = "base.main.after(self.helper)\n"
+
+	// A correct insert leaves upstream alone, and the check says nothing.
+	c := setup("base \"up\"\nself \"me\"\nmark shell \"# XS:BEGIN\" \"# XS:END\"\n",
+		"#!/bin/sh\nmain() {\n  echo up\n}\n", ours, tpl)
+	if _, err := build.PlanBuild(c, true); err != nil {
+		t.Fatalf("a correct shell insert should build: %v", err)
+	}
+
+	// Marks that upstream's own text already contains: stripping them takes upstream content with
+	// it, so the product no longer holds upstream whole. Before, for a shell file, nothing looked.
+	c = setup("base \"up\"\nself \"me\"\nmark shell \"# SECTION\" \"# END\"\n",
+		"#!/bin/sh\n# SECTION\nmain() {\n  echo up\n}\n", ours, tpl)
+	_, err := build.PlanBuild(c, true)
+	if err == nil {
+		t.Fatal("a shell product that no longer holds upstream whole was accepted")
+	}
+	if !strings.Contains(err.Error(), "must not change a single upstream byte") {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	// A value written into a toml key changes upstream's bytes on purpose, so such a template is
+	// not insert-only and the check must not fire on it. Without that exception the tree below
+	// fails, which is the whole reason the exception is there.
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark toml \"# XS:BEGIN\" \"# XS:END\"\n")
+	mustWrite(t, filepath.Join(dir, "up", "c.toml"), "description = \"Upstream.\"\nkept = 1\n")
+	mustWrite(t, filepath.Join(dir, "me", "c.toml"), "description = \"Ours.\"\n")
+	mustWrite(t, filepath.Join(dir, "me", "c.toml.lm"), "base.description.start(self.description)\n")
+	c, err = lang.LoadConfig(filepath.Join(dir, "loom.om"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := build.PlanBuild(c, true); err != nil {
+		t.Fatalf("writing a value is not an insert, and must not trip the byte check: %v", err)
+	}
+}

@@ -707,12 +707,16 @@ it, and the build refuses them rather than ignore them.
      Otherwise the build fails. A whole-file replace with a reason accounts for the whole file.
    - **dropping a section with subsections** requires dropping (or otherwise accounting for) each
      subsection, since a section stops at the next heading.
-   - **insert-only markdown templates**: with our marks stripped, the body must be byte-identical to
-     upstream.
-   - **our frontmatter**: every key of our file's frontmatter must be in the product — taken with
-     `set`, or put next to upstream's value with `start` / `append` — or the build fails. A value
-     over several lines (a list, a nested map) is not joined on one line: it can only be taken whole,
-     with `base.frontmatter.set(self.frontmatter)`, and the build says so when it has to be.
+   - **insert-only templates**, of any kind: with our marks stripped, the product must be
+     byte-identical to upstream. For markdown that means the body, since `set` / `start` / `append`
+     change the frontmatter on purpose; for a toml or yaml file a template that writes a value is
+     not insert-only either, and is not held to this.
+   - **our keys**: every key of our file must be in the product — a markdown file's frontmatter
+     taken with `set` or put next to upstream's with `start` / `append`, a toml or yaml file's
+     top-level keys the same — or the build fails. A frontmatter value over several lines (a list,
+     a nested map) is not joined on one line: it can only be taken whole, with
+     `base.frontmatter.set(self.frontmatter)`, and the build says so when it has to be. A key
+     upstream does not have is added to the file with `base.append(self.<key>)`.
 4. Copies our layer's files. A file of ours at the same path as an upstream file, with no template,
    is an error — it would silently replace upstream with no reason. An identical copy is fine.
 5. Copies upstream files listed in `take`, applies `mirror`, writes `manifest`.

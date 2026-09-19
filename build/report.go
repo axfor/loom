@@ -58,7 +58,7 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 	whole := t.From != "" && t.From != c.Warp
 	merged := false
 	var inserted []string
-	var drops, replaces, moves, levels []lang.Stmt
+	var drops, replaces, moves, levels, values []lang.Stmt
 	var walk func(ss []lang.Stmt)
 	walk = func(ss []lang.Stmt) {
 		for _, s := range ss {
@@ -80,6 +80,7 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 			case "frontmatter":
 				inserted = append(inserted, "frontmatter")
 			case "value":
+				values = append(values, s)
 				inserted = append(inserted, s.SetKey+" ("+s.Mode+")")
 			case "in":
 				walk(s.Kids)
@@ -264,32 +265,38 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 		}
 	}
 
+	// Strip our marks and compare what is left with upstream.
+	//
+	// This is why the language exists: for an insert-only template, the product with marks
+	// stripped must be byte-identical to upstream. It is checked on every build instead of by a
+	// separate outside gate: an engine one byte off on a blank line still yields a
+	// normal-looking product.
+	//
+	// It ran for markdown alone, and sat behind the return below besides, so on every other kind
+	// of file the report asserted a byte-identity it had never looked at. What is compared
+	// differs by type: a markdown file's frontmatter and a value type's keys are changed on
+	// purpose by set / start / append, so a template that does any of that is not insert-only to
+	// begin with. A move reorders upstream, so the file cannot match it line for line — what a
+	// move promises instead is checked further down, and it is a stronger promise.
+	outText := out
+	if m, ok := c.MarksFor(c.Weft, t.Type); ok && c.Weft != "" && upOK {
+		outText = stripMarked(out, m)
+		insertOnly := !whole && !merged && len(drops)+len(replaces)+len(moves)+len(levels) == 0
+		if lang.HasValues(t.Type) && len(values) > 0 {
+			insertOnly = false
+		}
+		if insertOnly {
+			if a, b := insertable(t.Type, outText), insertable(t.Type, up); a != b {
+				errs = append(errs, fmt.Errorf("%s: with our marks stripped, %s differs from upstream — an insert-only template must not change a single upstream byte", t.Path, t.Target))
+			}
+		}
+	}
+
 	// What follows is accounting by name, and only markdown headings and shell functions have
 	// names to account for. Everything found so far still counts: returning nil here threw away
 	// errors already collected, which is how a key of ours could go missing in silence.
 	if upTree == nil || kind == "" {
 		return errs
-	}
-
-	// Strip our marks and count how often each name appears in the product
-	outText := out
-	if m, ok := c.MarksFor(c.Weft, t.Type); ok && c.Weft != "" {
-		outText = stripMarked(out, m)
-		// This is why the language exists: for an insert-only template, the body with marks stripped
-		// must be byte-identical to upstream. It is checked on every build instead of by a separate
-		// outside gate: an engine one byte off on a blank line still yields a normal-looking product.
-		// The frontmatter may be changed by set / start / append, so only the body is compared.
-		// A move reorders upstream, so the body cannot match it line for line — what a move
-		// promises instead is checked just below, and it is a stronger promise.
-		if t.Type == "markdown" && !whole && !merged && len(drops)+len(replaces)+len(moves)+len(levels) == 0 {
-			body := func(s string) string {
-				b, _ := ast.NewMarkdown(s).BodyOf("body")
-				return strings.TrimRight(b, "\n")
-			}
-			if body(outText) != body(up) {
-				errs = append(errs, fmt.Errorf("%s: with our marks stripped, the body of %s differs from upstream — an insert-only template must not change a single upstream byte", t.Path, t.Target))
-			}
-		}
 	}
 	// What a move promises: the node's own bytes are unchanged, only its place is. That is
 	// stronger than what an insertion promises about upstream, and it is checkable — so it is
@@ -688,4 +695,15 @@ func ourKeys(typ, src string) []string {
 		}
 	}
 	return out
+}
+
+// insertable is the part of a file an insert-only template must leave byte for byte alone. For
+// markdown that is the body: the frontmatter is changed on purpose by set / start / append. For
+// every other kind it is the whole file — a value type only gets here when no value was written.
+func insertable(typ, src string) string {
+	if typ == "markdown" {
+		b, _ := ast.NewMarkdown(src).BodyOf("body")
+		return strings.TrimRight(b, "\n")
+	}
+	return strings.TrimRight(src, "\n")
 }
