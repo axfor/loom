@@ -278,7 +278,19 @@ base.start.project(base.sections[level == 2]):
 块是模板，`{name}` `{anchor}` `{body}` `{level}` 取自被选中的每个部分。
 跨种类就在这里发生：json 的结构能投影成 markdown 的表。
 
-### 7.6 对齐
+### 7.6 按身份合并（registry）
+
+```go
+base.merge(self)
+```
+
+json 这类**注册表**用它：两边的条目按**身份**合并——我们的条目顶替掉上游那条「调用同一个处理器」的，我们独有的加进去，上游独有的留着。
+
+这和 `return self`（§8）是**两件不同的事**：`return self` 说「整份都是我们的」，`merge` 说「两份按条目拼起来，谁都不整份胜出」。一个 registry 用 `return self` 会把上游自己新增的钩子全丢掉。
+
+保证：产物里我们每个条目都在，且**没有任何处理器被注册两次**——后者是这个操作存在的理由，重复注册会让钩子跑两遍，而文件仍是合法 json。
+
+### 7.7 对齐
 
 ```go
 base.sections.align(self.sections)
@@ -400,9 +412,232 @@ kind       = "markdown" | "shell" | "toml" | "json" | "text" ;
 |---|---|
 | `base.How_Skills_Work.after("X")` | `base["How Skills Work"].after(self["X"])` |
 | `base."How it compares".drop(reason: "r")` | `base["How it compares"].drop(reason: "r")` |
-| `base.merge(self)` | `return self  // reason: ...` |
+| `base.merge(self)`（文本 / shell） | `return self  // reason: ...` |
+| `base.merge(self)`（json registry） | `base.merge(self)` —— 不变，它是另一件事 |
 | `base.replace(self, reason: "r")` | `return self  // reason: r` |
 | `base.frontmatter.description.start(x)` | `base.frontmatter["description"].start(x)` |
 | `base.prompt.as(markdown).Steps` | `base["prompt"].as(markdown)["Steps"]` |
 | 标识符形式 + 字符串形式 + 撞名规则 | 只有方括号 |
 | 16 行逐节翻译 | `base.sections.align(self.sections)` |
+
+---
+
+# 附录 · 一棵完整的树
+
+四个产物，四种情况：编织、对齐、整份是我们的、按身份合并。
+
+```
+loom.om
+agent-skills/                  上游（base）—— 一个字节都不碰
+  AGENTS.md
+  skills/testing/SKILL.md
+  docs/getting-started.md
+  hooks/hooks.json
+xsdd/                          我们（self）
+  AGENTS.md    AGENTS.lm
+  skills/testing/SKILL.md    skills/testing/SKILL.lm
+  docs/getting-started.md    docs/getting-started.lm
+  hooks/hooks.json           hooks/hooks.lm
+```
+
+## loom.om
+
+```
+base      "agent-skills"
+self      "xsdd"
+output    "../plugins/XSDD"
+
+mark      markdown "<!-- XSDD:BEGIN -->" "<!-- XSDD:END -->"
+take      "references/**" "LICENSE"
+```
+
+---
+
+## 例一 · 编织一份 skill
+
+**`agent-skills/skills/testing/SKILL.md`**（上游）
+
+```markdown
+---
+name: testing
+description: Write tests that fail first.
+---
+
+## Overview
+
+Tests come before the code they check.
+
+## How it compares
+
+Unlike other frameworks, this one …
+
+## Verification
+
+Run the suite twice.
+```
+
+**`xsdd/skills/testing/SKILL.md`**（我们）
+
+```markdown
+---
+description: 先写会失败的测试。
+---
+
+## Where this fits
+
+它在 XSDD 的 build 阶段之后、review 之前。
+```
+
+**`xsdd/skills/testing/SKILL.lm`**
+
+```go
+base.frontmatter["description"].start(self.frontmatter["description"])
+
+base["Overview"].after(self["Where this fits"])
+
+base["Verification"].before:
+    ## 自检清单
+
+    跑 `lm check` 确认产物是最新的。
+
+base["How it compares"].drop(reason: "上游在和别的项目比，与我们无关")
+```
+
+**产物 `../plugins/XSDD/skills/testing/SKILL.md`**
+
+```markdown
+---
+name: testing
+description: 先写会失败的测试。 Write tests that fail first.
+---
+
+## Overview
+
+Tests come before the code they check.
+
+<!-- XSDD:BEGIN -->
+## Where this fits
+
+它在 XSDD 的 build 阶段之后、review 之前。
+<!-- XSDD:END -->
+<!-- XSDD:BEGIN -->
+## 自检清单
+
+跑 `lm check` 确认产物是最新的。
+<!-- XSDD:END -->
+## Verification
+
+Run the suite twice.
+```
+
+构建报告：
+
+```
+skills/testing/SKILL.md   extended   +3   保证 100%（去掉 drop 的那节）
+  dropped § How it compares   上游在和别的项目比，与我们无关
+```
+
+`## How it compares` 整节不在产物里——**因为写了理由**。没写理由的话构建会停。
+
+---
+
+## 例二 · 逐节对齐
+
+上游 4 节，我们 4 节中文，一一对应。
+
+**`xsdd/docs/getting-started.lm`**
+
+```go
+base.sections.align(self.sections)
+```
+
+一行。对不齐——上游多一节、顺序变了——编译器指出是哪一节开始错位，不猜。
+
+今天这个文件是 16 行，每行一个 `base.X.after("译名")`。
+
+---
+
+## 例三 · 整份都是我们的
+
+`AGENTS.md` 是上游那份加上我们的编辑，改动散在字里行间，没有可锚的名字。
+
+**`xsdd/AGENTS.lm`**
+
+```go
+return self   // reason: 两份 AGENTS 会被 agent 同时读到，必须只有一份
+```
+
+产物就是 `xsdd/AGENTS.md` 原样。
+
+保证量为零——**报告会明说这一份没人验过**：
+
+```
+AGENTS.md   returned   保证 0%   两份 AGENTS 会被 agent 同时读到，必须只有一份
+```
+
+上游发新版时，`lm sync` 把上游的改动三方合并进 `xsdd/AGENTS.md`，冲突处留标记。
+
+---
+
+## 例四 · 按身份合并
+
+**`agent-skills/hooks/hooks.json`**（上游）
+
+```json
+{
+  "SessionStart": [
+    { "command": "sh hooks/session-start.sh || true" }
+  ]
+}
+```
+
+**`xsdd/hooks/hooks.json`**（我们）
+
+```json
+{
+  "SessionStart": [
+    { "command": "sh hooks/session-start.sh" }
+  ],
+  "PostToolUse": [
+    { "command": "sh hooks/cache.sh" }
+  ]
+}
+```
+
+**`xsdd/hooks/hooks.lm`**
+
+```go
+base.merge(self)
+```
+
+**产物**
+
+```json
+{
+  "SessionStart": [
+    { "command": "sh hooks/session-start.sh" }
+  ],
+  "PostToolUse": [
+    { "command": "sh hooks/cache.sh" }
+  ]
+}
+```
+
+两边都注册了 `hooks/session-start.sh`，**写法不同**（上游带 `|| true`）。按身份合并认的是**它调用哪个脚本**，所以我们那条顶替掉上游那条——而不是两条都留下。
+
+这正是这个操作存在的理由：两条都留，文件仍是合法 json，钩子**跑两遍**，而没人会发现。
+
+用 `return self` 会怎样：上游之后新增的钩子永远进不来。所以 §7.6 和 §8 是两件事。
+
+---
+
+## 四例对照
+
+| 产物 | 写法 | 保证 | 上游新增的东西会自动进来吗 |
+|---|---|---|---|
+| `SKILL.md` | `after` / `before` / `drop` | 100%（除 drop 那节） | ✅ |
+| `docs/getting-started.md` | `align` | 100% | ✅ 对不齐会报错 |
+| `AGENTS.md` | `return self` | **0%** | ⚠️ 靠 `lm sync` 三方合并 |
+| `hooks/hooks.json` | `merge` | 条目级 | ✅ |
+
+**保证量从上到下递减，而每一行都在构建报告里写着。** 这就是 L4「保证是量，不是档」在一棵真实的树上长什么样。
