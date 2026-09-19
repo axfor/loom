@@ -430,3 +430,62 @@ func TestReportGuaranteedShare(t *testing.T) {
 		t.Errorf("a wholly replaced file should say it kept none: %q", line)
 	}
 }
+
+// The same frontmatter statement was written by hand in 37 of the 81 templates of the tree that
+// uses Loom. A tree can say once what it wants done with a key of ours that upstream also has,
+// and the build writes the statement into the template — the way it already completes anchors, so
+// the template still says it and a person still reviews it.
+func TestFrontmatterCompleted(t *testing.T) {
+	dir := t.TempDir()
+	tpl := filepath.Join(dir, "me", "doc.lm")
+	setup := func(settings string) *lang.Config {
+		t.Helper()
+		mustWrite(t, filepath.Join(dir, "loom.om"), settings)
+		mustWrite(t, filepath.Join(dir, "up", "doc.md"), "---\nname: doc\ndescription: Upstream.\n---\n\n## Overview\n\nup\n")
+		mustWrite(t, filepath.Join(dir, "me", "doc.md"), "---\ndescription: Ours.\n---\n\n## Ours\n\nx\n")
+		mustWrite(t, tpl, "base.Overview.after(self.Ours)\n")
+		c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+
+	// Without the setting nothing is written: whether ours replaces upstream's value or goes
+	// before it changes what the product says, and that is not the compiler's to decide.
+	c := setup("base \"up\"\nself \"me\"\n")
+	if _, err := build.PlanBuild(c, true); err == nil {
+		t.Error("an unaccounted frontmatter key should fail when the tree has said nothing")
+	}
+	if got := readFile(t, tpl); !strings.HasPrefix(got, "base.Overview") {
+		t.Errorf("the template was written to without a policy: %q", got)
+	}
+
+	// With it, the statement is written, reported, and the product takes both values.
+	c = setup("frontmatter start\nbase \"up\"\nself \"me\"\n")
+	plan, err := build.PlanBuild(c, true)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	got := readFile(t, tpl)
+	if !strings.HasPrefix(got, "base.frontmatter.description.start(self.frontmatter.description)\n") {
+		t.Errorf("the statement was not written into the template:\n%s", got)
+	}
+	var noted bool
+	for _, l := range plan.Report.Anchored {
+		if strings.Contains(l.Detail, "frontmatter description") {
+			noted = true
+		}
+	}
+	if !noted {
+		t.Errorf("writing it was not reported: %+v", plan.Report.Anchored)
+	}
+
+	// Running again writes nothing more: the statement is there now.
+	if _, err := build.PlanBuild(c, true); err != nil {
+		t.Fatalf("second build: %v", err)
+	}
+	if again := readFile(t, tpl); again != got {
+		t.Errorf("a second build changed the template again:\n%s", again)
+	}
+}

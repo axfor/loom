@@ -39,15 +39,16 @@ type Layer struct {
 // which layer is the warp, what the marks look like — guessing any of these wrong **silently swaps the
 // base**: the product is still valid, only the warp half is gone.
 type Config struct {
-	Root      string
-	Layers    map[string]*Layer
-	Order     []string
-	Warp      string
-	Weft      string
-	Templates string
-	Loom      string // the language version this tree declares; empty = unstated
-	Output    string // output directory (default output of lm build)
-	Anchored  string
+	Root        string
+	Layers      map[string]*Layer
+	Order       []string
+	Warp        string
+	Weft        string
+	Templates   string
+	Loom        string // the language version this tree declares; empty = unstated
+	Frontmatter string // what to do with a key of ours upstream also has: set / start / append
+	Output      string // output directory (default output of lm build)
+	Anchored    string
 
 	// How the whole tree builds (lm build): which upstream files go into the product as they are, which
 	// directories are mirrored whole, and where the product manifest is written

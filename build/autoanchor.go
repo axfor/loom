@@ -388,6 +388,27 @@ func completeAnchors(c *lang.Config, t *lang.Template, write bool, r *Report) (*
 	if err != nil {
 		return nil, err
 	}
+	if keys := frontmatterGaps(c, t); len(keys) > 0 {
+		rel := lang.Rel(c, t.Path)
+		if !write {
+			return t, fmt.Errorf("%s: our frontmatter %s has no statement — lm build writes one, since loom.om says `frontmatter %s`",
+				t.Path, quoteAll(keys), c.Frontmatter)
+		}
+		var add []string
+		for _, k := range keys {
+			add = append(add, fmt.Sprintf("base.frontmatter.%s.%s(self.frontmatter.%s)",
+				lang.NameText(k), c.Frontmatter, lang.NameText(k)))
+			r.Anchored = append(r.Anchored, ReportLine{rel,
+				fmt.Sprintf("frontmatter %s written (loom.om says %s)", k, c.Frontmatter)})
+		}
+		src = append([]byte(strings.Join(add, "\n")+"\n"), src...)
+		if err := os.WriteFile(t.Path, src, 0o644); err != nil {
+			return nil, err
+		}
+		if t, err = lang.LoadTemplate(c, t.Path); err != nil {
+			return nil, err
+		}
+	}
 	gaps, err := findGaps(c, t)
 	if err != nil || len(gaps) == 0 {
 		return t, err
@@ -411,4 +432,56 @@ func completeAnchors(c *lang.Config, t *lang.Template, write bool, r *Report) (*
 		r.Anchored = append(r.Anchored, ReportLine{rel, l})
 	}
 	return lang.LoadTemplate(c, t.Path)
+}
+
+// frontmatterGaps lists the keys of our frontmatter that no statement accounts for, when the tree
+// has said what to do with them. Without that setting there is nothing to write: whether our value
+// replaces upstream's or goes before it changes what the product says, and the compiler does not
+// decide that on anyone's behalf — the build fails with both spellings instead, as it always has.
+func frontmatterGaps(c *lang.Config, t *lang.Template) []string {
+	if c.Frontmatter == "" || t.Type != "markdown" || c.Weft == "" || (t.From != "" && t.From != c.Warp) {
+		return nil
+	}
+	for _, s := range t.Stmts {
+		if s.Op == "merge" || s.Op == "frontmatter" {
+			return nil
+		}
+	}
+	ours, ok, err := c.Read(c.Weft, weftRel(c, t, c.Weft, t.Target))
+	if err != nil || !ok {
+		return nil
+	}
+	fm, ok := ast.NewMarkdown(ours).BodyOf("frontmatter")
+	if !ok {
+		return nil
+	}
+	up, upOK, _ := c.Read(c.Warp, t.BasePath)
+	if !upOK {
+		return nil
+	}
+	upTree := ast.NewMarkdown(up)
+	done := map[string]bool{}
+	for _, s := range t.Stmts {
+		if s.Op == "value" {
+			done[s.SetKey] = true
+		}
+	}
+	var out []string
+	for _, n := range ast.Addressable(ast.New("yaml", fm), "key") {
+		if done[n.Name] || strings.Contains(n.Name, ".") {
+			continue
+		}
+		// A key upstream does not have is simply added by the product; there is nothing to
+		// reconcile and nothing for the setting to decide.
+		if _, has := upTree.BodyOf("frontmatter"); !has {
+			continue
+		}
+		if fmUp, ok := upTree.BodyOf("frontmatter"); ok {
+			if _, there := ast.New("yaml", fmUp).BodyOf(n.Name); !there {
+				continue
+			}
+		}
+		out = append(out, n.Name)
+	}
+	return out
 }
