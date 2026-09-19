@@ -864,6 +864,12 @@ func targets(tree ast.Tree, s lang.Stmt) ([][2]int, error) {
 // selected is every node a predicate allows, in file order. It is the one place the
 // predicates are read, so the weave and the checks that follow it agree on what was chosen.
 func selected(tree ast.Tree, sel *lang.Select) ([]ast.Named, error) {
+	// A json tree is parsed values, not lines: it can say whether a path exists but not where it
+	// sits, so there is nothing to walk. Saying that is the difference between a rule of the
+	// language and a regular expression the author will go hunting for a typo in.
+	if _, isJSON := tree.(*ast.JSONTree); isJSON {
+		return nil, fmt.Errorf("a json file has no list of keys to pick from — name the ones you mean: base.key(\"a.b\")")
+	}
 	var re *regexp.Regexp
 	if sel.Match != "" {
 		var err error

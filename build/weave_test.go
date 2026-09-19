@@ -619,3 +619,31 @@ func TestWeaveSelectorLevel(t *testing.T) {
 		}
 	}
 }
+
+// A json tree is values, not lines, so there is no list of keys to run a predicate over. The
+// build says so instead of reporting that the pattern matched nothing, which would send the
+// author looking for a typo that is not there. A whole json file must be `base.merge(self)`, so
+// the way to reach a json tree with a predicate is a view opened on a value inside another type.
+func TestWeaveSelectorOnJSON(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\n")
+	mustWrite(t, filepath.Join(dir, "up", "c.toml"), "data = \"\"\"\n{\"a\": 1, \"b\": 2}\n\"\"\"\n")
+	mustWrite(t, filepath.Join(dir, "me", "c.toml"), "x = 1\n")
+	mustWrite(t, filepath.Join(dir, "me", "c.toml.lm"), "base.data.as(json).keys(match: \"^b\").drop(reason: \"not ours\")\n")
+
+	c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tm, err := lang.LoadTemplate(c, filepath.Join(dir, "me", "c.toml.lm"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = build.Weave(c, tm)
+	if err == nil {
+		t.Fatal("a predicate over json keys was accepted")
+	}
+	if !strings.Contains(err.Error(), "no list of keys") {
+		t.Errorf("the error does not say why:\n%v", err)
+	}
+}

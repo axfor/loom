@@ -505,6 +505,8 @@ function enclosingCall(t, k, line) {
 // Go's RE2 \s is ASCII only; the compiler spells out the whitespace it means (ast/ws.go).
 const WS = '[\\p{Z}\\t\\n\\f\\r\\v\\x1c-\\x1f\\x85]';
 const RE_HEADING = new RegExp(`^(#{2,6})${WS}+(.*)$`, 'u');
+const RE_YAML_KEY = new RegExp(`^(${WS}*)(?:-${WS}+)?("[^"]*"|'[^']*'|[^\\s:#][^:]*?)${WS}*:(?:${WS}+(.*))?$`, 'u');
+const RE_BLOCK_SCALAR = /^[|>][+-]?[0-9]*[ \t]*$/;
 const RE_TOML_KEY = new RegExp(`^([A-Za-z_][A-Za-z0-9_-]*)${WS}*=${WS}*(.*)$`, 'u');
 const RE_FUNC = new RegExp(`^([A-Za-z_][A-Za-z0-9_]*)${WS}*\\(\\)${WS}*\\{`, 'u');
 const RE_BANNER = new RegExp(`^${WS}*#${WS}*[─=—-]{2,}`, 'u');
@@ -559,6 +561,42 @@ function tomlKeys(lines) {
       continue;
     }
     out.push({ name: m[1], line: i, s: 0, end: i + 1, block: false });
+  }
+  return out;
+}
+
+// yamlKeys mirrors ast/yaml.go: a key is addressed by the dotted path of its parents, and covers
+// whatever is indented under it — a nested map, a sequence, or the body of a block scalar. Line
+// based on purpose, like the compiler: a round trip through a real yaml library rewrites quoting,
+// key order and comments, and the product has to keep every byte the author wrote.
+function yamlKeys(lines) {
+  const out = [];
+  const stack = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const t = line.trim();
+    if (t === '' || t.startsWith('#')) continue;
+    const m = RE_YAML_KEY.exec(line);
+    if (!m) continue;
+    // A list item's key sits deeper than the dash that introduces it, so siblings under the
+    // same dash share a parent.
+    let indent = m[1].length;
+    if (t.startsWith('- ')) indent++;
+    while (stack.length && stack[stack.length - 1].indent >= indent) stack.pop();
+    const raw = m[2].trim();
+    const name = raw.length >= 2 && ((raw[0] === '"' && raw.endsWith('"')) || (raw[0] === "'" && raw.endsWith("'")))
+      ? raw.slice(1, -1)
+      : raw;
+    const path = stack.length ? `${stack[stack.length - 1].name}.${name}` : name;
+    stack.push({ indent, name: path });
+
+    let end = i + 1;
+    for (let j = i + 1; j < lines.length; j++) {
+      if (lines[j].trim() === '') continue; // a blank line inside a block belongs to it
+      if (lines[j].length - lines[j].replace(/^[ \t]*/, '').length <= indent) break;
+      end = j + 1;
+    }
+    out.push({ name: path, line: i, s: line.indexOf(raw), end, block: RE_BLOCK_SCALAR.test((m[3] || '').trim()) });
   }
   return out;
 }
@@ -620,13 +658,14 @@ function jsonPaths(text) {
 }
 
 // nodesOf lists the addressable nodes of one kind: what a name in a template can mean.
-function nodesOf(text, kind) {
+function nodesOf(text, kind, typ) {
   const lines = text.split('\n');
   switch (kind) {
     case 'heading':
       return headings(lines);
     case 'key':
-      return tomlKeys(lines);
+      // toml and yaml share the kind name, as they do in the compiler, but not the syntax.
+      return typ === 'yaml' ? yamlKeys(lines) : tomlKeys(lines);
     case 'path':
       return jsonPaths(text);
     case 'function':
@@ -664,7 +703,7 @@ function pick(nodes, name, ident, match = (n, want) => n.name === want) {
 }
 
 // findNode locates a node the way the compiler does: {line, end, s, e} with end exclusive, or null.
-function findNode(text, node, view) {
+function findNode(text, node, view, typ) {
   const { lines, offset } = viewLines(text, view);
   const shift = (n, name) => n && { line: n.line + offset, end: n.end + offset, s: Math.max(n.s, 0), e: Math.max(n.s, 0) + name.length };
   switch (node.kind) {
@@ -704,7 +743,7 @@ function findNode(text, node, view) {
       return n ? shift(n, JSON.stringify(node.name.split('.').pop())) : null;
     }
     default: {
-      const n = pick(nodesOf(lines.join('\n'), node.kind), node.name, node.ident);
+      const n = pick(nodesOf(lines.join('\n'), node.kind, typ), node.name, node.ident);
       return shift(n, n ? n.name : '');
     }
   }
@@ -737,6 +776,7 @@ module.exports = {
   identMatch,
   headings,
   nodesOf,
+  yamlKeys,
   viewLines,
   findNode,
 };

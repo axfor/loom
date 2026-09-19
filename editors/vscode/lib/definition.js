@@ -22,7 +22,7 @@ function locate(file, node, view) {
   if (!file || !loom.isFile(file)) return null;
   const text = loom.readText(file);
   const lines = text.split('\n').length;
-  const hit = node && loom.findNode(text, node, view);
+  const hit = node && loom.findNode(text, node, view, loom.typeOf(file));
   if (!hit) return { file, line: 0, end: lines, s: 0, e: 0 };
   return { file, ...hit };
 }

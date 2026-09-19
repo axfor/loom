@@ -12,6 +12,7 @@ package lang
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -255,7 +256,7 @@ func TestEditorLexesTheSameWay(t *testing.T) {
 	cmd.Stdin = strings.NewReader(string(in))
 	out, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("lexing with the editor: %v", err)
+		t.Fatalf("lexing with the editor: %v\n%s", err, stderr(err))
 	}
 	var js map[string][]string
 	if err := json.Unmarshal(out, &js); err != nil {
@@ -289,4 +290,123 @@ func TestEditorLexesTheSameWay(t *testing.T) {
 				name, src, strings.Join(got, " "), strings.Join(want, " "))
 		}
 	}
+}
+
+// The editor also finds the nodes of a file itself — the headings of a markdown document, the
+// keys of a yaml one — because completion cannot run the compiler on every keystroke. That is a
+// second implementation of ast/*.go, and it was wrong for yaml in the plainest way available: the
+// kind is called "key" for both toml and yaml, as it is in the compiler, so the editor handed
+// yaml to its toml parser and found nothing at all. A whole document type, invisible.
+//
+// json is deliberately absent. Its tree is parsed values, not lines, so the compiler can answer
+// whether a path exists but not where it sits, and listing nodes with invented line numbers would
+// be a lie. The editor scans the text and can say roughly where — a weaker answer, but the right
+// one for completion. The two differ on purpose, so comparing them would only encode the lie.
+//
+// ast lives in another package, so this test asks the compiler through a tiny program rather than
+// calling in: the point is to compare the two answers, not to reach past either.
+func TestEditorFindsTheSameNodes(t *testing.T) {
+	exe := node(t)
+	files := map[string]struct {
+		Typ  string `json:"typ"`
+		Kind string `json:"kind"`
+		Text string `json:"text"`
+	}{
+		"markdown":    {"markdown", "heading", "# Top\n\nt\n\n## A\n\na\n\n### A1\n\nx\n\n## B\n\nb\n"},
+		"yaml":        {"yaml", "key", "name: t\non:\n  push:\n    branches: [main]\njobs:\n  build:\n    runs-on: ubuntu\n    steps:\n      - name: one\n        run: |\n          echo hi\n"},
+		"yaml list":   {"yaml", "key", "steps:\n  - name: a\n    run: x\n  - name: b\n    run: y\n"},
+		"yaml quoted": {"yaml", "key", "\"a b\": 1\n'c d': 2\n# comment: no\n"},
+		"toml":        {"toml", "key", "alpha = 1\nbeta = \"two\"\n"},
+		"shell":       {"shell", "function", "#!/bin/sh\nmain() {\n  echo\n}\nhelp() {\n  echo\n}\n"},
+	}
+
+	var names []string
+	for name := range files {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	in, err := json.Marshal(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(exe, "-e", `const m = require("./lib/loom.js");
+		let src = ""; process.stdin.on("data", (d) => (src += d)).on("end", () => {
+			const cases = JSON.parse(src), out = {};
+			for (const [k, c] of Object.entries(cases)) out[k] = m.nodesOf(c.text, c.kind, c.typ).map((n) => n.name);
+			console.log(JSON.stringify(out));
+		});`)
+	cmd.Dir = ext
+	cmd.Stdin = strings.NewReader(string(in))
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("finding nodes with the editor: %v\n%s", err, stderr(err))
+	}
+	var js map[string][]string
+	if err := json.Unmarshal(out, &js); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, name := range names {
+		c := files[name]
+		want := compilerNodes(t, c.Typ, c.Kind, c.Text)
+		if got := js[name]; strings.Join(got, " ") != strings.Join(want, " ") {
+			t.Errorf("%s: the editor finds different nodes than the compiler does\n  editor:   %s\n  compiler: %s",
+				name, strings.Join(got, " "), strings.Join(want, " "))
+		}
+	}
+}
+
+// compilerNodes asks ast what a file's addressable nodes are, through a program built for the
+// purpose. lang cannot import build and must not import ast's internals to answer this.
+func compilerNodes(t *testing.T, typ, kind, text string) []string {
+	t.Helper()
+	dir := t.TempDir()
+	prog := `package main
+
+import (
+	"encoding/json"
+	"os"
+
+	"github.com/axfor/loom/ast"
+)
+
+func main() {
+	b, _ := os.ReadFile(os.Args[3])
+	var out []string
+	for _, n := range ast.Addressable(ast.New(os.Args[1], string(b)), os.Args[2]) {
+		out = append(out, n.Name)
+	}
+	_ = json.NewEncoder(os.Stdout).Encode(out)
+}
+`
+	src := filepath.Join(dir, "main.go")
+	if err := os.WriteFile(src, []byte(prog), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	in := filepath.Join(dir, "in")
+	if err := os.WriteFile(in, []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("go", "run", src, typ, kind, in)
+	cmd.Dir = "."
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("asking the compiler for %s nodes: %v", typ, err)
+	}
+	var got []string
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+// stderr is what the child wrote before failing — without it a broken mirror reports only an
+// exit status, which says nothing about what went wrong inside it.
+func stderr(err error) []byte {
+	var e *exec.ExitError
+	if errors.As(err, &e) {
+		return e.Stderr
+	}
+	return nil
 }

@@ -178,7 +178,7 @@ function stepItems(cx, chain, index, range, quoted) {
   const out = [];
   const text = cx.read(r.obj.file);
   if (text != null) {
-    const src = { ...loom.viewLines(text, r.view), where: path.relative(cx.t.cfg.root, r.obj.file) };
+    const src = { ...loom.viewLines(text, r.view), where: path.relative(cx.t.cfg.root, r.obj.file), typ: r.typ };
     const write = quoted
       ? (parts) => ({ insertText: parts.map(loom.quote).join('.'), filterText: loom.quote(parts[parts.length - 1]) })
       : (parts) => ({
@@ -248,7 +248,7 @@ function nodeItems(src, kind, chapter, write, range) {
   if (kind === 'line') return [];
   const { lines, offset, where } = src;
   const text = lines.join('\n');
-  const all = kind === 'heading' ? loom.headings(lines) : loom.nodesOf(text, kind);
+  const all = kind === 'heading' ? loom.headings(lines) : loom.nodesOf(text, kind, src.typ);
   let nodes = all;
   if (chapter) {
     const top = all.find((h) => h.line === chapter.from);
@@ -305,7 +305,9 @@ function argItems(cx, argOf, range, quoted) {
   const asString = (parts) => ({ insertText: loom.quote(parts[0]), filterText: quoted ? loom.quote(parts[0]) : typedAs(parts[0]) });
   const source = (file, view) => {
     const text = cx.read(file);
-    return text == null ? null : { ...loom.viewLines(text, view), where: path.relative(cx.t.cfg.root, file) };
+    // r.typ is the type after any as(...) view: inside as(markdown) the lines are markdown,
+    // whatever the file around them is.
+    return text == null ? null : { ...loom.viewLines(text, view), where: path.relative(cx.t.cfg.root, file), typ: r.typ };
   };
 
   // .section("...") / .function("...") / .key("..."): that kind of node in the file being changed
@@ -340,7 +342,7 @@ function argItems(cx, argOf, range, quoted) {
     const src = source(self.file, null);
     if (!src) return [];
     const fm = r.node.kind === 'fmkey';
-    const keys = loom.nodesOf(src.lines.join('\n'), fm ? 'fmkey' : loom.DEFAULT_KIND[r.typ]);
+    const keys = loom.nodesOf(src.lines.join('\n'), fm ? 'fmkey' : loom.DEFAULT_KIND[r.typ], r.typ);
     return keys
       .map((n, k) => {
         const written = `self.${fm ? 'frontmatter.' : ''}${nodeText(n.name)}`;
