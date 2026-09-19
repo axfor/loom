@@ -528,6 +528,12 @@ func refSource(c *lang.Config, t *lang.Template, r lang.Ref, rel string, nest *n
 
 // refTree picks a tree for the source text based on the node kind.
 func refTree(t *lang.Template, kind, src string, useNest *nestCtx) ast.Tree {
+	// The template's own type first: `key` means a yaml key in a yaml template and a
+	// toml key in a toml one, and a fixed order would always hand it to whichever
+	// type is listed earlier.
+	if useNest == nil && ast.Has(ast.Kinds(t.Type), kind) {
+		return ast.New(t.Type, src)
+	}
 	for _, tn := range ast.Types {
 		if ast.Has(ast.Kinds(tn), kind) && (useNest == nil || tn != t.Type) {
 			return ast.New(tn, src)

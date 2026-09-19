@@ -15,10 +15,11 @@ const KIND_CALLS = {
   markdown: { section: 'heading', line: 'line' },
   shell: { function: 'function', marker: 'marker', line: 'line' },
   toml: { key: 'key' },
+  yaml: { key: 'key' },
   json: { key: 'path' },
   text: { line: 'line' },
 };
-const DEFAULT_KIND = { markdown: 'heading', shell: 'function', toml: 'key', json: 'path', text: 'line' };
+const DEFAULT_KIND = { markdown: 'heading', shell: 'function', toml: 'key', yaml: 'key', json: 'path', text: 'line' };
 const TYPES = new Set(Object.keys(DEFAULT_KIND));
 
 function typeOf(p) {
@@ -28,6 +29,9 @@ function typeOf(p) {
       return 'markdown';
     case '.toml':
       return 'toml';
+    case '.yaml':
+    case '.yml':
+      return 'yaml';
     case '.json':
       return 'json';
     case '.sh':

@@ -181,7 +181,7 @@ const find = (items, label) => items.find((i) => i.label === label);
   const l3c = labels(at(toml, 'base.description.start(|)').items);
   ok(l3c[0] === 'self.description', 'toml: a key\'s start( offers our keys, the same key first', l3c);
   const l4 = labels(at(toml, 'base.prompt.as(|)').items);
-  ok(l4.includes('markdown') && l4.length === 5, 'as( offers the types', l4);
+  ok(l4.includes('markdown') && l4.includes('yaml') && l4.length === 6, 'as( offers the types', l4);
   const l5 = labels(at(sh, 'base.|').items);
   ok(l5[0] === 'main' && ['function', 'marker', 'line'].every((x) => l5.includes(x)), 'shell: functions and node kinds', l5);
   const l6 = labels(at(sh, 'base.marker("|")').items);

@@ -24,7 +24,7 @@ type Tree interface {
 
 // Types keeps a fixed order — evaluation picks the first type in this order that
 // knows a given node kind, so reordering it would pick a different tree.
-var Types = []string{"markdown", "toml", "json", "shell", "text"}
+var Types = []string{"markdown", "toml", "yaml", "json", "shell", "text"}
 
 // New builds a tree for the given type.
 func New(typ, text string) Tree {
@@ -33,6 +33,8 @@ func New(typ, text string) Tree {
 		return NewMarkdown(text)
 	case "toml":
 		return NewToml(text)
+	case "yaml":
+		return NewYaml(text)
 	case "json":
 		return NewJSON(text)
 	case "shell":
@@ -49,6 +51,8 @@ func Kinds(typ string) []string {
 	case "markdown":
 		return []string{"heading", "line", "frontmatter"}
 	case "toml":
+		return []string{"key"}
+	case "yaml":
 		return []string{"key"}
 	case "json":
 		return []string{"path"}
@@ -106,6 +110,15 @@ func Addressable(t Tree, kind string) []Named {
 		var out []Named
 		for _, n := range v.nodes {
 			out = append(out, Named{Name: n.key, Line: n.start})
+		}
+		return out
+	case *Yaml:
+		if kind != "key" {
+			return nil
+		}
+		var out []Named
+		for _, n := range v.nodes {
+			out = append(out, Named{Name: n.path, Line: n.start})
 		}
 		return out
 	case *Shell:

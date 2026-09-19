@@ -25,6 +25,7 @@ var defaultKind = map[string]string{
 	"markdown": "heading",
 	"shell":    "function",
 	"toml":     "key",
+	"yaml":     "key",
 	"json":     "path",
 	"text":     "line",
 }
@@ -34,6 +35,7 @@ var kindCalls = map[string]map[string]string{
 	"markdown": {"section": "heading", "line": "line"},
 	"shell":    {"function": "function", "marker": "marker", "line": "line"},
 	"toml":     {"key": "key"},
+	"yaml":     {"key": "key"},
 	"json":     {"key": "path"},
 	"text":     {"line": "line"},
 }
@@ -41,7 +43,7 @@ var kindCalls = map[string]map[string]string{
 // editMethods are the methods that change base.
 var editMethods = []string{"after", "before", "start", "append", "replace", "drop", "set", "merge"}
 
-func typeWords() []string { return []string{"markdown", "toml", "json", "shell", "text"} }
+func typeWords() []string { return []string{"markdown", "toml", "yaml", "json", "shell", "text"} }
 
 // TypeOf infers the type from a file path. Anything it cannot infer is plain text.
 func TypeOf(p string) string {
@@ -50,6 +52,8 @@ func TypeOf(p string) string {
 		return "markdown"
 	case ".toml":
 		return "toml"
+	case ".yaml", ".yml":
+		return "yaml"
 	case ".json":
 		return "json"
 	case ".sh", ".bash":
@@ -451,8 +455,8 @@ func (in *interp) select_(r *receiver, st oStep) error {
 		if _, ok := defaultKind[typ]; !ok {
 			return unknownIn(typ, typeWords(), "type", st.args[0].pos)
 		}
-		if r.viewOf != "" || r.kind != defaultKind[r.typ] || (r.typ != "toml" && r.typ != "json") {
-			return fmt.Errorf("%s: as only applies to a toml / json key: base.prompt.as(markdown)", st.pos)
+		if r.viewOf != "" || r.kind != defaultKind[r.typ] || !hasValues(r.typ) {
+			return fmt.Errorf("%s: as only applies to a key whose value is a document — toml, yaml or json: base.prompt.as(markdown)", st.pos)
 		}
 		*r = receiver{typ: typ, viewOf: r.anchor, viewAs: typ, pos: r.pos}
 		return nil
@@ -732,10 +736,16 @@ func (in *interp) contents(args []oArg, typ string, inView bool) ([]Ref, error) 
 	return out, nil
 }
 
+// hasValues reports whether a type's nodes are keys holding a value — the types whose
+// value can be written with set / start / append, and re-opened as another type with as.
+func hasValues(typ string) bool {
+	return typ == "toml" || typ == "yaml" || typ == "json"
+}
+
 // isValue reports whether a receiver is a key whose value set / start / append can write: a frontmatter
-// key, or a toml / json key outside a view.
+// key, or a key of a type that holds values, outside a view.
 func isValue(r receiver) bool {
-	return r.node && r.viewOf == "" && (r.kind == "fmkey" || ((r.typ == "toml" || r.typ == "json") && r.kind == defaultKind[r.typ]))
+	return r.node && r.viewOf == "" && (r.kind == "fmkey" || (hasValues(r.typ) && r.kind == defaultKind[r.typ]))
 }
 
 // valueArg reads the one value set / start / append takes: a key of our file or a literal.

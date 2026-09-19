@@ -176,3 +176,74 @@ func mustWrite(t *testing.T, p, s string) {
 		t.Fatal(err)
 	}
 }
+
+// yaml, end to end: a product woven by key path, and the recursion rule that the
+// whole design rests on — a key whose value is a document, opened as that document
+// and woven section by section.
+func TestWeaveYaml(t *testing.T) {
+	dir := t.TempDir()
+	write := func(rel, text string) {
+		t.Helper()
+		mustWrite(t, filepath.Join(dir, rel), text)
+	}
+	write("loom.om", "base \"up\"\nself \"me\"\n")
+	write("up/ci.yaml", "name: build\n\njobs:\n  test:\n    runs-on: ubuntu-latest\n")
+	write("me/ci.yaml", "  lint:\n    runs-on: ubuntu-latest\n")
+	write("me/ci.lm", "base.\"jobs.test\".after(self.lint)\n")
+
+	c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tpl, err := lang.LoadTemplate(c, filepath.Join(dir, "me", "ci.lm"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := build.Weave(c, tpl)
+	if err != nil {
+		t.Fatalf("weave: %v", err)
+	}
+	// Inserted content is separated by a blank line, as it is in every other type;
+	// a blank line between two entries of a mapping is still yaml.
+	want := "name: build\n\njobs:\n  test:\n    runs-on: ubuntu-latest\n\n  lint:\n    runs-on: ubuntu-latest\n"
+	if got != want {
+		t.Errorf("got:\n%q\nwant:\n%q", got, want)
+	}
+}
+
+// A markdown document inside a yaml block scalar has sections, and weaving one in
+// re-indents it back under its key. This is L1.2 — a part opens as a document of
+// its own — on the one pair of types where it had never been possible.
+func TestWeaveYamlValueAsMarkdown(t *testing.T) {
+	dir := t.TempDir()
+	write := func(rel, text string) {
+		t.Helper()
+		mustWrite(t, filepath.Join(dir, rel), text)
+	}
+	write("loom.om", "base \"up\"\nself \"me\"\n")
+	write("up/skill.yaml", "prompt: |\n  ## Overview\n\n  up\n\n  ## Process\n\n  p\n")
+	write("me/skill.yaml", "prompt: |\n  ## Ours\n\n  mine with `code`\n")
+	write("me/skill.lm", "base.prompt.as(markdown).Overview.after(\"Ours\")\n")
+
+	c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tpl, err := lang.LoadTemplate(c, filepath.Join(dir, "me", "skill.lm"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := build.Weave(c, tpl)
+	if err != nil {
+		t.Fatalf("weave: %v", err)
+	}
+	for _, want := range []string{"  ## Ours", "  mine with `code`", "  ## Process"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("product is missing %q:\n%s", want, got)
+		}
+	}
+	// Upstream's own sections are still there, still indented under the key.
+	if !strings.Contains(got, "  ## Overview") {
+		t.Errorf("upstream's section was lost:\n%s", got)
+	}
+}
