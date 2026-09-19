@@ -620,6 +620,13 @@ tar -xzf lm_*.tar.gz && sudo mv lm_*/lm /usr/local/bin/
 `SHA256SUMS` in the same release covers every file. With Go at hand,
 `go install github.com/axfor/loom/cmd/lm@latest` does the same thing from source.
 
+Once installed, `lm update` keeps it current: it asks GitHub for the latest release, takes the
+archive for this platform, **checks it against that release's `SHA256SUMS`** and puts the binary
+where the running one is. An archive that does not match is refused rather than installed — a self
+updater that runs whatever it was handed is a way to run someone else's code as you. `lm update
+-check` only says what is available. Where lm sits in a directory you do not own (`/usr/local/bin`),
+it says so and what to do about it.
+
 The extension is the `loom-lang-<version>.vsix` of the same release: in VS Code, Extensions →
 `…` → Install from VSIX.
 
@@ -642,6 +649,7 @@ lm weave [-e vars] [-stdin] <template.lm>    weave one template to stdout; -stdi
 lm list [-tsv]                               template metadata as JSON (or six TSV columns) for other tools
 lm anchors                                   where each anchor currently resolves upstream
 lm view                                      write upstream files annotated with their anchors
+lm update [-check]                           replace this lm with the latest release; -check only says what is available
 lm version                                   the version, platform and Go version
 ```
 

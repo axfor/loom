@@ -37,6 +37,8 @@ Usage:
   lm list [-tsv]            print each template's metadata (for outer gates)
   lm anchors                list the upstream line each anchor resolves to right now
   lm view                   generate a derived view annotated with anchors
+  lm update [-check]        replace this lm with the latest release from GitHub, after checking it
+                            against the release's SHA256SUMS; -check only says what is available
   lm version                print the version, platform and Go version
 
 Settings are read from the nearest build.lm (searching up from the current directory).
@@ -53,6 +55,19 @@ func main() {
 		return
 	case "version", "-version", "--version":
 		printVersion()
+		return
+	case "update":
+		// No loom.lm is needed to replace the binary, and needing one would be absurd: the usual
+		// reason to update is that the lm on PATH is too old for the tree in front of you.
+		check := len(os.Args) > 2 && (os.Args[2] == "-check" || os.Args[2] == "--check")
+		if len(os.Args) > 2 && !check {
+			fmt.Fprintf(os.Stderr, "usage: lm update [-check]\n")
+			os.Exit(2)
+		}
+		if err := update(check); err != nil {
+			fmt.Fprintf(os.Stderr, "⛔ %v\n", err)
+			os.Exit(1)
+		}
 		return
 	}
 	if err := run(os.Args[1], os.Args[2:]); err != nil {
