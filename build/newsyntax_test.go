@@ -591,3 +591,102 @@ func TestPredicateShapeAndComparisons(t *testing.T) {
 		t.Errorf("! should bind tighter than &&: %s", h)
 	}
 }
+
+// The rest of what the syntax adds, each against a real product: pointing base somewhere else,
+// counting instead of asking, values as a class, resource documents that are not markdown,
+// importing alongside a resource section, and what err.format does with its arguments.
+func TestTheRestOfTheSyntax(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\nmark shell \"# B\" \"# E\"\nmark toml \"# B\" \"# E\"\n")
+	mustWrite(t, filepath.Join(dir, "up", "old", "f.md"), "# T\n\n## Setup\n\nu\n")
+	mustWrite(t, filepath.Join(dir, "me", "notes.md"), "## Note\n\nn\n")
+	mustWrite(t, filepath.Join(dir, "up", "r.sh"), "#!/bin/sh\nmain() {\n  echo up\n}\n")
+	mustWrite(t, filepath.Join(dir, "up", "c.toml"), "a = 1\nb = 2\n")
+
+	weave := func(name, tpl string) (string, error) {
+		mustWrite(t, filepath.Join(dir, "me", name+".lm"), tpl)
+		c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		tm, err := lang.LoadTemplate(c, filepath.Join(dir, "me", name+".lm"))
+		if err != nil {
+			return "", err
+		}
+		return build.Weave(c, tm)
+	}
+	const res = "\n---\nSelf:\n    ```markdown\n    ## job\n\n    x\n    ```\n"
+
+	// base = "...": upstream moved the file this template is woven onto.
+	got, err := weave("f.md", "base = \"/old/f.md\"\nbase.Setup.after(self.job)"+res)
+	if err != nil {
+		t.Fatalf("base = : %v", err)
+	}
+	if !strings.Contains(got, "## Setup") || !strings.Contains(got, "## job") {
+		t.Errorf("base did not move:\n%s", got)
+	}
+
+	// .count asks the same question .any does: did the predicate find anything.
+	if _, err := weave("f.md", "base = \"/old/f.md\"\nif base.sections[level == 2].count {\n\tbase.Setup.after(self.job)\n}"+res); err != nil {
+		t.Errorf(".count: %v", err)
+	}
+
+	// An import and a resource section live together: self is the section, the import has its
+	// own name.
+	got, err = weave("f.md", "base = \"/old/f.md\"\nimport n \"/notes\"\nbase.Setup.after(n.Note)\nbase.append(self.job)"+res)
+	if err != nil {
+		t.Fatalf("import beside a resource section: %v", err)
+	}
+	if !strings.Contains(got, "## Note") || !strings.Contains(got, "## job") {
+		t.Errorf("one of the two sources did not arrive:\n%s", got)
+	}
+
+	// A resource document is whatever its fence says it is.
+	got, err = weave("r.sh", "base.main.after(self.helper)\n---\nSelf:\n    ```shell\n    helper() {\n      echo ours\n    }\n    ```\n")
+	if err != nil {
+		t.Fatalf("a shell resource: %v", err)
+	}
+	if !strings.Contains(got, "helper() {") {
+		t.Errorf("the shell document did not reach the product:\n%s", got)
+	}
+
+	// values names the same nodes keys does — what differs is what you then do with them.
+	for _, cls := range []string{"keys", "values"} {
+		got, err = weave("c.toml", "base."+cls+"[name == \"b\"].drop(reason: \"ours\")\nbase.append(self.extra)\n---\nSelf:\n    ```toml\n    extra = 3\n    ```\n")
+		if err != nil {
+			t.Fatalf("%s: %v", cls, err)
+		}
+		if strings.Contains(got, "b = 2") || !strings.Contains(got, "extra = 3") {
+			t.Errorf("%s:\n%s", cls, got)
+		}
+	}
+
+	// err.format takes the message and what goes into it, and only the message is formatted.
+	_, err = weave("f.md", "base = \"/old/f.md\"\nok = base.Nope.after(self.job)\nif !ok {\n\treturn err.format(\"100%% done, twice: %s / %s\", ok, ok)\n}"+res)
+	if err == nil {
+		t.Fatal("err.format should fail the build")
+	}
+	if !strings.Contains(err.Error(), "100% done, twice:") || strings.Count(err.Error(), "Nope not found") != 2 {
+		t.Errorf("the message did not come out as written: %v", err)
+	}
+	// The count of placeholders and of values has to agree. Left unchecked the build still fails —
+	// it is a return err, after all — but with %!s(MISSING) in the message instead of a word about
+	// the typo, so the test has to look at what it says.
+	_, err = weave("f.md", "base = \"/old/f.md\"\nok = base.Nope.after(self.job)\nif !ok {\n\treturn err.format(\"%s and %s\", ok)\n}"+res)
+	if err == nil {
+		t.Fatal("two placeholders and one value were accepted")
+	}
+	if !strings.Contains(err.Error(), "2 placeholder(s) and 1 value(s)") {
+		t.Errorf("the mismatch should be named where it is written: %v", err)
+	}
+
+	// The path may be written with or without a leading slash: both name the same upstream file.
+	for _, spec := range []string{"/old/f.md", "old/f.md"} {
+		got, err := weave("f.md", "base = \""+spec+"\"\nbase.Setup.after(self.job)"+res)
+		if err != nil {
+			t.Errorf("base = %q: %v", spec, err)
+		} else if !strings.Contains(got, "## Setup") {
+			t.Errorf("base = %q did not reach the file:\n%s", spec, got)
+		}
+	}
+}
