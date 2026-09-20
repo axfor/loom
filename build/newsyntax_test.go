@@ -545,3 +545,49 @@ func TestCallsAndHasAreNotSearches(t *testing.T) {
 		t.Errorf("has should have found jobs and jobs.test: %v", err)
 	}
 }
+
+// The six ways to compare a level, and the shape of a predicate: && binds tighter than ||, ! binds
+// tighter than both, and each is left-associative. Getting any of those wrong gives an answer that
+// looks reasonable and is not the one written.
+func TestPredicateShapeAndComparisons(t *testing.T) {
+	const doc = "# T\n\n## A\n\na\n\n### B\n\nb\n\n#### C\n\nc\n\n## D\n\nd\n"
+	weave := newTree(t, "base \"up\"\nself \"me\"\n", doc, "## Ours\n\no\n")
+	for _, c := range []struct{ cmp, want string }{
+		{"== 3", "# T | ## A | #### B | #### C | ## D"},
+		{"!= 3", "# T | ### A | ### B | ##### C | ### D"},
+		{"< 3", "# T | ### A | ### B | #### C | ### D"},
+		{"<= 3", "# T | ### A | #### B | #### C | ### D"},
+		{"> 3", "# T | ## A | ### B | ##### C | ## D"},
+		{">= 3", "# T | ## A | #### B | ##### C | ## D"},
+	} {
+		got, err := weave("base.sections[level " + c.cmp + "].demote()\n")
+		if err != nil {
+			t.Errorf("level %s: %v", c.cmp, err)
+			continue
+		}
+		if h := headings(got); h != c.want {
+			t.Errorf("level %s\n  got  %s\n  want %s", c.cmp, h, c.want)
+		}
+	}
+
+	// && binds tighter than ||: level 2 alone, or level 3 that is also empty — and none is empty.
+	got, err := weave("base.sections[level == 2 || level == 3 && empty].demote()\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h := headings(got); h != "# T | ### A | ### B | #### C | ### D" {
+		t.Errorf("&& should bind tighter than ||: %s", h)
+	}
+	// With the grouping written the other way, nothing matches.
+	if _, err := weave("base.sections[(level == 2 || level == 3) && empty].demote()\n"); err == nil {
+		t.Error("nothing is empty, so this should have matched nothing")
+	}
+	// ! binds tighter than &&.
+	got, err = weave("base.sections[!empty && level == 4].demote()\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h := headings(got); h != "# T | ## A | ### B | ##### C | ## D" {
+		t.Errorf("! should bind tighter than &&: %s", h)
+	}
+}
