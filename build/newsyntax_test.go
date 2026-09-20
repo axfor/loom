@@ -456,3 +456,92 @@ func TestElseIfChain(t *testing.T) {
 		t.Errorf("the report should name the last question asked: %q", p.Report.Skipped[0].Detail)
 	}
 }
+
+// `calls` and `has` ask what a document does and what it holds. Written as a search for the word
+// they would answer a different question — one that is right often enough to be trusted and wrong
+// exactly where it matters.
+func TestCallsAndHasAreNotSearches(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark shell \"# B\" \"# E\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n")
+	mustWrite(t, filepath.Join(dir, "up", "r.sh"),
+		"#!/bin/sh\nfetch() {\n  curl -s \"$1\"\n}\ncurly() {\n  echo curly\n}\nnote() {\n  # curl -s \"$1\"   ← the old way, kept for reference\n  echo hi  # ; curl x\n}\npiped() {\n  echo x | curl -\n}\nguarded() {\n  if curl -f x; then echo ok; fi\n}\n")
+	mustWrite(t, filepath.Join(dir, "me", "r.sh"), "ours() {\n  echo o\n}\n")
+	mustWrite(t, filepath.Join(dir, "up", "m.md"),
+		"# T\n\n## A\n\n### Usage\n\nu\n\n## B\n\nthe word Usage appears here\n\n## C\n\n### Usage\n\nu2\n")
+	mustWrite(t, filepath.Join(dir, "me", "m.md"), "## Ours\n\no\n")
+
+	plan := func(tpl, name string) *build.Plan {
+		t.Helper()
+		mustWrite(t, filepath.Join(dir, "me", name+".lm"), tpl)
+		c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		p, err := build.PlanBuild(c, true)
+		if err != nil {
+			t.Fatalf("%s: %v", tpl, err)
+		}
+		return p
+	}
+
+	// curly has the letters in a word of its own; note has them in a comment. Neither calls it.
+	mustWrite(t, filepath.Join(dir, "me", "m.md.lm"), "base.C.after(self.Ours)\n")
+	p := plan("base.functions[calls \"curl\"].drop(reason: \"no network\")\nbase.note.after(self.ours)\n", "r.sh")
+	var dropped []string
+	for _, l := range p.Report.Dropped {
+		dropped = append(dropped, l.Path)
+	}
+	want := "r.sh § fetch r.sh § piped r.sh § guarded"
+	if got := strings.Join(dropped, " "); got != want {
+		t.Errorf("calls found the wrong functions\n  got  %s\n  want %s", got, want)
+	}
+
+	// B has the word in its text; A and C hold a section by that name.
+	plan("base.sections[has.\"Usage\" && level == 2].demote()\nbase.B.after(self.Ours)\n", "m.md")
+	var product string
+	for _, o := range plan("base.sections[has.\"Usage\" && level == 2].demote()\nbase.B.after(self.Ours)\n", "m.md").Outputs {
+		if o.Rel == "m.md" {
+			product = string(o.Data)
+		}
+	}
+	got := headings(product)
+	if !strings.Contains(got, "### A") || !strings.Contains(got, "### C") {
+		t.Errorf("has did not find the sections that hold a Usage: %s", got)
+	}
+	if !strings.Contains(got, "## B") || strings.Contains(got, "### B") {
+		t.Errorf("has matched B on the word in its text: %s", got)
+	}
+
+	// A yaml key holds keys too, and they nest by path rather than by level.
+	mustWrite(t, filepath.Join(dir, "up", "w.yaml"), "jobs:\n  build:\n    runs-on: x\n  test:\n    needs: build\n")
+	mustWrite(t, filepath.Join(dir, "me", "w.yaml"), "extra: 1\n")
+	mustWrite(t, filepath.Join(dir, "me", "w.yaml.lm"), "base.keys[has.\"jobs.build.runs-on\"].drop(reason: \"we set it elsewhere\")\nbase.append(self.extra)\n")
+	c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tm, err := lang.LoadTemplate(c, filepath.Join(dir, "me", "w.yaml.lm"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// jobs and jobs.build both hold that key, and jobs.test does not — so the two that matched
+	// cover each other's lines, which is exactly what the overlap check is for. The spans it
+	// names are the proof of which keys `has` found.
+	_, err = build.Weave(c, tm)
+	if err == nil {
+		t.Fatal("dropping a key and the key inside it should collide")
+	}
+	if !strings.Contains(err.Error(), "(1-5 and 2-3)") {
+		t.Errorf("has found the wrong keys: %v", err)
+	}
+
+	// Asked of one key instead of the group, only the ones that hold it answer.
+	mustWrite(t, filepath.Join(dir, "me", "w.yaml.lm"), "base.keys[has.\"jobs.test.needs\"].drop(reason: \"ours\")\nbase.append(self.extra)\n")
+	tm, err = lang.LoadTemplate(c, filepath.Join(dir, "me", "w.yaml.lm"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := build.Weave(c, tm); err == nil || !strings.Contains(err.Error(), "(1-5 and 4-5)") {
+		t.Errorf("has should have found jobs and jobs.test: %v", err)
+	}
+}

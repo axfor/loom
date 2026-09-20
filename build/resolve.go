@@ -248,19 +248,81 @@ func match(tree ast.Tree, p *lang.Pred, n ast.Named) (bool, error) {
 	case "empty":
 		return strings.TrimSpace(strings.Join(tree.Lines()[n.Line+1:n.End], "")) == "", nil
 	case "calls":
-		for _, l := range tree.Lines()[n.Line:n.End] {
-			if strings.Contains(l, p.Str) {
+		return calls(tree.Lines()[n.Line+1:n.End], p.Str), nil
+	case "has":
+		// A part this one holds, by name — not a word that happens to appear in its text. For
+		// markdown that is a heading below it; elsewhere a node whose lines fall inside this one.
+		for _, m := range ast.Addressable(tree, kindOf(tree, n)) {
+			if m.Line > n.Line && m.Line < n.End && m.Name == p.Str {
 				return true, nil
 			}
-		}
-		return false, nil
-	case "has":
-		for _, l := range tree.Lines()[n.Line+1 : n.End] {
-			if strings.Contains(l, p.Str) {
-				return true, nil
+			if n.Level > 0 && m.Level > n.Level && m.Line > n.Line && m.Name == p.Str {
+				// A section ends at the next heading, so what is under it is the deeper
+				// headings that follow — they are nodes of their own.
+				if deeper(tree, n, m) {
+					return true, nil
+				}
 			}
 		}
 		return false, nil
 	}
 	return false, fmt.Errorf("unknown predicate %q", p.Field)
+}
+
+// calls reports whether these lines invoke a command by that name. A command sits at the start of
+// a statement, so `curl` in `echo curly` and `curl` in a comment are not calls to it — which is
+// the whole difference between asking what a function does and grepping it.
+func calls(lines []string, name string) bool {
+	// A command starts a statement: at the beginning of a line, after a separator, inside a
+	// substitution, or after one of the words that introduce one.
+	word := regexp.MustCompile(`(^|[;|&({]|\$\(|` + "`" + `|&&|\|\||\b(?:if|then|else|elif|do|while|until|!)\s)\s*` + regexp.QuoteMeta(name) + `(\s|$|;|\)|` + "`" + `)`)
+	for _, l := range lines {
+		if i := comment(l); i >= 0 {
+			l = l[:i]
+		}
+		if word.MatchString(strings.TrimSpace(l)) {
+			return true
+		}
+	}
+	return false
+}
+
+// comment is where a shell comment starts on a line, or -1. A # inside quotes is text.
+func comment(l string) int {
+	var q byte
+	for i := 0; i < len(l); i++ {
+		switch c := l[i]; {
+		case q != 0:
+			if c == q {
+				q = 0
+			}
+		case c == '\'' || c == '"':
+			q = c
+		case c == '#' && (i == 0 || l[i-1] == ' ' || l[i-1] == '\t'):
+			return i
+		}
+	}
+	return -1
+}
+
+// kindOf is the node kind a tree gives this node, so `has` looks among nodes of the same sort.
+func kindOf(tree ast.Tree, n ast.Named) string {
+	for _, k := range tree.Kinds() {
+		for _, m := range ast.Addressable(tree, k) {
+			if m.Line == n.Line && m.Name == n.Name {
+				return k
+			}
+		}
+	}
+	return ""
+}
+
+// deeper reports whether m sits under n: every heading between them is deeper than n.
+func deeper(tree ast.Tree, n, m ast.Named) bool {
+	for _, k := range ast.Addressable(tree, kindOf(tree, n)) {
+		if k.Line > n.Line && k.Line <= m.Line && k.Level <= n.Level {
+			return false
+		}
+	}
+	return true
 }

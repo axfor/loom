@@ -704,6 +704,12 @@ A group can be picked with a predicate in brackets, and the terms compose with `
 | what a shell function calls | `calls "curl"` |
 | what a section contains | `has."Usage"` |
 
+Those last two ask what they say rather than searching for the word. `calls "curl"` wants `curl` at
+the start of a statement — after a separator, inside a substitution, or following `if` / `then` /
+`do` — so `echo curly` and a commented-out `curl` are not calls to it. `has."Usage"` wants a part
+of that name inside this one, not the word somewhere in its text. A yaml key holds every key below
+it, so every ancestor of a path answers to it.
+
 ```
 base.sections[level == 3 && name ~ "^Step "].demote()
 base.sections[empty].drop(reason: "upstream left the shells of sections it never wrote")
