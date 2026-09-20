@@ -148,11 +148,11 @@ const find = (items, label) => items.find((i) => i.label === label);
 // ── statements, comments, literals ──
 {
   const l = labels(at(md, 'base.Overview.after("x")\n|').items);
-  ok(l.join(',') === 'base,import,if,fn,return,Self', 'a new line offers the objects and the words that start a statement', l);
+  ok(l.join(',') === 'base,import,if,if / else if,fn,return,Self', 'a new line offers the objects and the words that start a statement', l);
   const l2 = labels(at(md, 'base.Overview.after{\n    "x"\n}\n|').items);
-  ok(l2.join(',') === 'base,import,if,fn,return,Self', 'after a closed block: a new statement', l2);
+  ok(l2.join(',') === 'base,import,if,if / else if,fn,return,Self', 'after a closed block: a new statement', l2);
   const l3 = labels(at(md, 'base.Overview.after(\n|').items);
-  ok(l3.join(',') === 'base,import,if,fn,return,Self', '( does not continue on the next line', l3);
+  ok(l3.join(',') === 'base,import,if,if / else if,fn,return,Self', '( does not continue on the next line', l3);
   const l4 = labels(at(md, '// base.|').items);
   ok(l4.length === 0, 'nothing is offered in a comment', l4);
   const l5 = labels(at(md, 'base.start(`\nbase.|\n`)').items);

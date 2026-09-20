@@ -149,6 +149,16 @@ func (p *oparser) ifNode() (*oIf, error) {
 	}
 	if t := p.peek(); t.Kind == KIdent && t.Text == "else" {
 		p.next()
+		// `else if` is the else branch holding one if — the same shape written without a nest,
+		// so a chain of questions reads as a chain rather than as a staircase.
+		if e := p.peek(); e.Kind == KIdent && e.Text == "if" {
+			inner, err := p.ifNode()
+			if err != nil {
+				return nil, err
+			}
+			n.els = []oNode{{ifN: inner, pos: e.Pos}}
+			return n, nil
+		}
 		if n.els, err = p.block(t.Pos); err != nil {
 			return nil, err
 		}

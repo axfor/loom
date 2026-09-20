@@ -658,6 +658,18 @@ if base.sections[level == 2].any {
 }
 ```
 
+Questions chain, and the first that holds decides:
+
+```
+if base.has.Overview {
+    base.Overview.after(self.notes)
+} else if base.has.Summary {
+    base.Summary.after(self.notes)
+} else {
+    base.start(self.notes)
+}
+```
+
 A write can also be caught instead of stopping the build. Catching is the only way a failure gets
 through, so it has to be written down — and a caught result that nothing reads is an error, or
 catching would be a synonym for swallowing:

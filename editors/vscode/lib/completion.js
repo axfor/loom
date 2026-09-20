@@ -471,6 +471,7 @@ function statementItems(range) {
     item('base', 'object', { detail: 'the upstream file at this path; the only object a statement changes', insertText: 'base.', retrigger: true, range }),
     item('import', 'keyword', { detail: 'import [name] "path": another file of our layer', markdown: markdownFor('import'), insertText: 'import "$1"', snippet: true, retrigger: true, range }),
     item('if', 'keyword', { detail: 'ask the document something, and write only if it holds', insertText: 'if base.has.${1:Name} {\n\t$0\n}', snippet: true, range }),
+    item('if / else if', 'keyword', { detail: 'a chain of questions: the first that holds decides', insertText: 'if base.has.${1:One} {\n\t$2\n} else if base.has.${3:Two} {\n\t$0\n}', snippet: true, range }),
     item('fn', 'keyword', { detail: 'group statements inside this file; inlined where it is called', insertText: 'fn ${1:name}() {\n\t$0\n}', snippet: true, range }),
     item('return', 'keyword', { detail: 'return self: the product is our file; needs a reason', insertText: 'return self // reason: $1', snippet: true, range }),
     item('Self', 'keyword', { detail: 'a resource section: our content, written in this file', insertText: '---\nSelf:\n    ```${1:markdown}\n    $0\n    ```', snippet: true, range }),

@@ -402,3 +402,57 @@ func TestReturnSelfIsNotConditional(t *testing.T) {
 		}
 	}
 }
+
+// `else if` is the else branch holding one if, so a chain of questions reads as a chain. The one
+// that holds decides, the rest are not asked twice, and where none holds the report says so.
+func TestElseIfChain(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\n")
+	mustWrite(t, filepath.Join(dir, "up", "f.md"), upDoc)
+	mustWrite(t, filepath.Join(dir, "me", "f.md"), "## Ours\n\no\n")
+	run := func(tpl string) (*build.Plan, string) {
+		t.Helper()
+		mustWrite(t, filepath.Join(dir, "me", "f.md.lm"), tpl)
+		c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		tm, err := lang.LoadTemplate(c, filepath.Join(dir, "me", "f.md.lm"))
+		if err != nil {
+			t.Fatalf("%s: %v", tpl, err)
+		}
+		out, err := build.Weave(c, tm)
+		if err != nil {
+			t.Fatalf("%s: %v", tpl, err)
+		}
+		p, err := build.PlanBuild(c, true)
+		if err != nil {
+			t.Fatalf("%s: %v", tpl, err)
+		}
+		return p, out
+	}
+
+	// The third link holds, and only it writes.
+	_, out := run("if base.has.Nope {\n\tbase.Setup.before(self.Ours)\n} else if base.has.Missing {\n\tbase.Other.before(self.Ours)\n} else if base.has.Other {\n\tbase.Other.after(self.Ours)\n} else {\n\tbase.Setup.after(self.Ours)\n}\n")
+	if n := strings.Count(out, "## Ours"); n != 1 {
+		t.Errorf("exactly one link should have written, got %d:\n%s", n, out)
+	}
+	if i, j := strings.Index(out, "## Other"), strings.Index(out, "## Ours"); i > j {
+		t.Errorf("the link that held wrote in the wrong place:\n%s", out)
+	}
+
+	// The first link holds, and the rest are not reached.
+	_, out = run("if base.has.Setup {\n\tbase.Setup.after(self.Ours)\n} else if base.has.Other {\n\tbase.Other.after(self.Ours)\n}\n")
+	if n := strings.Count(out, "## Ours"); n != 1 {
+		t.Errorf("only the first link should have written, got %d:\n%s", n, out)
+	}
+
+	// None holds and there is no else: nothing is written, and the report says which question it was.
+	p, _ := run("if base.has.Nope {\n\tbase.Setup.after(self.Ours)\n} else if base.has.Missing {\n\tbase.Other.after(self.Ours)\n}\nbase.Other.after(self.Ours)\n")
+	if len(p.Report.Skipped) != 1 {
+		t.Fatalf("the chain writing nothing should be reported once: %+v", p.Report.Skipped)
+	}
+	if !strings.Contains(p.Report.Skipped[0].Detail, "base.has.Missing") {
+		t.Errorf("the report should name the last question asked: %q", p.Report.Skipped[0].Detail)
+	}
+}
