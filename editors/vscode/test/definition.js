@@ -235,6 +235,35 @@ check(sh, shText, 1, 'boot', ['mine/run.sh', 0]);
   fs.rmSync(r2, { recursive: true, force: true });
 }
 
+// Content written in the template itself: self is this file's resource sections, so a reference
+// to it points back into this file, at the fence that holds the part.
+{
+  const f = path.join(root, 't/skills/testing/SKILL.md.lm');
+  const src = [
+    'base.Overview.after(self.job)',
+    'base.Verification.after(self.notes.tip)',
+    '',
+    '---',
+    'Self:',
+    '    ```markdown',
+    '    ## job',
+    '',
+    '    what it does',
+    '    ```',
+    '---',
+    'Self as notes:',
+    '    ```markdown',
+    '    ## tip',
+    '',
+    '    a tip',
+    '    ```',
+  ].join('\n');
+  check(f, src, 0, 'job', ['t/skills/testing/SKILL.md.lm', 6]);
+  check(f, src, 1, 'tip', ['t/skills/testing/SKILL.md.lm', 13]);
+  // A name no section holds leads nowhere, rather than to the wrong place.
+  check(f, src.replace('self.job', 'self.nope'), 0, 'nope', null);
+}
+
 fs.rmSync(root, { recursive: true, force: true });
 console.log(`loom definition: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

@@ -18,13 +18,39 @@
 const loom = require('./loom');
 const { isKeywordCall } = require('./hover');
 
-function locate(file, node, view) {
+// locate answers where a reference points. An object whose content is written in the template
+// itself points back into the template, at the fence that holds it.
+function locate(file, node, view, inline, docPath) {
+  if (inline) return inTemplate(inline, node, docPath);
   if (!file || !loom.isFile(file)) return null;
   const text = loom.readText(file);
   const lines = text.split('\n').length;
   const hit = node && loom.findNode(text, node, view, loom.typeOf(file));
   if (!hit) return { file, line: 0, end: lines, s: 0, e: 0 };
   return { file, ...hit };
+}
+
+// inTemplate finds a named part inside a resource section, and gives its line in the template.
+function inTemplate(resources, node, docPath) {
+  if (!node || !node.name) return null;
+  // The address is self[.section][.kind].part, and the walk cannot know which of those a step is
+  // until it sees the sections — so a leading section or kind name is peeled off here.
+  let want = node;
+  let only = resources;
+  const within = node.within || [];
+  if (within.length && resources.some((r) => r.name === within[0].name)) {
+    only = resources.filter((r) => r.name === within[0].name);
+    want = { ...node, within: within.slice(1) };
+  }
+  for (const res of only) {
+    for (const doc of res.docs) {
+      const hit = loom.findNode(doc.text, want, null, doc.kind);
+      if (hit) {
+        return { file: docPath, line: doc.line + hit.line, end: doc.line + hit.end, s: doc.indent + hit.s, e: doc.indent + hit.e };
+      }
+    }
+  }
+  return null;
 }
 
 function definition(docPath, text, line, character) {
@@ -46,12 +72,13 @@ function definition(docPath, text, line, character) {
 }
 
 function resolve(t, ref) {
+  const docPath = t.docPath;
   switch (ref.what) {
     case 'import':
       return locate(t.importFile.get(ref.imp), null);
     case 'root': {
       const obj = t.objects[ref.tok.v];
-      return obj ? locate(obj.file, null) : null;
+      return obj ? locate(obj.file, null, null, obj.inline, docPath) : null;
     }
     case 'step': {
       const st = ref.chain.steps[ref.index];
@@ -59,7 +86,7 @@ function resolve(t, ref) {
       if (isKeywordCall(st)) return null;
       const r = loom.walk(t, ref.chain, ref.index + 1);
       if (!r) return null;
-      return locate(r.obj.file, r.bad ? null : r.node, r.view);
+      return locate(r.obj.file, r.bad ? null : r.node, r.view, r.obj.inline, docPath);
     }
     case 'arg': {
       if (ref.tok.t !== 'str') return null;
@@ -69,7 +96,7 @@ function resolve(t, ref) {
       if (!r || r.bad) return null;
       if ((loom.KIND_CALLS[r.typ] || {})[st.name]) {
         const sel = loom.walk(t, chain, index + 1);
-        return locate(sel.obj.file, sel.node, sel.view);
+        return locate(sel.obj.file, sel.node, sel.view, sel.obj.inline, docPath);
       }
       if (loom.CONTENT_METHODS.has(st.name)) {
         return locate(t.objects.self.file, { kind: loom.DEFAULT_KIND[r.typ], name: ref.tok.v, ident: false }, r.view);

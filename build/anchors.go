@@ -32,14 +32,23 @@ type anchorUse struct {
 // "all 0 valid", which reads exactly like all green: a check that covered 0 items is not working.
 func anchorUses(t *lang.Template) []anchorUse {
 	var out []anchorUse
-	for _, s := range t.Stmts {
-		switch s.Op {
-		case "after", "before", "replace", "drop":
-			out = append(out, anchorUse{kind: s.Kind, anchor: s.Anchor, within: s.Within, ident: s.Ident, rng: s.Rng})
-		case "in":
-			// anchors inside a view refer to the key's value, with coordinates of their own; not listed here
+	var walk func([]lang.Stmt)
+	walk = func(ss []lang.Stmt) {
+		for _, s := range ss {
+			switch s.Op {
+			case "after", "before", "replace", "drop", "unwrap", "join", "split", "move", "swap", "promote", "demote":
+				out = append(out, anchorUse{kind: s.Kind, anchor: s.Anchor, within: s.Within, ident: s.Ident, rng: s.Rng})
+			case "if":
+				// Both branches anchor into upstream. Which one runs depends on upstream, and a
+				// list of anchors that left one out would be a list of half the dependencies.
+				walk(s.Kids)
+				walk(s.Else)
+			case "in":
+				// anchors inside a view refer to the key's value, with coordinates of their own; not listed here
+			}
 		}
 	}
+	walk(t.Stmts)
 	return out
 }
 

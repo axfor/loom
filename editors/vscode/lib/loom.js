@@ -412,6 +412,11 @@ function open(docPath, text) {
     base: { layer: 'base', file: path.join(layerDir(cfg, 'base'), target), typ: typeOf(target) },
     self: { layer: 'self', file: cfg.self == null ? null : path.join(layerDir(cfg, 'self'), target), typ: typeOf(target) },
   };
+  // Resource sections: everything after the line of dashes is our content, written here. They
+  // make self an object of this file rather than a file beside it, so the editor has to read them
+  // the same way the compiler does or it will look for our content in a file that is not there.
+  const resources = readResources(toks, text);
+  if (resources.length > 0) objects.self = { layer: 'self', file: null, typ: typeOf(target), inline: resources };
   const importFile = new Map();
   for (const imp of imports) {
     const name = imp.name ? imp.name.v : path.posix.basename(imp.spec.v).replace(/\.[^.]*$/, '');
@@ -420,7 +425,7 @@ function open(docPath, text) {
     importFile.set(imp, file);
     if (name !== 'self' && file) objects[name] = { layer, file, typ: typeOf(file) };
   }
-  return { cfg, target, docPath, toks, refs, imports, importFile, objects };
+  return { cfg, target, docPath, toks, refs, imports, importFile, objects, resources };
 }
 
 // walk follows the first `upto` steps of a chain the way the compiler does and says what they
@@ -813,8 +818,57 @@ module.exports = {
   identMatch,
   headings,
   nodesOf,
+  readResources,
   isValueType,
   yamlKeys,
   viewLines,
   findNode,
 };
+
+// readResources collects the `Self:` sections after the line of dashes: their name, and the fences
+// they hold with the language tag that says what each one is.
+function readResources(toks, text) {
+  const out = [];
+  let i = toks.findIndex((t) => t.t === 'sep');
+  if (i < 0) return out;
+  for (; i < toks.length; i++) {
+    const t = toks[i];
+    if (t.t !== 'id' || t.v !== 'Self') continue;
+    let k = i + 1;
+    let name = '';
+    if (toks[k] && toks[k].t === 'id' && toks[k].v === 'as' && toks[k + 1] && toks[k + 1].t === 'id') {
+      name = toks[k + 1].v;
+      k += 2;
+    }
+    if (!toks[k] || toks[k].t !== ':') continue;
+    const docs = [];
+    for (let j = k + 1; j < toks.length; j++) {
+      if (toks[j].t === 'nl') continue;
+      if (toks[j].t !== 'raw') break;
+      docs.push(fenceDoc(toks[j], text));
+    }
+    out.push({ name, docs, line: t.line });
+    i = k;
+  }
+  return out;
+}
+
+// fenceDoc reads one fence back out of the source: its language tag, its text with the common
+// indentation stripped, and the line its body starts on so a definition can point into it.
+function fenceDoc(tok, text) {
+  const lines = text.split('\n');
+  const open = lines[tok.line] || '';
+  const tag = (open.trim().replace(/^`+/, '').trim()) || '';
+  const body = [];
+  for (let k = tok.line + 1; k <= (tok.endLine ?? tok.line); k++) {
+    if (/^\s*`{3,}\s*$/.test(lines[k] || '')) break;
+    body.push(lines[k] ?? '');
+  }
+  let indent = null;
+  for (const l of body) {
+    if (l.trim() === '') continue;
+    const w = l.length - l.replace(/^[ \t]*/, '').length;
+    if (indent === null || w < indent) indent = w;
+  }
+  return { kind: tag, text: body.map((l) => l.slice(indent || 0)).join('\n'), line: tok.line + 1, indent: indent || 0 };
+}

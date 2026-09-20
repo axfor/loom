@@ -121,6 +121,7 @@ func follow(t *lang.Template, rs []Rename) ([]string, error) {
 	walk = func(ss []lang.Stmt) {
 		for _, s := range ss {
 			walk(s.Kids)
+			walk(s.Else) // an if's other branch anchors into upstream too
 			r, ok := by[s.Kind+"\x00"+s.Anchor]
 			if !ok || s.At.Line == 0 {
 				continue

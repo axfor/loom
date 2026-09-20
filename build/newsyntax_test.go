@@ -297,3 +297,30 @@ func TestReturn(t *testing.T) {
 		}
 	}
 }
+
+// An insertion that lands inside lines another statement rewrites is lost with them, and the
+// product still looks ordinary — the same failure the overlap check exists to prevent, reached
+// from the other side. split writes a heading of ours inside a section; unwrap rewrites that
+// whole section. Before this was caught, the two together duplicated a subsection and reported
+// the build as fine.
+func TestAnInsertionInsideARewriteIsRefused(t *testing.T) {
+	weave := newTree(t, "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n", upDoc, "## Ours\n\no\n")
+	_, err := weave("base.Setup.split(base.Setup.\"Step B\", \"X\")\nbase.Setup.unwrap(reason: \"c\")\n")
+	if err == nil {
+		t.Fatal("an insertion inside a rewritten span was accepted")
+	}
+	if !strings.Contains(err.Error(), "writes inside the lines") {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	// Insertions that meet an edge still stack, and a span that holds no insertion is untouched.
+	for _, tpl := range []string{
+		"base.Setup.after(self.Ours)\nbase.Setup.before(self.Ours)\n",
+		"base.Setup.wrap(self.Ours, self.Ours)\nbase.Other.after(self.Ours)\n",
+		"base.Setup.split(base.Setup.\"Step A\", \"X\")\nbase.Other.after(self.Ours)\n",
+	} {
+		if _, err := weave(tpl); err != nil {
+			t.Errorf("%q should still build: %v", strings.ReplaceAll(tpl, "\n", "; "), err)
+		}
+	}
+}

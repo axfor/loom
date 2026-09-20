@@ -433,14 +433,24 @@ func apply(c *lang.Config, t *lang.Template, stmts []lang.Stmt, tree ast.Tree, r
 	}
 	// Two statements writing over the same lines is a conflict, not a precedence question:
 	// the product would depend on which ran last, and the one that lost would be invisible.
-	// Insertions are empty spans and stack in template order, so only spans that cover
-	// something can collide.
+	// Insertions stack in template order where they meet an edge, so at an edge they are fine —
+	// but an insertion *inside* a span that another statement rewrites is lost with the lines it
+	// sat between, and the product still looks ordinary.
 	for i := range edits {
-		if edits[i].s == edits[i].e {
-			continue
-		}
 		for j := i + 1; j < len(edits); j++ {
-			if edits[j].s == edits[j].e {
+			a, b := edits[i], edits[j]
+			if a.s == a.e && b.s == b.e {
+				continue // two insertions: they stack
+			}
+			if a.s == a.e || b.s == b.e {
+				ins, span := a, b
+				if b.s == b.e {
+					ins, span = b, a
+				}
+				if span.s < ins.s && ins.s < span.e {
+					return fmt.Errorf("%s: one statement writes inside the lines (%d-%d) another rewrites, so it would be lost — say which one wins",
+						t.Path, span.s+1, span.e)
+				}
 				continue
 			}
 			if edits[i].s < edits[j].e && edits[j].s < edits[i].e {

@@ -133,7 +133,7 @@ func Describe(c *lang.Config, path string) (*Info, error) {
 			switch s.Op {
 			case "merge":
 				i.Merge = true
-			case "after", "before", "replace", "drop":
+			case "after", "before", "replace", "drop", "unwrap", "join", "split", "move", "swap", "promote", "demote":
 				u := Use{Kind: s.Kind, Anchor: s.Anchor, Where: s.Rng.String()}
 				if s.Ident || len(s.Within) > 0 {
 					u.Anchor = real(baseTree(in), s.Kind, s.Within, s.Anchor, s.Ident)
@@ -152,6 +152,10 @@ func Describe(c *lang.Config, path string) (*Info, error) {
 				i.Inserts = append(i.Inserts, Src{Layer: s.Layer, Kind: "frontmatter", File: s.File})
 			case "value":
 				i.Inserts = append(i.Inserts, Src{Layer: s.SetRef.Layer, Kind: s.SetRef.Kind, Anchor: s.SetRef.Anchor, File: s.SetRef.File, Lit: s.SetRef.IsLit})
+			case "if":
+				// Both branches depend on upstream, whichever one runs.
+				walk(s.Kids, in)
+				walk(s.Else, in)
 			case "in":
 				walk(s.Kids, &s)
 			}
