@@ -33,7 +33,20 @@ func LoadTemplateSource(c *Config, path string, src []byte) (*Template, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ParseTemplateSyntax(path, target, src, c.resolveImport)
+	t, err := ParseTemplateSyntax(path, target, src, c.resolveImport)
+	if err != nil {
+		return nil, err
+	}
+	// self has one source. A resource section says our content is written here; a file of ours at
+	// the same path says it is written there. With both, every `self.x` would have two places to
+	// look, and which one won would depend on nothing the author wrote.
+	if len(t.Resources) > 0 && c.Weft != "" {
+		if _, ok, _ := c.Read(c.Weft, target); ok {
+			return nil, fmt.Errorf("%s: this template writes our content in a resource section, and %s also has %s — self would have two sources. Keep one: delete the section, or delete the file and the section's content goes on living here",
+				path, c.Weft, target)
+		}
+	}
+	return t, nil
 }
 
 // resolveImport resolves an import path to a real file in the layer.

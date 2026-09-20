@@ -1170,6 +1170,13 @@ func inlineDoc(t *lang.Template, r lang.Ref) (string, error) {
 		if tree == nil {
 			continue
 		}
+		// A frontmatter key lives inside the document's frontmatter, not among its nodes.
+		if r.Kind == "fmkey" {
+			if _, found := keyValue(d.Kind, d.Text, r.Anchor); found {
+				hits = append(hits, i)
+			}
+			continue
+		}
 		if _, found := tree.BodyOf(r.Anchor); found {
 			hits = append(hits, i)
 			continue

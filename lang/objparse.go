@@ -554,6 +554,7 @@ type interp struct {
 	vars    map[string]Pos // results caught in a name, and where
 	used    map[string]bool
 	rebased bool
+	branch  int // how many if branches deep: `return self` is a property of the whole template
 	objects map[string]object
 }
 

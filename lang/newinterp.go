@@ -75,11 +75,14 @@ func (in *interp) ifStmt(n *oIf) error {
 	if err != nil {
 		return err
 	}
+	in.branch++
 	then, err := in.nodes(n.then)
 	if err != nil {
+		in.branch--
 		return err
 	}
 	els, err := in.nodes(n.els)
+	in.branch--
 	if err != nil {
 		return err
 	}
@@ -141,6 +144,11 @@ func (in *interp) returnStmt(r *oReturn) error {
 		return nil
 	}
 	// return self — the product is our file, which is what the whole-file replace has always been.
+	// It is a property of the whole template, not of a branch: the file is the function body, so
+	// returning from it says what the product is, and a conditional answer would be two products.
+	if in.branch > 0 {
+		return fmt.Errorf("%s: `return self` says what this product is, so it cannot depend on a question — put it at the top level, or write what changes inside the branch", r.pos)
+	}
 	if r.what.root != "self" || len(r.what.steps) != 0 {
 		return fmt.Errorf("%s: `return` takes self (the product is our file), err.format(...), or nothing", r.pos)
 	}

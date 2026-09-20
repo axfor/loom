@@ -324,3 +324,81 @@ func TestAnInsertionInsideARewriteIsRefused(t *testing.T) {
 		}
 	}
 }
+
+// self has one source. A resource section says our content is written in the template; a file of
+// ours at the same path says it is written there. With both, every self.x would have two places
+// to look and nothing in the template would say which.
+func TestResourcesAndOurFileAreOneOrTheOther(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\n")
+	mustWrite(t, filepath.Join(dir, "up", "f.md"), upDoc)
+	mustWrite(t, filepath.Join(dir, "me", "f.md.lm"), "base.Setup.after(self.job)\n---\nSelf:\n    ```markdown\n    ## job\n\n    x\n    ```\n")
+	load := func() error {
+		c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = lang.LoadTemplate(c, filepath.Join(dir, "me", "f.md.lm"))
+		return err
+	}
+	if err := load(); err != nil {
+		t.Fatalf("a resource section on its own: %v", err)
+	}
+	mustWrite(t, filepath.Join(dir, "me", "f.md"), "## job\n\nelsewhere\n")
+	err := load()
+	if err == nil {
+		t.Fatal("two sources for self were accepted")
+	}
+	if !strings.Contains(err.Error(), "two sources") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+// A markdown document in a resource section has frontmatter like any other, and a key of it is
+// addressed the same way.
+func TestResourceFrontmatter(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n")
+	mustWrite(t, filepath.Join(dir, "up", "f.md"), "---\nname: d\ndescription: Upstream.\n---\n\n## Overview\n\nu\n")
+	mustWrite(t, filepath.Join(dir, "me", "f.md.lm"),
+		"base.frontmatter.description.start(self.frontmatter.description)\n---\nSelf:\n    ````markdown\n    ---\n    description: Ours.\n    ---\n\n    ## job\n\n    x\n    ````\n")
+	c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tm, err := lang.LoadTemplate(c, filepath.Join(dir, "me", "f.md.lm"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := build.Weave(c, tm)
+	if err != nil {
+		t.Fatalf("weave: %v", err)
+	}
+	if !strings.Contains(got, "description: Ours. Upstream.") {
+		t.Errorf("our frontmatter key did not reach the product:\n%s", got)
+	}
+}
+
+// `return self` says what the product is, so it is a property of the template rather than of a
+// branch — a conditional answer would be two products.
+func TestReturnSelfIsNotConditional(t *testing.T) {
+	weave := newTree(t, "base \"up\"\nself \"me\"\n", upDoc, "## Ours\n\no\n")
+	_, err := weave("if base.has.Setup {\n\treturn self // reason: r\n}\nbase.Other.after(self.Ours)\n")
+	if err == nil {
+		t.Fatal("a conditional return self was accepted")
+	}
+	if !strings.Contains(err.Error(), "cannot depend on a question") {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	// The constructs that do nest still do.
+	for _, tpl := range []string{
+		"if base.has.Setup {\n\tif base.has.Other {\n\t\tbase.Setup.after(self.Ours)\n\t}\n}\n",
+		"fn p(u, o) {\n\tif base.has.Other {\n\t\tu.after(o)\n\t}\n}\np(base.Setup, self.Ours)\n",
+		"if base.has.Setup {\n\treturn\n}\nbase.Other.after(self.Ours)\n",
+	} {
+		if _, err := weave(tpl); err != nil {
+			t.Errorf("%q: %v", strings.ReplaceAll(tpl, "\n", "; "), err)
+		}
+	}
+}
