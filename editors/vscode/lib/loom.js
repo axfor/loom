@@ -14,7 +14,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const METHODS = new Set(['after', 'before', 'start', 'append', 'replace', 'drop', 'move', 'promote', 'demote', 'set', 'merge', 'wrap', 'swap', 'unwrap', 'split', 'join']);
+const METHODS = new Set(['after', 'before', 'start', 'append', 'replace', 'drop', 'move', 'promote', 'demote', 'set', 'merge', 'wrap', 'swap', 'unwrap', 'split', 'join', 'end', 'project']);
 const CONTENT_METHODS = new Set(['after', 'before', 'start', 'append', 'replace', 'set']);
 // The plural form selects a group and takes predicates instead of a name.
 const CLASS_CALLS = {

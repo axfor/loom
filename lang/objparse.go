@@ -67,6 +67,9 @@ var groupMethods = []string{"drop", "promote", "demote", "unwrap"}
 // reasonMethods change what upstream said, so each one has to say why.
 var reasonMethods = []string{"replace", "drop", "unwrap", "join"}
 
+// placeWords are the derived addresses: zero-length spans a write can land on.
+var placeWords = []string{"after", "before", "start", "end", "append"}
+
 var axisWords = []string{"children", "next", "prev", "parent", "first", "last"}
 
 // namedArgs is every argument name the language knows: reason: on an edit, after: / before: on a
@@ -75,7 +78,7 @@ var axisWords = []string{"children", "next", "prev", "parent", "first", "last"}
 // misspelled argument is worth a suggestion rather than a list to read.
 var namedArgs = []string{"reason", "after", "before", "match", "level"}
 
-var editMethods = []string{"after", "before", "start", "append", "replace", "drop", "move", "promote", "demote", "set", "merge", "wrap", "swap", "unwrap", "split", "join"}
+var editMethods = []string{"after", "before", "start", "append", "replace", "drop", "move", "promote", "demote", "set", "merge", "wrap", "swap", "unwrap", "split", "join", "end", "project"}
 
 func typeWords() []string { return []string{"markdown", "toml", "yaml", "json", "shell", "text"} }
 
@@ -415,6 +418,18 @@ func (p *oparser) expr() (*oExpr, error) {
 					return nil, err
 				}
 				st.call, st.args = true, args
+				// A call may be followed by a block: project(sel){ ```…``` } puts the selection
+				// in the parentheses and the template on lines of its own.
+				if b := p.peek(); b.Kind == KLBrace && !p.noBlock {
+					p.next()
+					more, err := p.blockArgs(b.Pos)
+					if err != nil {
+						return nil, err
+					}
+					st.block, st.args = true, append(st.args, more...)
+					e.steps = append(e.steps, st)
+					return e, nil
+				}
 			case KLBrace:
 				if p.noBlock {
 					e.steps = append(e.steps, st)
@@ -648,7 +663,9 @@ type receiver struct {
 	within []Seg
 	typ    string
 	sel    *Select // non-nil = a group, not one node
-	axis   string  // a step to a related node: children / next / prev / parent / first / last
+	axis   string  // steps to related nodes, in order: children / next / prev / parent / first / last
+	many   bool    // the current selection is a group rather than one node
+	place  string  // a derived address written as a bare word: base.start.project(...)
 	viewOf string  // non-empty = inside an as(...) view: the key name
 	viewAs string
 	pos    Pos
@@ -701,6 +718,15 @@ func (in *interp) select_(r *receiver, st oStep) error {
 		*r = receiver{typ: typ, viewOf: r.anchor, viewAs: typ, pos: r.pos}
 		return nil
 	}
+	// A bare place word is a derived address — a span of length zero to write at. It reads the
+	// same whether it hangs off a node or off the file: base.X.after.project(...), base.start.
+	if !st.call && !st.str && st.pred == nil && contains(placeWords, st.name) {
+		if r.place != "" {
+			return fmt.Errorf("%s: one place at a time", st.pos)
+		}
+		r.place, r.pos = st.name, st.pos
+		return nil
+	}
 	if r.node {
 		// A predicate picks from the whole file, so it cannot hang off a node already chosen.
 		if (st.call || st.pred != nil) && classCalls[r.typ][st.name] != "" {
@@ -713,16 +739,24 @@ func (in *interp) select_(r *receiver, st oStep) error {
 		}
 		// An axis walks from here to a node the document itself relates to this one.
 		if !st.call && !st.str && contains(axisWords, st.name) {
-			if r.axis != "" {
-				return fmt.Errorf("%s: one step at a time — %s follows %s, so write them as separate statements", st.pos, st.name, r.axis)
-			}
-			if r.sel == nil && (st.name == "first" || st.name == "last") {
-				return fmt.Errorf("%s: %s picks from a group: base.sections[...].%s", st.pos, st.name, st.name)
-			}
-			if r.sel != nil && st.name != "first" && st.name != "last" {
+			// Axes chain: base.sections[level == 2].first.children walks to the group, takes one
+			// of it, then walks again. Each step is written where it happens, and they are kept
+			// in order for the build to follow one at a time.
+			one := st.name == "first" || st.name == "last"
+			if r.many && !one {
 				return fmt.Errorf("%s: %s walks from one node; a group has first and last", st.pos, st.name)
 			}
-			r.axis, r.pos = st.name, st.pos
+			if !r.many && one {
+				return fmt.Errorf("%s: %s picks from a group: base.sections[...].%s", st.pos, st.name, st.name)
+			}
+			// children lands on a group; every other step lands on one node.
+			r.many = st.name == "children"
+			if r.axis == "" {
+				r.axis = st.name
+			} else {
+				r.axis += "." + st.name
+			}
+			r.pos = st.pos
 			return nil
 		}
 		// Key path: base.jobs.test — yaml and json address a nested key by the dotted path of
@@ -740,6 +774,12 @@ func (in *interp) select_(r *receiver, st oStep) error {
 		return nil
 	}
 	switch {
+	case !st.call && st.pred == nil && !st.str && classCalls[r.typ][st.name] != "":
+		// A bare class name is every node of that kind: base.sections is all the sections. An
+		// empty call, base.sections(), stays an error — that reads as a call someone meant to
+		// fill in, and guessing what they meant is the one thing this language will not do.
+		r.node, r.kind, r.sel, r.many, r.pos = true, classCalls[r.typ][st.name], &Select{Kind: classCalls[r.typ][st.name], All: true}, true, st.pos
+		return nil
 	case (st.call || st.pred != nil) && classCalls[r.typ][st.name] != "":
 		kind := classCalls[r.typ][st.name]
 		if st.pred != nil {
@@ -750,14 +790,14 @@ func (in *interp) select_(r *receiver, st oStep) error {
 			if err != nil {
 				return err
 			}
-			r.node, r.kind, r.sel, r.pos = true, sel.Kind, sel, st.pos
+			r.node, r.kind, r.sel, r.many, r.pos = true, sel.Kind, sel, true, st.pos
 			return nil
 		}
 		sel, err := in.predicate(st, kind)
 		if err != nil {
 			return err
 		}
-		r.node, r.kind, r.sel, r.pos = true, sel.Kind, sel, st.pos
+		r.node, r.kind, r.sel, r.many, r.pos = true, sel.Kind, sel, true, st.pos
 		return nil
 	case st.call:
 		k, ok := kindCalls[r.typ][st.name]
@@ -845,7 +885,7 @@ func (in *interp) method(r receiver, st oStep) error {
 			return fmt.Errorf("%s: %s needs something to insert: %s(\"Install XSDD\")", at, st.name, st.name)
 		}
 		out = append(out, Stmt{Op: st.name, Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Axis: r.axis, Srcs: srcs, Rng: at})
-	case "start", "append":
+	case "start", "append", "end":
 		if r.node {
 			if !isValue(r) {
 				return fmt.Errorf("%s: %s applies to the whole file or to a key's value: base.%s(...), base.frontmatter.description.%s(self.frontmatter.description)", at, st.name, st.name, st.name)
@@ -854,7 +894,13 @@ func (in *interp) method(r receiver, st oStep) error {
 			if err != nil {
 				return err
 			}
-			out = append(out, Stmt{Op: "value", Mode: st.name, Kind: r.kind, SetKey: r.anchor, SetRef: v, Rng: at})
+			mode := st.name
+			if mode == "end" {
+				// base.end(x) puts content at the end of a document; on a key it puts our value after
+				// upstream's, which is what append says. One word each way, the same meaning.
+				mode = "append"
+			}
+			out = append(out, Stmt{Op: "value", Mode: mode, Kind: r.kind, SetKey: r.anchor, SetRef: v, Rng: at})
 			break
 		}
 		srcs, err := in.contents(pos, r.typ, r.viewOf != "")
@@ -974,9 +1020,45 @@ func (in *interp) method(r receiver, st oStep) error {
 		}
 		out = append(out, Stmt{Op: "split", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within,
 			Move: &Move{Side: "before", Kind: cut.Kind, Anchor: cut.Anchor, Ident: cut.Ident, Within: cut.Within}, Reason: pos[1].val.str, Rng: at})
+	case "project":
+		// base.start.project(sel){ template } — the place says where the derived content goes,
+		// the selection says what shape it is read from, the block is how each node is written.
+		// The other spelling, base.start(sel.project(`…`)), means the same and goes the same way.
+		if r.place == "" {
+			return fmt.Errorf("%s: project writes somewhere: base.start.project(...), base.append.project(...)", at)
+		}
+		if len(pos) != 2 || pos[0].val.kind != vExpr || (pos[1].val.kind != vRaw && pos[1].val.kind != vString) {
+			return fmt.Errorf("%s: project takes what to read and how to write it: base.start.project(base.sections[level == 2]){ `- {name}` }", at)
+		}
+		ref, ok, err := in.projectionOf(pos[0].val.expr, pos[1].val.str, at)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("%s: project reads a group of upstream: base.sections[...]", at)
+		}
+		op, anchor := placeOp(r.place)
+		out = append(out, Stmt{Op: op, Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Srcs: []Ref{ref}, Rng: at})
+		_ = anchor
 	case "move":
+		// Two spellings of the same thing: move(after: base.Y) names the side, move(base.Y.after)
+		// names the place. A derived address is where content goes everywhere else in the
+		// language, so it reads here too.
+		if moveTo == nil && len(pos) == 1 && pos[0].val.kind == vExpr {
+			e := pos[0].val.expr
+			if n := len(e.steps); n > 0 && !e.steps[n-1].call && (e.steps[n-1].name == "after" || e.steps[n-1].name == "before") {
+				side := e.steps[n-1].name
+				cp := *e
+				cp.steps = e.steps[:n-1]
+				m, err := in.moveTarget(side, oValue{kind: vExpr, expr: &cp, pos: pos[0].pos}, r.typ)
+				if err != nil {
+					return err
+				}
+				moveTo, pos = m, nil
+			}
+		}
 		if !r.node || len(pos) != 0 {
-			return fmt.Errorf("%s: move applies to a node and takes one side: base.X.move(after: base.Y)", at)
+			return fmt.Errorf("%s: move applies to a node and takes one side: base.X.move(after: base.Y) or base.X.move(base.Y.after)", at)
 		}
 		if moveTo == nil {
 			return fmt.Errorf("%s: move needs a side: move(after: base.Y) or move(before: base.Y)", at)
@@ -1381,4 +1463,43 @@ func (in *interp) hasResource(name string) bool {
 		}
 	}
 	return false
+}
+
+// placeOp is the statement a derived address writes with.
+func placeOp(place string) (string, string) {
+	switch place {
+	case "start":
+		return "prepend", ""
+	case "end", "append":
+		return "append", ""
+	}
+	return place, ""
+}
+
+// projectionOf builds the content reference for a projection: a group of upstream read for its
+// shape, and the template each node goes through.
+func (in *interp) projectionOf(e *oExpr, tpl string, at Pos) (Ref, bool, error) {
+	obj, ok := in.objects[e.root]
+	if !ok || obj.layer == "self" || len(e.steps) != 1 {
+		return Ref{}, false, nil
+	}
+	st := e.steps[0]
+	kind := classCalls[obj.typ][st.name]
+	if kind == "" {
+		return Ref{}, false, nil
+	}
+	var sel *Select
+	var err error
+	switch {
+	case st.pred != nil:
+		sel, err = selectOf(st.pred, kind, st.pos)
+	case !st.call:
+		sel = &Select{Kind: kind, All: true}
+	default:
+		sel, err = in.predicate(st, kind)
+	}
+	if err != nil {
+		return Ref{}, false, err
+	}
+	return Ref{Layer: obj.layer, Kind: "project", Project: sel, Literal: tpl, IsLit: true, Rng: at}, true, nil
 }

@@ -188,7 +188,7 @@
       "patterns": [
         {
           "comment": "methods: they change base",
-          "match": "(\\.)\\s*(after|before|start|append|replace|drop|set|merge|wrap|swap|unwrap|split|join|move|promote|demote|project)\\s*(?=[({])",
+          "match": "(\\.)\\s*(after|before|start|append|replace|drop|set|merge|wrap|swap|unwrap|split|join|move|promote|demote|project|end)\\s*(?=[({])",
           "captures": {
             "1": {
               "name": "punctuation.accessor.loom"
@@ -505,7 +505,7 @@
     },
     "axis": {
       "comment": "a step to a node the document relates to this one",
-      "match": "(\\.)\\s*(children|next|prev|parent|first|last|any|count|has)(?![\\w(])",
+      "match": "(\\.)\\s*(children|next|prev|parent|first|last|any|count|has|sections|lines|functions|markers|keys|values|start|end|append|after|before)(?![\\w({\\[])",
       "captures": {
         "1": {
           "name": "punctuation.accessor.loom"

@@ -40,6 +40,7 @@ const METHOD_DOCS = {
   split: 'cut the section in two at a node inside it',
   join: 'run this section and the next together; needs reason:',
   project: "derive content from upstream's shape, not its words",
+  end: 'insert at the end; on a key: ours after upstream\'s value',
 };
 
 const SNIPPETS = {
@@ -60,7 +61,8 @@ const SNIPPETS = {
   unwrap: 'unwrap(reason: "$1")',
   split: 'split($1, "$2")',
   join: 'join(reason: "$1")',
-  project: 'project(`$1`)',
+  project: 'project($1){\n\t```markdown\n\t$0\n\t```\n}',
+  end: 'end($1)',
 };
 
 const SETTINGS = [

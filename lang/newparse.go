@@ -319,14 +319,22 @@ func (p *oparser) predTerm() (*oPred, error) {
 		n.str = s.Text
 		return n, nil
 	case "has":
-		if d := p.next(); d.Kind != KDot {
-			return nil, fmt.Errorf("%s: has names a part: has.\"Usage\"", d.Pos)
+		// has."Usage" and has["Usage"] are the same question. The dot form matches how every
+		// other name is written; the bracket form is what the spec's own examples use.
+		open := p.next()
+		if open.Kind != KDot && open.Kind != KLBracket {
+			return nil, fmt.Errorf("%s: has names a part: has.\"Usage\" or has[\"Usage\"]", open.Pos)
 		}
 		s := p.next()
 		if s.Kind != KString && s.Kind != KIdent {
-			return nil, fmt.Errorf("%s: has names a part: has.\"Usage\"", s.Pos)
+			return nil, fmt.Errorf("%s: has names a part: has.\"Usage\" or has[\"Usage\"]", s.Pos)
 		}
 		n.str = s.Text
+		if open.Kind == KLBracket {
+			if c := p.next(); c.Kind != KRBracket {
+				return nil, fmt.Errorf("%s: expected `]` to close has[ opened at %s", c.Pos, open.Pos)
+			}
+		}
 		return n, nil
 	case "level":
 		c := p.next()

@@ -715,7 +715,16 @@ base.sections[level == 3 && name ~ "^Step "].demote()
 base.sections[empty].drop(reason: "upstream left the shells of sections it never wrote")
 ```
 
-`.first` and `.last` take one out of a group.
+`.first` and `.last` take one out of a group, and `has."Usage"` may also be written `has["Usage"]`.
+
+A bare class name is every node of that kind:
+
+```
+base.sections.demote()
+```
+
+An empty call, `base.sections()`, stays an error — that reads as a call someone meant to fill in,
+and guessing what they meant is the one thing this language will not do.
 
 ### Axes
 
@@ -729,6 +738,28 @@ base."Step A".parent             the section this one sits in
 ```
 
 Only markdown nests, so `children` and `parent` are its alone.
+
+Axes chain, and each step is checked against what it lands on — `children` gives a group, so
+`first` may follow it; `next` wants one node, so it may not:
+
+```
+base.sections[level == 2].first.children.demote()
+```
+
+### Writing at a place
+
+`after`, `before`, `start`, `end` and `append` name a span of length zero, and `project` writes
+derived content there:
+
+```
+base.start.project(base.sections[level == 2]){
+    ```markdown
+    - {name}
+    ```
+}
+```
+
+`base.start(base.sections[...].project(`- {name}`))` says the same thing on one line.
 
 ### Grouping statements in a file
 

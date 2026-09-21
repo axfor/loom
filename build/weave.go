@@ -967,12 +967,12 @@ func keyValue(typ, src, key string) (string, bool) {
 // silently did nothing is the kind of quiet the language exists to prevent.
 func targets(tree ast.Tree, s lang.Stmt) ([][2]int, error) {
 	if s.Select == nil {
-		span, name, err := locate(tree, s.Kind, s.Within, s.Anchor, s.Ident, s)
+		span, _, err := locate(tree, s.Kind, s.Within, s.Anchor, s.Ident, s)
 		if err != nil {
 			return nil, err
 		}
 		if s.Axis != "" {
-			return walkAxis(tree, s, name)
+			return walkAxes(tree, s, [][2]int{span})
 		}
 		return [][2]int{span}, nil
 	}
@@ -983,17 +983,54 @@ func targets(tree ast.Tree, s lang.Stmt) ([][2]int, error) {
 	if len(found) == 0 {
 		return nil, fmt.Errorf("%s: the predicate matched nothing", s.Rng)
 	}
-	switch s.Axis {
-	case "first":
-		found = found[:1]
-	case "last":
-		found = found[len(found)-1:]
-	}
 	out := make([][2]int, 0, len(found))
 	for _, n := range found {
 		out = append(out, [2]int{n.Line, n.End})
 	}
+	if s.Axis != "" {
+		return walkAxes(tree, s, out)
+	}
 	return out, nil
+}
+
+// walkAxes follows a chain of axes, one at a time, carrying every node each step lands on into the
+// next. first and last narrow a group; the rest step from one node to another.
+func walkAxes(tree ast.Tree, s lang.Stmt, from [][2]int) ([][2]int, error) {
+	nodes := ast.Addressable(tree, s.Kind)
+	nameAt := func(line int) string {
+		for _, n := range nodes {
+			if n.Line == line {
+				return n.Name
+			}
+		}
+		return ""
+	}
+	cur := from
+	for _, axis := range strings.Split(s.Axis, ".") {
+		if len(cur) == 0 {
+			return nil, fmt.Errorf("%s: nothing left to take %s of", s.Rng, axis)
+		}
+		switch axis {
+		case "first":
+			cur = cur[:1]
+			continue
+		case "last":
+			cur = cur[len(cur)-1:]
+			continue
+		}
+		var next [][2]int
+		for _, span := range cur {
+			step := s
+			step.Axis = axis
+			hit, err := walkAxis(tree, step, nameAt(span[0]))
+			if err != nil {
+				return nil, err
+			}
+			next = append(next, hit...)
+		}
+		cur = next
+	}
+	return cur, nil
 }
 
 // walkAxis steps from a node to the nodes the document relates it to. Only markdown nests, so

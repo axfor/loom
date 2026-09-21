@@ -74,6 +74,7 @@ type Stmt struct {
 type Select struct {
 	Kind  string
 	Pred  *Pred  // the predicate written in brackets; nil = the older named-argument form
+	All   bool   // written as a bare class name: every node of this kind
 	Match string // regular expression the name must match; empty = any
 	Level int    // markdown heading level the node must be; 0 = any
 	Empty bool   // only nodes with nothing under them

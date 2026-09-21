@@ -91,6 +91,10 @@ func TestAxes(t *testing.T) {
 		{`base.Setup.next.demote()`, "# T | ## Setup | ### Step A | ### Step B | ### Other"},
 		{`base.Other.prev.demote()`, "# T | ### Setup | ### Step A | ### Step B | ## Other"},
 		{`base.Setup."Step A".parent.demote()`, "# T | ### Setup | ### Step A | ### Step B | ## Other"},
+		// Axes chain: walk to a group, take one of it, walk again.
+		{`base.Setup.children.first.demote()`, "# T | ## Setup | #### Step A | ### Step B | ## Other"},
+		{`base.sections[level == 2].first.children.demote()`, "# T | ## Setup | #### Step A | #### Step B | ## Other"},
+		{`base.Setup.next.prev.demote()`, "# T | ### Setup | ### Step A | ### Step B | ## Other"},
 	} {
 		got, err := weave(c.tpl + "\n")
 		if err != nil {
@@ -105,7 +109,8 @@ func TestAxes(t *testing.T) {
 		{`base.Other.next.demote()`, "has no next at its own level"},
 		{`base.Setup.first.demote()`, "picks from a group"},
 		{`base.sections[level == 3].parent.demote()`, "walks from one node"},
-		{`base.Setup.children.next.demote()`, "one step at a time"},
+		{`base.Setup.children.first.first.demote()`, "picks from a group"},
+		{`base.Setup.children.next.demote()`, "walks from one node"},
 	} {
 		if _, err := weave(c.tpl + "\n"); err == nil {
 			t.Errorf("%s: accepted", c.tpl)
@@ -688,5 +693,63 @@ func TestTheRestOfTheSyntax(t *testing.T) {
 		} else if !strings.Contains(got, "## Setup") {
 			t.Errorf("base = %q did not reach the file:\n%s", spec, got)
 		}
+	}
+}
+
+// The spellings SYNTAX.md's own appendix uses, each of which the implementation refused until now.
+// The appendix is a checklist of every construct; a language that does not accept its own
+// checklist has a gap whatever its tests say.
+func TestTheSpellingsTheAppendixUses(t *testing.T) {
+	const doc = "---\nd: Up.\n---\n\n# T\n\n## A\n\na\n\n### AA\n\naa\n\n## B\n\nb\n\n## C\n\nc\n"
+	weave := newTree(t, "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n", doc, "---\nd: Ours.\n---\n\n## Ours\n\no\n")
+	const fm = "base.frontmatter.d.start(self.frontmatter.d)\n"
+
+	for _, c := range []struct{ tpl, want string }{
+		// has["X"] and has."X" ask the same thing.
+		{`base.sections[has["AA"]].demote()`, "# T | ### A | ### AA | ## B | ## C"},
+		// move takes a place as well as a side.
+		{`base.A.move(base.B.after)`, "# T | ### AA | ## B | ## A | ## C"},
+		// A bare class name is every node of that kind.
+		{`base.sections.demote()`, "# T | ### A | #### AA | ### B | ### C"},
+	} {
+		got, err := weave(fm + c.tpl + "\n")
+		if err != nil {
+			t.Errorf("%s: %v", c.tpl, err)
+			continue
+		}
+		if h := headings(got); h != c.want {
+			t.Errorf("%s\n  got  %s\n  want %s", c.tpl, h, c.want)
+		}
+	}
+
+	// end writes a value after upstream's, which is what append has always done.
+	got, err := weave("base.frontmatter.d.end(self.frontmatter.d)\n")
+	if err != nil {
+		t.Fatalf("value end: %v", err)
+	}
+	if !strings.Contains(got, "d: Up. Ours.") {
+		t.Errorf("end should put ours after upstream's:\n%s", got)
+	}
+
+	// project on a derived address, with the template on lines of its own.
+	got, err = weave(fm + "base.start.project(base.sections[level == 2]){\n```markdown\n- {name}\n```\n}\n")
+	if err != nil {
+		t.Fatalf("project at a place: %v", err)
+	}
+	if !strings.Contains(got, "- A\n- B\n- C") {
+		t.Errorf("the projection did not land at the start:\n%s", got)
+	}
+	// And at the end, reading a whole class.
+	got, err = weave(fm + "base.append.project(base.sections){\n```markdown\n- {name} ({level})\n```\n}\n")
+	if err != nil {
+		t.Fatalf("project at the end: %v", err)
+	}
+	if !strings.Contains(got, "- AA (3)") {
+		t.Errorf("a bare class did not reach the projection:\n%s", got)
+	}
+
+	// An empty call is still a call someone meant to fill in.
+	if _, err := weave(fm + "base.sections().demote()\n"); err == nil || !strings.Contains(err.Error(), "needs a predicate") {
+		t.Errorf("base.sections() should still ask for a predicate: %v", err)
 	}
 }

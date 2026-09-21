@@ -233,6 +233,11 @@ function expectNot(grammar, line, text, scope) {
   expect(lm, 'base.sections[name ~ "^S" && !empty].demote()', '&&', 'keyword.operator.loom');
   expect(lm, 'base.sections[name ~ "^S" && !empty].demote()', 'empty', 'support.function.predicate.loom');
   expect(lm, 'base.X.children.drop(reason: "r")', 'children', 'support.function.axis.loom');
+  expect(lm, 'base.sections.demote()', 'sections', 'support.function.axis.loom');
+  expect(lm, 'base.start.project(base.sections){', 'start', 'support.function.axis.loom');
+  expect(lm, 'base.X.after{', 'after', 'entity.name.function.method.loom');
+  expect(lm, 'base.frontmatter.d.end(self.frontmatter.d)', 'end', 'entity.name.function.method.loom');
+  expect(lm, 'base.X.project(base.sections)', 'project', 'entity.name.function.method.loom');
   expect(lm, 'base.X.unwrap(reason: "r")', 'unwrap', 'entity.name.function.method.loom');
   expect(lm, 'base.X.swap(base.Y)', 'swap', 'entity.name.function.method.loom');
   expect(lm, '---', '---', 'punctuation.definition.section.loom');
