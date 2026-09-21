@@ -61,11 +61,6 @@ type Config struct {
 	// Vars holds the variables for this build; nil = no substitution (for callers that weave a single
 	// file and don't care about variables)
 	Vars *Vars
-
-	// Files holds content in memory, keyed by "layer/path". A compiled weaver has no source tree
-	// to read from — upstream arrives as its input — so this is where that content goes. An entry
-	// here answers before the disk is touched.
-	Files map[string]string
 }
 
 // FindConfig searches upward from start for loom.om.
@@ -106,19 +101,6 @@ func (c *Config) Read(layer, rel string) (string, bool, error) {
 		return "", false, fmt.Errorf("unknown layer name `%s` (known layers: %s)", layer, c.layerNames())
 	}
 	p := filepath.Join(c.Root, l.Dir, rel)
-	if c.Files != nil {
-		if text, ok := c.Files[layer+"/"+rel]; ok {
-			if c.Vars != nil && l.Role == "weft" {
-				b, err := c.Vars.Expand([]byte(text), p, 1, 1)
-				if err != nil {
-					return "", false, err
-				}
-				return string(b), true, nil
-			}
-			return text, true, nil
-		}
-		return "", false, nil
-	}
 	b, err := os.ReadFile(p)
 	if err != nil {
 		return "", false, nil
