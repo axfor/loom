@@ -722,13 +722,37 @@ func TestTheSpellingsTheAppendixUses(t *testing.T) {
 		}
 	}
 
-	// end writes a value after upstream's, which is what append has always done.
+	// end writes a value after upstream's, which is what append has always done — and it is
+	// turned into append rather than carried as a second word, so the engine has one mode to
+	// reason about and the report says what happened in the words it already uses.
 	got, err := weave("base.frontmatter.d.end(self.frontmatter.d)\n")
 	if err != nil {
 		t.Fatalf("value end: %v", err)
 	}
 	if !strings.Contains(got, "d: Up. Ours.") {
 		t.Errorf("end should put ours after upstream's:\n%s", got)
+	}
+	{
+		dir2 := t.TempDir()
+		mustWrite(t, filepath.Join(dir2, "loom.om"), "base \"up\"\nself \"me\"\n")
+		mustWrite(t, filepath.Join(dir2, "up", "g.md"), "---\nd: Up.\n---\n\n## A\n\na\n")
+		mustWrite(t, filepath.Join(dir2, "me", "g.md"), "---\nd: Ours.\n---\n")
+		mustWrite(t, filepath.Join(dir2, "me", "g.md.lm"), "base.frontmatter.d.end(self.frontmatter.d)\n")
+		c2, err := lang.LoadConfig(filepath.Join(dir2, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		p2, err := build.PlanBuild(c2, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var said string
+		for _, l := range p2.Report.Extended {
+			said += l.Detail
+		}
+		if !strings.Contains(said, "(append)") || strings.Contains(said, "(end)") {
+			t.Errorf("the report should say append, the word the engine has: %q", said)
+		}
 	}
 
 	// project on a derived address, with the template on lines of its own.
