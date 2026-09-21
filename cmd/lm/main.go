@@ -202,6 +202,8 @@ func run(cmd string, args []string) error {
 		return build.Uses(c, os.Stdout, pattern)
 	case "anchors":
 		return build.ListAnchors(c, os.Stdout)
+	case "compile":
+		return cmdCompile(args)
 	case "view":
 		return build.AnchoredView(c, os.Stdout)
 	}

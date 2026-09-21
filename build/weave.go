@@ -1239,3 +1239,14 @@ func extent(tree ast.Tree, kind string, span [2]int) int {
 	}
 	return end
 }
+
+// CanPlace reports whether a statement's anchor can be found, without writing anything. A compiled
+// weaver asks this to decide a caught result, the same question resolve() asks here.
+func CanPlace(tree ast.Tree, s lang.Stmt) error {
+	_, err := targets(tree, s)
+	return err
+}
+
+// Selected is every node a predicate allows, for callers outside this package: a compiled weaver
+// answering `.any` has to pick the same nodes the weave would.
+func Selected(tree ast.Tree, sel *lang.Select) ([]ast.Named, error) { return selected(tree, sel) }
