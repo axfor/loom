@@ -834,7 +834,7 @@ base.sections[level == 2].first.children   轴可以接着走
 
 base.prompt.as(markdown)                    值里是 markdown
 base.prompt.as(markdown).Steps           打开后照常寻址
-base.script.as(shell).functions[calls "rm"] 打开后照常选择
+base.script.as(shell).functions[calls "rm"]   打开后照常选择
 
 
 // ── 派生地址（长度为零的跨度） ───────────────────────────────
@@ -855,7 +855,7 @@ base.Overview.before(self.前言)
 base.start(self."Read this first")
 base.end(self.Appendix)
 base.append(self.Appendix)                           end 的别名
-base.Overview.after(self.A, self.B, self.C) 多个，按序
+base.Overview.after(self.A, self.B, self.C)   多个，按序
 base.Overview.wrap(self.开头, self.结尾)        两端各一次
 
 base.append(self.body)                                  我们的正文
@@ -896,7 +896,7 @@ base.Notes.unwrap(reason: "这层包裹在产物里没有意义")
 // ── 值 ───────────────────────────────────────────────────────
 
 base.frontmatter.description.set(self.frontmatter.description)    换成我们的
-base.frontmatter.description.start(self.frontmatter.description)  我们的 + 上游的
+base.frontmatter.description.start(self.frontmatter.description)   我们的 + 上游的
 base.frontmatter.description.end(self.frontmatter.description)    上游的 + 我们的
 
 
