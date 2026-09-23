@@ -95,6 +95,11 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 				// what was under it is still there, and still accounted for by its own name.
 				drops = append(drops, s)
 			case "split":
+				if s.Reason == "" {
+					// Cut at a heading already there: nothing is added, a level changes.
+					levels = append(levels, s)
+					continue
+				}
 				inserted = append(inserted, s.Reason)
 			case "after", "before", "append", "prepend":
 				for _, ref := range s.Srcs {

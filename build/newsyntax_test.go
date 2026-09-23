@@ -840,3 +840,126 @@ func TestContentHasToFitWhereItLands(t *testing.T) {
 		t.Error("a fence tagged sh should not go into markdown")
 	}
 }
+
+// split at a heading already inside the section needs no name: that heading comes up to this
+// section's level and becomes the second half, with everything under it following.
+func TestSplitAtAHeading(t *testing.T) {
+	const doc = "# T\n\n## Setup\n\nintro\n\n### Step A\n\na\n\n#### Deep\n\nd\n\n### Step B\n\nb\n\n## Other\n\no\n"
+	weave := newTree(t, "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n", doc, "## Ours\n\no\n")
+
+	got, err := weave("base.Setup.split(base.Setup.\"Step B\")\nbase.Other.after(self.Ours)\n")
+	if err != nil {
+		t.Fatalf("split at a heading: %v", err)
+	}
+	want := "# T | ## Setup | ### Step A | #### Deep | ## Step B | ## Other | ## Ours"
+	if h := headings(got); h != want {
+		t.Errorf("\n  got  %s\n  want %s", h, want)
+	}
+	// Nothing was added, so upstream is still proved whole — the guarantee a level change keeps.
+	// That has to be asked of the accounting, not of the product: weaving alone does not check.
+	if strings.Contains(got, "<!-- B -->\n## Step B") {
+		t.Error("the second half is upstream's own heading, so it wears no marks of ours")
+	}
+	{
+		dir := t.TempDir()
+		mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n")
+		mustWrite(t, filepath.Join(dir, "up", "f.md"), doc)
+		mustWrite(t, filepath.Join(dir, "me", "f.md"), "## Ours\n\no\n")
+		mustWrite(t, filepath.Join(dir, "me", "f.md.lm"), "base.Setup.split(base.Setup.\"Step B\")\nbase.Other.after(self.Ours)\n")
+		c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		p, err := build.PlanBuild(c, true)
+		if err != nil {
+			t.Fatalf("a nameless split is a level change, and the accounting has to know: %v", err)
+		}
+		var said string
+		for _, l := range p.Report.Moved {
+			said += l.Detail + " " + l.Path
+		}
+		if !strings.Contains(said, "Setup") {
+			t.Errorf("it should be reported as restructured: %+v", p.Report.Moved)
+		}
+	}
+
+	// Cutting somewhere that is not a heading still needs a name for the half it makes.
+	if _, err := weave("base.Setup.split(base.Setup.line(\"intro\"))\nbase.Other.after(self.Ours)\n"); err == nil {
+		t.Error("cutting at a line with no name was accepted")
+	}
+	// And a heading outside the section is not a cut at all.
+	if _, err := weave("base.Setup.split(base.Other)\nbase.Other.after(self.Ours)\n"); err == nil {
+		t.Error("a heading outside the section was accepted as a cut")
+	}
+}
+
+// A bare string names a section of ours in Loom 1 and is the text itself from Loom 2. The meaning
+// could not change under trees already written, so what a tree declares decides — and a tree that
+// declares nothing is read the way it always was.
+func TestBareStringDependsOnTheVersion(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "up", "f.md"), "# T\n\n## A\n\na\n")
+	mustWrite(t, filepath.Join(dir, "me", "f.md"), "## Where this fits\n\nours\n")
+	mustWrite(t, filepath.Join(dir, "me", "f.md.lm"), "base.A.after(\"Where this fits\")\nbase.append(self.\"Where this fits\")\n")
+
+	for _, c := range []struct{ decl, want string }{
+		{"", "## Where this fits"},
+		{"loom \"1.0\"\n", "## Where this fits"},
+		{"loom \"2.0\"\n", "Where this fits"},
+	} {
+		mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n"+c.decl)
+		cfg, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		tm, err := lang.LoadTemplate(cfg, filepath.Join(dir, "me", "f.md.lm"))
+		if err != nil {
+			t.Fatalf("%q: %v", c.decl, err)
+		}
+		got, err := build.Weave(cfg, tm)
+		if err != nil {
+			t.Fatalf("%q: %v", c.decl, err)
+		}
+		first := strings.SplitN(strings.SplitN(got, "<!-- B -->\n", 2)[1], "\n", 2)[0]
+		if first != c.want {
+			t.Errorf("declared %q: the string landed as %q, want %q", c.decl, first, c.want)
+		}
+	}
+}
+
+// A dotted name matches the name, one character for one character, from Loom 2. Before that an
+// underscore stood for a space; a tree written then still means what it meant.
+func TestDottedNameDependsOnTheVersion(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "up", "f.md"), "# T\n\n## How Skills Work\n\nu\n\n## Other\n\no\n")
+	mustWrite(t, filepath.Join(dir, "me", "f.md"), "## Ours\n\no\n")
+	weave := func(decl, tpl string) error {
+		mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n"+decl)
+		mustWrite(t, filepath.Join(dir, "me", "f.md.lm"), tpl)
+		c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		tm, err := lang.LoadTemplate(c, filepath.Join(dir, "me", "f.md.lm"))
+		if err != nil {
+			return err
+		}
+		_, err = build.Weave(c, tm)
+		return err
+	}
+	const under = "base.How_Skills_Work.after(self.Ours)\n"
+	const quoted = "base.\"How Skills Work\".after(self.Ours)\n"
+
+	if err := weave("", under); err != nil {
+		t.Errorf("a tree that declares nothing keeps the underscore rule: %v", err)
+	}
+	if err := weave("loom \"1.0\"\n", under); err != nil {
+		t.Errorf("Loom 1 keeps the underscore rule: %v", err)
+	}
+	if err := weave("loom \"2.0\"\n", under); err == nil {
+		t.Error("Loom 2 should look for the name as written")
+	}
+	if err := weave("loom \"2.0\"\n", quoted); err != nil {
+		t.Errorf("Loom 2 takes the name in quotes: %v", err)
+	}
+}

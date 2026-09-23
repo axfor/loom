@@ -18,7 +18,7 @@ const ConfigName = "loom.om"
 // Additions do not raise it — a tree written for 1.0 still builds, because everything 1.0
 // could say means the same thing now. It goes up when something already written stops
 // meaning what it meant.
-const Version = "1.0"
+const Version = "2.0"
 
 // Marks is a pair of wrapping marks. Weft content is wrapped in them on its way into the product, so
 // "100% of the warp preserved" can be checked mechanically: strip the marked blocks, and what remains

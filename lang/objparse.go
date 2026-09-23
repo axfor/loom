@@ -570,7 +570,8 @@ type interp struct {
 	vars    map[string]Pos // results caught in a name, and where
 	used    map[string]bool
 	rebased bool
-	branch  int // how many if branches deep: `return self` is a property of the whole template
+	loom    string // the language version this tree declares
+	branch  int    // how many if branches deep: `return self` is a property of the whole template
 	objects map[string]object
 }
 
@@ -578,12 +579,19 @@ type interp struct {
 // (derived from the template path). When resolve is nil, import paths are used as layer
 // paths unchanged (for tests).
 func ParseTemplateSyntax(file, target string, src []byte, resolve Resolver) (*Template, error) {
+	return ParseTemplateFor(file, target, src, resolve, "")
+}
+
+// ParseTemplateFor reads a template for a stated language version. The version decides the one
+// thing that could not change without breaking every tree written before it: what a bare string
+// means as content.
+func ParseTemplateFor(file, target string, src []byte, resolve Resolver, loom string) (*Template, error) {
 	imports, body, resources, err := parseObjects(file, src)
 	if err != nil {
 		return nil, err
 	}
 	t := &Template{Path: file, Target: target, Type: TypeOf(target), BasePath: target}
-	in := &interp{t: t, vars: map[string]Pos{}, used: map[string]bool{}, objects: map[string]object{
+	in := &interp{t: t, loom: loom, vars: map[string]Pos{}, used: map[string]bool{}, objects: map[string]object{
 		"base": {layer: "base", file: target, typ: TypeOf(target)},
 		"self": {layer: "self", typ: TypeOf(target)},
 	}}
@@ -815,7 +823,9 @@ func (in *interp) select_(r *receiver, st oStep) error {
 	case !st.str && st.name == "frontmatter" && r.typ == "markdown":
 		r.node, r.kind, r.anchor = true, "frontmatter", ""
 	default:
-		r.node, r.kind, r.anchor, r.ident = true, defaultKind[r.typ], st.name, !st.str
+		// From Loom 2 a dotted name is the name, one character for one character. Before that an
+		// underscore stood for a space, and a tree written then still means what it meant.
+		r.node, r.kind, r.anchor, r.ident = true, defaultKind[r.typ], st.name, !st.str && !atLeast(in.loom, 2)
 	}
 	r.pos = st.pos
 	return nil
@@ -1009,8 +1019,26 @@ func (in *interp) method(r receiver, st oStep) error {
 		}
 		out = append(out, Stmt{Op: "join", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Axis: r.axis, Reason: reason, Rng: at})
 	case "split":
-		if !r.node || len(pos) != 2 || pos[1].val.kind != vString {
-			return fmt.Errorf("%s: split takes where to cut and what to call the second half: base.X.split(base.X.Step_1, \"X, part two\")", at)
+		// Cutting at a heading already inside the section needs no new name: that heading becomes
+		// the second half, at this section's own level. Cutting anywhere else does need one, so
+		// the second half has something to be called.
+		if !r.node || len(pos) == 0 || len(pos) > 2 || pos[0].val.kind != vExpr {
+			return fmt.Errorf("%s: split takes where to cut: base.X.split(base.X.Step_1), or where and what to call the second half: base.X.split(base.X.line(\"…\"), \"X, part two\")", at)
+		}
+		if len(pos) == 1 {
+			if r.typ != "markdown" || r.kind != "heading" {
+				return fmt.Errorf("%s: split cuts a section in two, so it applies to a markdown section", at)
+			}
+			cut, err := in.moveTarget("before", pos[0].val, r.typ)
+			if err != nil {
+				return err
+			}
+			out = append(out, Stmt{Op: "split", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within,
+				Move: &Move{Side: "before", Kind: cut.Kind, Anchor: cut.Anchor, Ident: cut.Ident, Within: cut.Within}, Rng: at})
+			break
+		}
+		if pos[1].val.kind != vString {
+			return fmt.Errorf("%s: the second half needs a name: base.X.split(where, \"X, part two\")", at)
 		}
 		cut, err := in.moveTarget("before", pos[0].val, r.typ)
 		if err != nil {
@@ -1259,6 +1287,13 @@ func (in *interp) contents(args []oArg, typ string, inView bool) ([]Ref, error) 
 		v := a.val
 		switch v.kind {
 		case vString:
+			// A bare string names a section of ours in Loom 1; from Loom 2 it is the text itself.
+			// The meaning could not be changed under trees already written, so the version they
+			// declare decides — and a tree that declares nothing keeps what it has always had.
+			if atLeast(in.loom, 2) {
+				out = append(out, Ref{Layer: "self", IsLit: true, Literal: v.str, Rng: v.pos})
+				continue
+			}
 			out = append(out, Ref{Layer: "self", Kind: defaultKind[typ], Anchor: v.str, Rng: v.pos})
 		case vRaw:
 			// The tag says what the fence holds, so it is checked against where it lands. An
@@ -1342,7 +1377,7 @@ func (in *interp) contents(args []oArg, typ string, inView bool) ([]Ref, error) 
 					if inView && e.root == "self" {
 						kt = typ
 					}
-					ref.Kind, ref.Anchor, ref.Ident = defaultKind[kt], st.name, !st.str
+					ref.Kind, ref.Anchor, ref.Ident = defaultKind[kt], st.name, !st.str && !atLeast(in.loom, 2)
 				}
 			}
 			if err := in.fits(ref, obj, typ, inView, v.pos); err != nil {
@@ -1556,4 +1591,11 @@ func fenceKind(tag string) string {
 		return tag
 	}
 	return ""
+}
+
+// atLeast reports whether a declared version is that major or newer. An undeclared version is the
+// oldest: a tree that never said what it was written for is read the way it always was.
+func atLeast(loom string, major int) bool {
+	v, err := parseVersion(loom)
+	return err == nil && v[0] >= major
 }

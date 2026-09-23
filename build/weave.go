@@ -371,6 +371,28 @@ func apply(c *lang.Config, t *lang.Template, stmts []lang.Stmt, tree ast.Tree, r
 			if cut[0] <= span[0] || cut[0] >= extent(tree, s.Kind, span) {
 				return fmt.Errorf("%s: the cut has to be inside %s", s.Rng, s.Anchor)
 			}
+			if s.Reason == "" {
+				// The cut is a heading already inside this section: it becomes the second half by
+				// coming up to this section's level, and everything under it comes with it.
+				lines := tree.Lines()
+				h := reHeading.FindStringSubmatch(lines[cut[0]])
+				if h == nil {
+					return fmt.Errorf("%s: %s is not a heading, so it cannot be the second half — give the half a name: split(where, \"...\")", s.Rng, s.Move.Anchor)
+				}
+				if len(h[1]) <= len(g[1]) {
+					return fmt.Errorf("%s: %s is not inside %s, so there is nothing to cut", s.Rng, s.Move.Anchor, s.Anchor)
+				}
+				drop := len(h[1]) - len(g[1])
+				end := extent(tree, s.Kind, cut)
+				out := append([]string{}, lines[cut[0]:end]...)
+				for i, l := range out {
+					if m := reHeading.FindStringSubmatch(l); m != nil && len(m[1]) > drop {
+						out[i] = l[drop:]
+					}
+				}
+				edits = append(edits, edit{cut[0], end, out, len(edits)})
+				continue
+			}
 			// The blank line a heading needs after it is ours too, so it goes inside the marks —
 			// otherwise stripping them would leave a line upstream never wrote.
 			head := mark(c, t, c.Weft, g[1]+" "+s.Reason+"\n")

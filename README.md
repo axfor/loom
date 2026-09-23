@@ -593,6 +593,18 @@ A fence says what it holds with its tag, and that is checked the same way — ``
 not go into a markdown section. A tag the language has no type for (`python`, `js`) is a label for
 whoever reads it, and says nothing to check; `sh` and `bash` do name a type, so they are checked.
 
+### What a version changes
+
+`loom "2.0"` changes two things a tree already written could not have changed under it:
+
+| Written | 1.0, or undeclared | 2.0 |
+|---|---|---|
+| `base.How_Skills_Work` | an underscore stands for a space, so this finds "How Skills Work" | the name as written |
+| `after("X")` | our section called X | the text itself |
+
+Everything else is an addition, and additions do not raise the version: a tree that declares 1.0,
+or declares nothing, builds exactly as it did.
+
 ### Reasons
 
 `replace` and `drop` change upstream content, so they need `reason:`. Other methods may not have one.

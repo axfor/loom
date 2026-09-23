@@ -33,7 +33,7 @@ func LoadTemplateSource(c *Config, path string, src []byte) (*Template, error) {
 	if err != nil {
 		return nil, err
 	}
-	t, err := ParseTemplateSyntax(path, target, src, c.resolveImport)
+	t, err := ParseTemplateFor(path, target, src, c.resolveImport, c.Loom)
 	if err != nil {
 		return nil, err
 	}

@@ -14,8 +14,9 @@ func TestLoomVersion(t *testing.T) {
 	for _, c := range []struct{ decl, wantErr string }{
 		{`loom "1.0"`, ""},
 		{`loom "0.9"`, ""},
-		{`loom "2.0"`, "run `lm update`"},
-		{`loom "1.99"`, "run `lm update`"},
+		{`loom "2.0"`, ""},
+		{`loom "3.0"`, "run `lm update`"},
+		{`loom "2.99"`, "run `lm update`"},
 		{`loom "x"`, `takes a version like`},
 		{`loom "1"`, `takes a version like`},
 		{`loom`, "takes the language version"},
