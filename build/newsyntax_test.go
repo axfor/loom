@@ -777,3 +777,66 @@ func TestTheSpellingsTheAppendixUses(t *testing.T) {
 		t.Errorf("base.sections() should still ask for a predicate: %v", err)
 	}
 }
+
+// SYNTAX.md §10: content and the place it lands in have to be the same kind of document. A shell
+// function pasted into a markdown section carries no heading, so the accounting that works by name
+// cannot see it — upstream stays whole and our own content ends up on no ledger at all.
+func TestContentHasToFitWhereItLands(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\nmark toml \"# B\" \"# E\"\n")
+	mustWrite(t, filepath.Join(dir, "up", "f.md"), "# T\n\n## A\n\na\n\n## B\n\nb\n")
+	mustWrite(t, filepath.Join(dir, "me", "f.md"), "## Ours\n\no\n")
+	mustWrite(t, filepath.Join(dir, "me", "r.sh"), "#!/bin/sh\nboot() {\n  echo b\n}\n")
+	mustWrite(t, filepath.Join(dir, "up", "c.toml"), "description = \"u\"\nprompt = \"\"\"\n## Steps\n\nu\n\"\"\"\n")
+	mustWrite(t, filepath.Join(dir, "me", "c.toml"), "description = \"o\"\nprompt = \"\"\"\n## Ours\n\no\n\"\"\"\n")
+
+	weave := func(name, tpl string) error {
+		mustWrite(t, filepath.Join(dir, "me", name+".lm"), tpl)
+		c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		tm, err := lang.LoadTemplate(c, filepath.Join(dir, "me", name+".lm"))
+		if err != nil {
+			return err
+		}
+		_, err = build.Weave(c, tm)
+		return err
+	}
+
+	// A shell function does not go into a markdown section.
+	err := weave("f.md", "import r \"/r.sh\"\nbase.A.after(r.boot)\nbase.B.after(self.Ours)\n")
+	if err == nil {
+		t.Fatal("a shell function was written into a markdown section")
+	}
+	if !strings.Contains(err.Error(), "is shell and this writes into markdown") {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	// Our own file, read through a view, is the view's type: base.prompt.as(markdown) makes
+	// self.body the markdown in our prompt rather than the toml around it.
+	if err := weave("c.toml", "base.description.start(self.description)\nbase.prompt.as(markdown).append(self.body)\n"); err != nil {
+		t.Errorf("our own file inside a view should fit: %v", err)
+	}
+	// A file named explicitly is still whatever its own extension says, view or no view.
+	err = weave("c.toml", "base.description.start(self.description)\nimport r \"/r.sh\"\nbase.prompt.as(markdown).append(r.boot)\n")
+	if err == nil || !strings.Contains(err.Error(), "is shell and this writes into markdown") {
+		t.Errorf("an imported shell file should not fit a markdown view: %v", err)
+	}
+
+	// A fence says what it holds with its tag, and that is checked the same way.
+	err = weave("f.md", "base.A.after{\n```json\n{}\n```\n}\nbase.B.after(self.Ours)\n")
+	if err == nil || !strings.Contains(err.Error(), "holds json and it writes into markdown") {
+		t.Errorf("a tagged fence should be checked: %v", err)
+	}
+	// A tag the language knows nothing about is a label for the reader, not a claim it can check.
+	for _, tag := range []string{"", "nope", "python"} {
+		if err := weave("f.md", "base.A.after{\n```"+tag+"\nx\n```\n}\nbase.B.after(self.Ours)\n"); err != nil {
+			t.Errorf("a fence tagged %q should pass: %v", tag, err)
+		}
+	}
+	// sh and bash name a type this language has, so they are checked.
+	if err := weave("f.md", "base.A.after{\n```sh\necho hi\n```\n}\nbase.B.after(self.Ours)\n"); err == nil {
+		t.Error("a fence tagged sh should not go into markdown")
+	}
+}

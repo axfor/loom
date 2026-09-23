@@ -113,6 +113,7 @@ const (
 type oValue struct {
 	kind vkind
 	str  string
+	tag  string // a fence's language tag: what kind of document it holds
 	num  int
 	expr *oExpr
 	pos  Pos
@@ -532,7 +533,7 @@ func (p *oparser) value() (oValue, error) {
 		return oValue{kind: vString, str: t.Text, pos: t.Pos}, nil
 	case KRaw:
 		p.next()
-		return oValue{kind: vRaw, str: t.Text, pos: t.Pos}, nil
+		return oValue{kind: vRaw, str: t.Text, tag: t.Tag, pos: t.Pos}, nil
 	case KNumber:
 		p.next()
 		n, err := strconv.Atoi(t.Text)
@@ -1260,6 +1261,11 @@ func (in *interp) contents(args []oArg, typ string, inView bool) ([]Ref, error) 
 		case vString:
 			out = append(out, Ref{Layer: "self", Kind: defaultKind[typ], Anchor: v.str, Rng: v.pos})
 		case vRaw:
+			// The tag says what the fence holds, so it is checked against where it lands. An
+			// untagged fence takes the kind of its place, which is what it already did.
+			if kind := fenceKind(v.tag); kind != "" && typ != "" && kind != typ {
+				return nil, fmt.Errorf("%s: this fence says it holds %s and it writes into %s — take the tag off to let it be %s, or write it where %s goes", v.pos, kind, typ, typ, kind)
+			}
 			out = append(out, Ref{Layer: "self", IsLit: true, Literal: v.str, Rng: v.pos})
 		case vExpr:
 			e := v.expr
@@ -1339,10 +1345,40 @@ func (in *interp) contents(args []oArg, typ string, inView bool) ([]Ref, error) 
 					ref.Kind, ref.Anchor, ref.Ident = defaultKind[kt], st.name, !st.str
 				}
 			}
+			if err := in.fits(ref, obj, typ, inView, v.pos); err != nil {
+				return nil, err
+			}
 			out = append(out, ref)
 		}
 	}
 	return out, nil
+}
+
+// fits refuses content whose kind of document is not the kind of document it would land in. A
+// shell function pasted into a markdown section carries no heading, so the accounting that works
+// by name cannot see it: upstream is still whole, and our own content is on no ledger at all.
+//
+// A literal is exempt — a string is a string, and a fence says what it is with its tag, which is
+// checked where the fence is read.
+func (in *interp) fits(ref Ref, obj object, typ string, inView bool, at Pos) error {
+	if ref.IsLit || typ == "" {
+		return nil
+	}
+	// Inside a view, our own file is read as the view's type too: base.prompt.as(markdown) makes
+	// self.body the markdown in our prompt, not the toml around it. A file named explicitly is
+	// still whatever its own extension says.
+	if inView && obj.file == "" {
+		return nil
+	}
+	from := obj.typ
+	if ref.ResKind != "" {
+		from = ref.ResKind
+	}
+	if from == "" || from == typ {
+		return nil
+	}
+	return fmt.Errorf("%s: %s is %s and this writes into %s — content and its place have to be the same kind of document; open one as the other with as(%s), or take it from a %s file of ours",
+		at, ref.String(), from, typ, typ, typ)
 }
 
 // hasValues reports whether a type's nodes are keys holding a value — the types whose
@@ -1502,4 +1538,22 @@ func (in *interp) projectionOf(e *oExpr, tpl string, at Pos) (Ref, bool, error) 
 		return Ref{}, false, err
 	}
 	return Ref{Layer: obj.layer, Kind: "project", Project: sel, Literal: tpl, IsLit: true, Rng: at}, true, nil
+}
+
+// fenceKind is the type a fence's tag names, or "" when it names none. A tag the language knows is
+// what the fence holds and is checked against where it lands; any other tag — sh, js, python — is
+// a label for whoever reads it and for the editor's colours, and says nothing this can check.
+func fenceKind(tag string) string {
+	switch tag {
+	case "sh", "bash", "zsh":
+		return "shell"
+	case "yml":
+		return "yaml"
+	case "md":
+		return "markdown"
+	}
+	if contains(typeWords(), tag) {
+		return tag
+	}
+	return ""
 }

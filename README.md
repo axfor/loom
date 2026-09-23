@@ -573,6 +573,26 @@ product — GitHub, Obsidian and mkdocs each slugify a heading differently — a
 property of the document. Guessing one would be this language making up a rule it cannot check. If
 a link is wanted, write the target the renderer expects.
 
+### Content and its place
+
+Content goes where its own kind of document goes. A shell function does not go into a markdown
+section: what lands there carries no heading, so the accounting that works by name cannot see it —
+upstream stays whole and our own content ends up on no ledger at all.
+
+```
+import r "/run.sh"
+base.Overview.after(r.boot)
+                    ~~~~~~~ shell does not go into markdown
+```
+
+Inside a view our own file is read as the view's type, so `base.prompt.as(markdown).append(self.body)`
+takes the markdown in our prompt rather than the toml around it. A file named explicitly is still
+whatever its extension says, view or no view.
+
+A fence says what it holds with its tag, and that is checked the same way — ```` ```json ```` will
+not go into a markdown section. A tag the language has no type for (`python`, `js`) is a label for
+whoever reads it, and says nothing to check; `sh` and `bash` do name a type, so they are checked.
+
 ### Reasons
 
 `replace` and `drop` change upstream content, so they need `reason:`. Other methods may not have one.
