@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/axfor/loom/ast"
 )
@@ -1160,9 +1161,9 @@ func selected(tree ast.Tree, sel *lang.Select) ([]ast.Named, error) {
 // through the template once. It copies nothing upstream says — only the names it gave things —
 // so what it writes is new, and the report counts it as ours like any other literal.
 //
-// The fields are the ones a document's structure actually has. There is deliberately no field
-// for a link target: an anchor is a convention of whichever renderer reads the product, not a
-// property of the document, and this language does not guess conventions.
+// The fields are the ones a document's structure actually has, plus anchor: GitHub's rule for the
+// link target of a heading. Renderers do not agree on that rule, so this one is named for whose it
+// is rather than presented as the anchor — a product read somewhere else may need its own.
 func project(c *lang.Config, t *lang.Template, r lang.Ref, rel string) (string, error) {
 	src, ok, err := c.Read(r.Layer, weftRel(c, t, r.Layer, rel))
 	if err != nil || !ok {
@@ -1180,8 +1181,12 @@ func project(c *lang.Config, t *lang.Template, r lang.Ref, rel string) (string, 
 		return "", fmt.Errorf("%s: the predicate matched nothing to project", r.Rng)
 	}
 	var out []string
+	slugs := newSlugger()
 	for _, n := range found {
 		line := r.Literal
+		if strings.Contains(line, "{anchor}") {
+			line = strings.ReplaceAll(line, "{anchor}", slugs.slug(n.Name))
+		}
 		line = strings.ReplaceAll(line, "{name}", n.Name)
 		line = strings.ReplaceAll(line, "{level}", strconv.Itoa(n.Level))
 		body := strings.Join(tree.Lines()[n.Line+1:n.End], "\n")
@@ -1297,4 +1302,31 @@ func extent(tree ast.Tree, kind string, span [2]int) int {
 		}
 	}
 	return end
+}
+
+// slugger turns headings into the link targets GitHub gives them: lower-cased, with anything that
+// is not a letter, a digit, a space, a hyphen or an underscore removed, spaces made hyphens, and a
+// repeated slug numbered -1, -2 in the order the headings come. Letters are any script's, so a
+// heading in Chinese keeps its characters.
+type slugger struct{ seen map[string]int }
+
+func newSlugger() *slugger { return &slugger{seen: map[string]int{}} }
+
+func (s *slugger) slug(heading string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(heading) {
+		switch {
+		case unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_':
+			b.WriteRune(r)
+		case r == ' ':
+			b.WriteByte('-')
+		}
+	}
+	base := b.String()
+	n := s.seen[base]
+	s.seen[base] = n + 1
+	if n == 0 {
+		return base
+	}
+	return fmt.Sprintf("%s-%d", base, n)
 }

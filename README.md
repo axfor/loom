@@ -800,6 +800,12 @@ base.start.project(base.sections[level == 2]){
 
 `base.start(base.sections[...].project(`- {name}`))` says the same thing on one line.
 
+The fields a template can use are `{name}`, `{level}`, `{body}` and `{anchor}`. `{anchor}` is
+GitHub's link target for a heading — lower-cased, punctuation removed, spaces made hyphens, a
+repeated one numbered `-1`, `-2` — and it is GitHub's because renderers do not agree on the rule;
+a product read somewhere else may need its own. Any other field is refused where it is written, so
+a typo cannot reach the product as a literal `{nmae}`.
+
 ### Grouping statements in a file
 
 `fn` groups statements; it is inlined where it is called, so there is no call at build time and no

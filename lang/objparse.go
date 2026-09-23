@@ -1278,6 +1278,9 @@ func (in *interp) projection(e *oExpr, pos Pos, typ string) (Ref, bool, error) {
 	if len(a) != 1 || a[0].name != "" || (a[0].val.kind != vRaw && a[0].val.kind != vString) {
 		return Ref{}, false, fmt.Errorf("%s: project takes one template: project(`- {name}`)", e.steps[1].pos)
 	}
+	if err := checkFields(a[0].val.str, pos); err != nil {
+		return Ref{}, false, err
+	}
 	return Ref{Layer: obj.layer, Kind: "project", Project: sel, Literal: a[0].val.str, IsLit: true, Rng: pos}, true, nil
 }
 
@@ -1572,6 +1575,9 @@ func (in *interp) projectionOf(e *oExpr, tpl string, at Pos) (Ref, bool, error) 
 	if err != nil {
 		return Ref{}, false, err
 	}
+	if err := checkFields(tpl, at); err != nil {
+		return Ref{}, false, err
+	}
 	return Ref{Layer: obj.layer, Kind: "project", Project: sel, Literal: tpl, IsLit: true, Rng: at}, true, nil
 }
 
@@ -1598,4 +1604,24 @@ func fenceKind(tag string) string {
 func atLeast(loom string, major int) bool {
 	v, err := parseVersion(loom)
 	return err == nil && v[0] >= major
+}
+
+// projectFields are the fields a projection template may use. Each is something the document's
+// structure actually has, except anchor, which is GitHub's rule for turning a heading into a link
+// target — named for whose rule it is, because renderers do not agree.
+var projectFields = []string{"name", "level", "body", "anchor"}
+
+var reField = regexp.MustCompile(`\{([A-Za-z_][A-Za-z0-9_]*)\}`)
+
+// checkFields refuses a projection template that names a field there is no value for. Left
+// alone, {anchor} or a typo such as {nmae} would go into the product as written — a link to
+// "#{anchor}", with the build reporting nothing.
+func checkFields(tpl string, at Pos) error {
+	for _, m := range reField.FindAllStringSubmatch(tpl, -1) {
+		if contains(projectFields, m[1]) {
+			continue
+		}
+		return unknownIn(m[1], projectFields, "projection field", at)
+	}
+	return nil
 }

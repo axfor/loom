@@ -1080,3 +1080,39 @@ func TestLinesAreAClass(t *testing.T) {
 		t.Errorf("every named line goes and the blank one stays\n  got  %q\n  want %q", got, want)
 	}
 }
+
+// A projection template names fields, and a field there is no value for used to go into the
+// product as written — `{anchor}` became a link to "#{anchor}", with the build saying nothing.
+// anchor is GitHub's rule for a heading's link target, named for whose rule it is.
+func TestProjectionFields(t *testing.T) {
+	const doc = "# T\n\n## Quick Start (Any Agent)\n\na\n\n## How It Works\n\nb\n\n## 安装说明\n\nc\n\n## How It Works\n\nd\n"
+	weave := newTree(t, "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n", doc, "## Ours\n\no\n")
+
+	got, err := weave("base.start.project(base.sections[level == 2]){\n```markdown\n- [{name}](#{anchor})\n```\n}\nbase.append(self.Ours)\n")
+	if err != nil {
+		t.Fatalf("anchor: %v", err)
+	}
+	for _, want := range []string{
+		"- [Quick Start (Any Agent)](#quick-start-any-agent)", // punctuation goes, spaces become hyphens
+		"- [How It Works](#how-it-works)",
+		"- [安装说明](#安装说明)",                   // letters are any script's
+		"- [How It Works](#how-it-works-1)", // the second of a name is numbered
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in:\n%s", want, got)
+		}
+	}
+
+	// A field with no value is refused where it is written, not passed into the product.
+	_, err = weave("base.start.project(base.sections[level == 2]){\n```markdown\n- {nmae}\n```\n}\nbase.append(self.Ours)\n")
+	if err == nil {
+		t.Fatal("a misspelt field was accepted")
+	}
+	if !strings.Contains(err.Error(), "did you mean name") {
+		t.Errorf("unexpected error: %v", err)
+	}
+	// The same check holds for the one-line form.
+	if _, err := weave("base.start(base.sections[level == 2].project(`- {slug}`))\nbase.append(self.Ours)\n"); err == nil {
+		t.Error("an unknown field in the one-line form was accepted")
+	}
+}
