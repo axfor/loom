@@ -1027,3 +1027,56 @@ func TestValuePredicate(t *testing.T) {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
+
+// The grammar lists `lines` beside sections and keys, and it had nothing to select: lines were
+// findable by name and not enumerable, so a group of them was always empty. A line is named by
+// what it says, which is what Find already matched on.
+func TestLinesAreAClass(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark text \"# B\" \"# E\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n")
+	mustWrite(t, filepath.Join(dir, "up", "t.txt"), "keep me\ndrop l1\ndrop l2\n\n")
+	mustWrite(t, filepath.Join(dir, "me", "t.txt"), "ours line\n")
+	mustWrite(t, filepath.Join(dir, "up", "f.md"), "# T\n\n## A\n\nalpha\n\nbeta\n")
+	mustWrite(t, filepath.Join(dir, "me", "f.md"), "## Ours\n\no\n")
+	weave := func(name, tpl string) (string, error) {
+		mustWrite(t, filepath.Join(dir, "me", name+".lm"), tpl)
+		c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		tm, err := lang.LoadTemplate(c, filepath.Join(dir, "me", name+".lm"))
+		if err != nil {
+			return "", err
+		}
+		return build.Weave(c, tm)
+	}
+
+	// A predicate over lines, in a text file.
+	got, err := weave("t.txt", "base.lines[name ~ \"^drop \"].drop(reason: \"ours covers them\")\nbase.append(self.body)\n")
+	if err != nil {
+		t.Fatalf("lines in text: %v", err)
+	}
+	if strings.Contains(got, "drop l1") || !strings.Contains(got, "keep me") {
+		t.Errorf("the predicate picked the wrong lines:\n%s", got)
+	}
+
+	// And in markdown, where a line is a node beside a section rather than instead of one.
+	got, err = weave("f.md", "base.lines[name == \"beta\"].drop(reason: \"ours says it\")\nbase.A.after(self.Ours)\n")
+	if err != nil {
+		t.Fatalf("lines in markdown: %v", err)
+	}
+	if strings.Contains(got, "beta") || !strings.Contains(got, "alpha") {
+		t.Errorf("the predicate picked the wrong lines:\n%s", got)
+	}
+
+	// A blank line has no name, so nothing selects it — otherwise a file would be full of nodes
+	// all called the same thing, and any anchor could match any of them. Upstream's blank line is
+	// still there afterwards, which is how that shows.
+	got, err = weave("t.txt", "base.lines.drop(reason: \"all of upstream's\")\nbase.append(self.body)\n")
+	if err != nil {
+		t.Fatalf("every line: %v", err)
+	}
+	if want := "\n\n# B\nours line\n# E\n"; got != want {
+		t.Errorf("every named line goes and the blank one stays\n  got  %q\n  want %q", got, want)
+	}
+}

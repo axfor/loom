@@ -94,6 +94,19 @@ type Named struct {
 // Addressable lists every addressable name a tree has for a node kind —
 // what a template author really wants to know is "which points in this file can I anchor to".
 func Addressable(t Tree, kind string) []Named {
+	// A line is a node of every type that has lines, and it is named by what it says — the same
+	// thing Find matches on. Without this `base.lines` had nothing to select, though the grammar
+	// lists it beside sections and keys.
+	if kind == "line" {
+		var out []Named
+		for i, l := range t.Lines() {
+			if strings.TrimSpace(l) == "" {
+				continue // a blank line has no name, so there is nothing to select it by
+			}
+			out = append(out, Named{Name: l, Line: i, End: i + 1})
+		}
+		return out
+	}
 	switch v := t.(type) {
 	case *Markdown:
 		if kind != "heading" {

@@ -749,6 +749,13 @@ base.sections[empty].drop(reason: "upstream left the shells of sections it never
 
 `.first` and `.last` take one out of a group, and `has."Usage"` may also be written `has["Usage"]`.
 
+A line is a node too, named by what it says, so a predicate can pick lines the way it picks
+sections — a blank line has no name and nothing selects it.
+
+```
+base.lines[name ~ "^TODO"].drop(reason: "ours tracks these")
+```
+
 A bare class name is every node of that kind:
 
 ```
