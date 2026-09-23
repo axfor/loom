@@ -280,7 +280,7 @@ func (p *oparser) predAnd() (*oPred, error) {
 	return left, nil
 }
 
-var predFields = []string{"level", "name", "empty", "calls", "has"}
+var predFields = []string{"level", "name", "value", "empty", "calls", "has"}
 
 func (p *oparser) predTerm() (*oPred, error) {
 	t := p.peek()
@@ -353,17 +353,20 @@ func (p *oparser) predTerm() (*oPred, error) {
 			return nil, fmt.Errorf("%s: level %d — markdown headings run from 1 to 6", v.Pos, n.num)
 		}
 		return n, nil
-	case "name":
+	case "name", "value":
+		// name asks what a node is called; value asks what a key holds. Both are compared with a
+		// string, and empty is not the same question — a key with nothing under it is empty
+		// whatever its value is.
 		c := p.next()
 		switch c.Kind {
 		case KEq, KNe, KMatch:
 			n.cmp = c.Text
 		default:
-			return nil, fmt.Errorf("%s: name is compared with == != or ~ (a regular expression), got %s", c.Pos, c)
+			return nil, fmt.Errorf("%s: %s is compared with == != or ~ (a regular expression), got %s", c.Pos, t.Text, c)
 		}
 		s := p.next()
 		if s.Kind != KString {
-			return nil, fmt.Errorf("%s: name is compared with a quoted string, got %s", s.Pos, s)
+			return nil, fmt.Errorf("%s: %s is compared with a quoted string, got %s", s.Pos, t.Text, s)
 		}
 		n.str = s.Text
 		return n, nil

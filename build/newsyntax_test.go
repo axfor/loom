@@ -5,6 +5,7 @@ package build_test
 
 import (
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -961,5 +962,68 @@ func TestDottedNameDependsOnTheVersion(t *testing.T) {
 	}
 	if err := weave("loom \"2.0\"\n", quoted); err != nil {
 		t.Errorf("Loom 2 takes the name in quotes: %v", err)
+	}
+}
+
+// `value` asks what a key holds. It is not `empty`, which asks whether anything is under the key:
+// `a = 1` and `b = ""` are both empty by that question, and only this one tells them apart.
+func TestValuePredicate(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark toml \"# B\" \"# E\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n")
+	mustWrite(t, filepath.Join(dir, "up", "c.toml"), "a = 1\nb = \"\"\nc = \"keep\"\n")
+	mustWrite(t, filepath.Join(dir, "me", "c.toml"), "x = 1\n")
+	weave := func(name, tpl string) (string, error) {
+		mustWrite(t, filepath.Join(dir, "me", name+".lm"), tpl)
+		c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		tm, err := lang.LoadTemplate(c, filepath.Join(dir, "me", name+".lm"))
+		if err != nil {
+			return "", err
+		}
+		return build.Weave(c, tm)
+	}
+	kept := func(s string) string {
+		var out []string
+		for _, l := range strings.Split(s, "\n") {
+			if regexp.MustCompile(`^[abc] = `).MatchString(l) {
+				out = append(out, l)
+			}
+		}
+		return strings.Join(out, " ")
+	}
+	for _, c := range []struct{ pred, want string }{
+		{`value == ""`, `a = 1 c = "keep"`},
+		{`value != ""`, `b = ""`},
+		{`value ~ "^ke"`, `a = 1 b = ""`},
+		{`value == "1"`, `b = "" c = "keep"`},
+	} {
+		got, err := weave("c.toml", "base.keys["+c.pred+"].drop(reason: \"ours\")\nbase.append(self.x)\n")
+		if err != nil {
+			t.Errorf("%s: %v", c.pred, err)
+			continue
+		}
+		if k := kept(got); k != c.want {
+			t.Errorf("%s\n  kept %s\n  want %s", c.pred, k, c.want)
+		}
+	}
+
+	// empty asks a different question, and on these keys it finds all three.
+	got, err := weave("c.toml", "base.keys[empty].drop(reason: \"ours\")\nbase.append(self.x)\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if k := kept(got); k != "" {
+		t.Errorf("empty is about what sits under a key, so all three are empty; kept %s", k)
+	}
+
+	// A heading holds no value of its own, and is told so where it is written.
+	mustWrite(t, filepath.Join(dir, "up", "f.md"), "# T\n\n## A\n\na\n")
+	mustWrite(t, filepath.Join(dir, "me", "f.md"), "## Ours\n\no\n")
+	if _, err := weave("f.md", "base.sections[value == \"\"].drop(reason: \"x\")\n"); err == nil {
+		t.Error("value on a markdown section was accepted")
+	} else if !strings.Contains(err.Error(), "holds no value of its own") {
+		t.Errorf("unexpected error: %v", err)
 	}
 }

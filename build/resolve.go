@@ -245,6 +245,25 @@ func match(tree ast.Tree, p *lang.Pred, n ast.Named) (bool, error) {
 			return re.MatchString(n.Name), nil
 		}
 		return false, fmt.Errorf("name %s is not a comparison", p.Cmp)
+	case "value":
+		v, ok := tree.BodyOf(n.Name)
+		if !ok {
+			return false, nil
+		}
+		v = strings.TrimSpace(unquoted(v))
+		switch p.Cmp {
+		case "==":
+			return v == p.Str, nil
+		case "!=":
+			return v != p.Str, nil
+		case "~":
+			re, err := regexp.Compile(p.Str)
+			if err != nil {
+				return false, fmt.Errorf("value ~ %q: %v", p.Str, err)
+			}
+			return re.MatchString(v), nil
+		}
+		return false, fmt.Errorf("value %s is not a comparison", p.Cmp)
 	case "empty":
 		return strings.TrimSpace(strings.Join(tree.Lines()[n.Line+1:n.End], "")) == "", nil
 	case "calls":
@@ -325,4 +344,14 @@ func deeper(tree ast.Tree, n, m ast.Named) bool {
 		}
 	}
 	return true
+}
+
+// unquoted takes the quotes off a value the way the document wrote them, so `b = ""` is compared
+// as the empty string rather than as two quote marks.
+func unquoted(v string) string {
+	v = strings.TrimSpace(v)
+	if len(v) >= 2 && (v[0] == '"' && v[len(v)-1] == '"' || v[0] == '\'' && v[len(v)-1] == '\'') {
+		return v[1 : len(v)-1]
+	}
+	return v
 }

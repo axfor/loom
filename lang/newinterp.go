@@ -229,6 +229,9 @@ func selectOf(p *oPred, kind string, at Pos) (*Select, error) {
 	if kind != "heading" && usesLevel(p) {
 		return nil, fmt.Errorf("%s: level is for markdown headings; a %s has no level", at, kind)
 	}
+	if !hasValues(kindType(kind)) && p.uses("value") {
+		return nil, fmt.Errorf("%s: value is what a key holds; a %s holds no value of its own", at, kind)
+	}
 	if kind != "function" && usesCalls(p) {
 		return nil, fmt.Errorf("%s: `calls` is for shell functions; a %s calls nothing", at, kind)
 	}
@@ -264,4 +267,15 @@ func (p *oPred) node() *Pred {
 		out.Kids = append(out.Kids, *p.kids[i].node())
 	}
 	return out
+}
+
+// kindType is the type whose default node kind this is, so a predicate can ask whether that type
+// has values at all.
+func kindType(kind string) string {
+	for typ, k := range defaultKind {
+		if k == kind {
+			return typ
+		}
+	}
+	return ""
 }
