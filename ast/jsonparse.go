@@ -25,7 +25,22 @@ func Parse(text string) (*Value, error) {
 	if p.i != len(p.s) {
 		return nil, fmt.Errorf("unexpected trailing content after byte %d", p.i)
 	}
+	if v.Inline != "" {
+		// A whole document on one line was not laid out by a person; it gets the standard layout.
+		v.relayout()
+	}
 	return v, nil
+}
+
+// relayout forgets how v and everything in it were written.
+func (v *Value) relayout() {
+	v.Inline = ""
+	for _, c := range v.Props {
+		c.relayout()
+	}
+	for _, e := range v.Elems {
+		e.relayout()
+	}
 }
 
 type jparser struct {
@@ -50,10 +65,21 @@ func (p *jparser) value() (*Value, error) {
 		return nil, fmt.Errorf("unexpected end of input")
 	}
 	switch c := p.s[p.i]; {
-	case c == '{':
-		return p.object()
-	case c == '[':
-		return p.array()
+	case c == '{', c == '[':
+		start := p.i
+		var v *Value
+		var err error
+		if c == '{' {
+			v, err = p.object()
+		} else {
+			v, err = p.array()
+		}
+		if err == nil {
+			if raw := p.s[start:p.i]; !strings.Contains(raw, "\n") {
+				v.Inline = raw
+			}
+		}
+		return v, err
 	case c == '"':
 		s, err := p.str()
 		return &Value{Kind: String, Str: s}, err

@@ -22,6 +22,11 @@ type Value struct {
 	Str   string            // String
 	Num   string            // Number: keeps the original literal, so 1 never becomes 1.0
 	Bool  bool
+	// Inline is how an object or array was written when the source had it on one line inside a document
+	// laid out over several, so writing it back keeps `{ "command": "x" }` as the author wrote it
+	// rather than spreading it over three.
+	// Anything that changes the value clears it.
+	Inline string
 }
 
 type Kind int
@@ -47,6 +52,7 @@ func (v *Value) Get(k string) (*Value, bool) {
 // Set writes a field; a new key is appended at the end, an existing key is
 // replaced in place (order unchanged).
 func (v *Value) Set(k string, val *Value) {
+	v.Inline = ""
 	if v.Props == nil {
 		v.Props = map[string]*Value{}
 	}
@@ -67,7 +73,7 @@ func (v *Value) Clone() *Value {
 	if v == nil {
 		return nil
 	}
-	c := &Value{Kind: v.Kind, Str: v.Str, Num: v.Num, Bool: v.Bool}
+	c := &Value{Kind: v.Kind, Str: v.Str, Num: v.Num, Bool: v.Bool, Inline: v.Inline}
 	if v.Kind == Object {
 		c.Props = map[string]*Value{}
 		c.Keys = append([]string{}, v.Keys...)
@@ -89,6 +95,10 @@ func (v *Value) Marshal() string {
 }
 
 func (v *Value) write(b *strings.Builder, depth int) {
+	if v.Inline != "" && (v.Kind == Object || v.Kind == Array) {
+		b.WriteString(v.Inline)
+		return
+	}
 	pad := strings.Repeat("  ", depth+1)
 	end := strings.Repeat("  ", depth)
 	switch v.Kind {
