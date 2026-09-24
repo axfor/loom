@@ -144,11 +144,23 @@ type nestCtx struct {
 // reverse template order, and once applied they end up in template order again.
 func apply(c *lang.Config, t *lang.Template, stmts []lang.Stmt, tree ast.Tree, rel string, nest *nestCtx) error {
 	var edits []edit
+	// origin is the statement each edit came from, by the edit's position: when two collide the
+	// author needs to be told which two lines of the template did it, not which upstream lines.
+	var origin []lang.Stmt
 	plain := t.Type == "text" || t.Type == "json"
 	if nest != nil {
 		plain = nest.typ == "text" || nest.typ == "json"
 	}
-	for _, s := range stmts {
+	var cur *lang.Stmt
+	claim := func() {
+		for cur != nil && len(origin) < len(edits) {
+			origin = append(origin, *cur)
+		}
+	}
+	for i := range stmts {
+		claim()
+		s := stmts[i]
+		cur = &stmts[i]
 		switch s.Op {
 		case "after", "before", "replace":
 			kind, anchor := s.Kind, s.Anchor
@@ -454,6 +466,13 @@ func apply(c *lang.Config, t *lang.Template, stmts []lang.Stmt, tree ast.Tree, r
 			}
 		}
 	}
+	claim()
+	where := func(k int) string {
+		if k < len(origin) {
+			return origin[k].Rng.String()
+		}
+		return t.Path
+	}
 	// Two statements writing over the same lines is a conflict, not a precedence question:
 	// the product would depend on which ran last, and the one that lost would be invisible.
 	// Insertions stack in template order where they meet an edge, so at an edge they are fine —
@@ -471,14 +490,18 @@ func apply(c *lang.Config, t *lang.Template, stmts []lang.Stmt, tree ast.Tree, r
 					ins, span = b, a
 				}
 				if span.s < ins.s && ins.s < span.e {
-					return fmt.Errorf("%s: one statement writes inside the lines (%d-%d) another rewrites, so it would be lost — say which one wins",
-						t.Path, span.s+1, span.e)
+					ii, si := i, j
+					if b.s == b.e {
+						ii, si = j, i
+					}
+					return fmt.Errorf("%s: writes inside upstream lines %d-%d, which %s rewrites — the insertion would be lost with them; say which one wins",
+						where(ii), span.s+1, span.e, where(si))
 				}
 				continue
 			}
 			if edits[i].s < edits[j].e && edits[j].s < edits[i].e {
-				return fmt.Errorf("%s: two statements write over the same lines (%d-%d and %d-%d) — one of them would be lost",
-					t.Path, edits[i].s+1, edits[i].e, edits[j].s+1, edits[j].e)
+				return fmt.Errorf("%s and %s both write over upstream lines %d-%d — one of them would be lost",
+					where(i), where(j), max(edits[i].s, edits[j].s)+1, min(edits[i].e, edits[j].e))
 			}
 		}
 	}
@@ -649,8 +672,16 @@ func one(s lang.Stmt, hits [][2]int, kind, anchor string) ([2]int, error) {
 			"upstream most likely changed here; not a malfunction, but a signal to take a look", s.Rng, kind, anchor)
 	}
 	if len(hits) > 1 {
-		return [2]int{}, fmt.Errorf("%s: anchor matches %d places: %s %q — "+
-			"no \"take the first one\": that would silently insert in the wrong place; be more specific", s.Rng, len(hits), kind, anchor)
+		var at []string
+		for _, h := range hits {
+			at = append(at, fmt.Sprintf("line %d", h[0]+1))
+		}
+		hint := "be more specific"
+		if kind == "heading" {
+			hint = "name the section it is under: base.\"Parent\".\"" + anchor + "\""
+		}
+		return [2]int{}, fmt.Errorf("%s: anchor matches %d places: %s %q at upstream %s — "+
+			"no \"take the first one\": that would silently insert in the wrong place; %s", s.Rng, len(hits), kind, anchor, strings.Join(at, ", "), hint)
 	}
 	return hits[0], nil
 }

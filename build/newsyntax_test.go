@@ -315,7 +315,7 @@ func TestAnInsertionInsideARewriteIsRefused(t *testing.T) {
 	if err == nil {
 		t.Fatal("an insertion inside a rewritten span was accepted")
 	}
-	if !strings.Contains(err.Error(), "writes inside the lines") {
+	if !strings.Contains(err.Error(), "writes inside upstream lines") {
 		t.Errorf("unexpected error: %v", err)
 	}
 
@@ -537,7 +537,7 @@ func TestCallsAndHasAreNotSearches(t *testing.T) {
 	if err == nil {
 		t.Fatal("dropping a key and the key inside it should collide")
 	}
-	if !strings.Contains(err.Error(), "(1-5 and 2-3)") {
+	if !strings.Contains(err.Error(), "upstream lines 2-3") {
 		t.Errorf("has found the wrong keys: %v", err)
 	}
 
@@ -547,7 +547,7 @@ func TestCallsAndHasAreNotSearches(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := build.Weave(c, tm); err == nil || !strings.Contains(err.Error(), "(1-5 and 4-5)") {
+	if _, err := build.Weave(c, tm); err == nil || !strings.Contains(err.Error(), "upstream lines 4-5") {
 		t.Errorf("has should have found jobs and jobs.test: %v", err)
 	}
 }

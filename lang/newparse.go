@@ -99,10 +99,17 @@ func (p *oparser) node() (oNode, error) {
 	case t.Kind == KIdent && t.Text == "return":
 		n, err := p.returnNode()
 		return oNode{ret: n, pos: t.Pos}, err
-	case t.Kind == KIdent && t.Text == "base" && p.toks[p.i+1].Kind == KAssign && p.toks[p.i+2].Kind == KString:
-		// base = "old/NAME.md": upstream moved the file this one is woven onto.
+	case t.Kind == KIdent && t.Text == "base" && p.toks[p.i+1].Kind == KAssign && rebaseAhead(p.toks[p.i+2:]):
+		// base = "old/NAME.md", or as the spec writes it, base = up."old/NAME.md": upstream moved
+		// the file this one is woven onto. `up` names the upstream layer here and nowhere else —
+		// the spec's own fn example uses it as a parameter, so it cannot be a reserved word, and
+		// this is the one place a layer is the only thing that could be meant.
 		p.next()
 		p.next()
+		if p.peek().Kind == KIdent {
+			p.next() // up
+			p.next() // .
+		}
 		sp := p.next()
 		if err := p.endOfStatement(); err != nil {
 			return oNode{}, err
@@ -433,4 +440,12 @@ func reasonOn(lines []string, line int) string {
 		return ""
 	}
 	return strings.TrimSpace(c[len("reason:"):])
+}
+
+// rebaseAhead reports whether what follows `base =` is a path: a string, or up."string".
+func rebaseAhead(t []Tok) bool {
+	if len(t) > 0 && t[0].Kind == KString {
+		return true
+	}
+	return len(t) > 2 && t[0].Kind == KIdent && t[0].Text == "up" && t[1].Kind == KDot && t[2].Kind == KString
 }
