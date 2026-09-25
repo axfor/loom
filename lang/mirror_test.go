@@ -61,6 +61,7 @@ func mirror(t *testing.T) map[string]any {
 			QUESTIONS: set(m.QUESTIONS),
 			STATEMENT_WORDS: set(m.STATEMENT_WORDS),
 			DOCS: Object.keys(require("./lib/docs.js").KEYWORDS).sort(),
+			PROJECT_FIELDS: Object.keys(require("./lib/docs.js").PROJECT_FIELDS).sort(),
 		}));`
 	cmd := exec.Command(node, "-e", dump)
 	cmd.Dir = ext
@@ -146,6 +147,8 @@ func TestEditorMirrorsTheTables(t *testing.T) {
 	list("PRED_FIELDS", predFields)
 	list("QUESTIONS", []string{"any", "count"})
 	list("STATEMENT_WORDS", []string{"if", "else", "fn", "return"})
+	// A projection template's fields: completion offers these, and the build refuses any other.
+	list("PROJECT_FIELDS", projectFields)
 
 	// Every word of the language explains itself on hover. A method added to the compiler and not
 	// to the editor's docs is offered in completion with nothing to say about it.

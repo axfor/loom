@@ -104,7 +104,9 @@ ok(start.markdown.includes('base.append(...content: Content)') && start.markdown
   }
   // A place word hanging off a node is the place, and says so.
   ok(on(10, 'after').markdown.includes('base.<node>.after  ·'), 'a bare after reads as a place', on(10, 'after').markdown.slice(0, 120));
-  ok(on(0, 'main') === null && on(8, 'up') === null, 'a node name and a parameter are not keywords');
+  ok(on(0, 'main') === null, 'a node name is not a keyword');
+  const up = on(8, 'up');
+  ok(up && up.markdown.includes('parameter of `fn twice`') && up.markdown.includes('Nothing calls'), 'a parameter nobody passes says so', up);
 }
 {
   // Words stay names where the compiler reads them as names: a quoted "children" is a section.
@@ -121,6 +123,20 @@ ok(start.markdown.includes('base.append(...content: Content)') && start.markdown
     const h = hover('/nowhere/x.lm', src, 0, src.indexOf(w));
     ok(h && h.markdown.includes('**Examples**'), `${w} is explained outside a tree`, h);
   }
+}
+
+// A parameter says what each call passes; a template field says what the build writes.
+{
+  const src = ['fn both(up, ours) {', '    up.after(ours)', '}', 'both(base.main, self.main)', 'both(base.main, `echo`)',
+    'base.start.project(base.functions){', '    ```shell', '    # {name} at {level}', '    ```', '}'].join('\n');
+  const l = src.split('\n');
+  const h = hover(tpl, src, 1, l[1].indexOf('up'));
+  ok(h && h.markdown.includes('line 4: `base.main`') && h.markdown.includes('line 5: `base.main`'), 'a parameter lists what each call passes', h && h.markdown);
+  const o = hover(tpl, src, 1, l[1].indexOf('ours'));
+  ok(o && o.markdown.includes('line 4: `self.main`') && o.markdown.includes('a literal'), 'content passed is listed too', o && o.markdown);
+  const f = hover(tpl, src, 7, l[7].indexOf('{name}') + 2);
+  ok(f && f.markdown.includes('{name}') && f.range.s === l[7].indexOf('{name}') && f.range.e === l[7].indexOf('{name}') + 6, 'a field explains itself', f);
+  ok(hover(tpl, src, 7, l[7].indexOf(' at ') + 1) === null, 'the rest of a template is text');
 }
 
 fs.rmSync(root, { recursive: true, force: true });

@@ -328,9 +328,18 @@ function parse(toks) {
   const refs = [];
   const imports = [];
   const fns = [];
+  const calls = [];
   let i = 0;
   // An if's condition is followed by its block, so a { there opens the block, not an argument.
   let noBlock = false;
+  // The blocks open where the parse is — a function's body, an if's — so an expression knows
+  // which function it is written in, and a parameter can be told from an object.
+  const blocks = [];
+  let pendingFn = null;
+  const inFn = () => {
+    for (let k = blocks.length - 1; k >= 0; k--) if (blocks[k].fn) return blocks[k].fn;
+    return null;
+  };
   const peek = (k = 0) => toks[Math.min(i + k, toks.length - 1)];
   const skipNl = () => {
     while (peek().t === 'nl') i++;
@@ -338,7 +347,7 @@ function parse(toks) {
 
   function expr(argOf) {
     const root = toks[i++];
-    const chain = { root, steps: [], argOf };
+    const chain = { root, steps: [], argOf, fn: inFn() };
     refs.push({ what: 'root', tok: root, chain });
     while (peek().t === '.') {
       i++;
@@ -365,6 +374,12 @@ function parse(toks) {
         step.call = true;
         args(close, { chain, index });
         if (close === '}') break;
+        // project(what){ template }: the block after the parentheses is an argument too
+        if (peek().t === '{' && !noBlock) {
+          i++;
+          args('}', { chain, index });
+          break;
+        }
       }
     }
     return chain;
@@ -389,16 +404,47 @@ function parse(toks) {
   function fnDecl() {
     if (peek().t !== 'id') return;
     const name = toks[i++];
-    const params = [];
+    const fn = { name, params: [], start: name.line, end: Infinity };
     if (peek().t === '(') {
       i++;
       while (peek().t === 'id' || peek().t === ',') {
-        if (peek().t === 'id') params.push(toks[i].v);
+        if (peek().t === 'id') {
+          fn.params.push(toks[i]);
+          refs.push({ what: 'param', tok: toks[i], fn });
+        }
         i++;
       }
+      if (peek().t === ')') i++;
     }
-    fns.push({ name, params });
-    refs.push({ what: 'fn', tok: name });
+    fns.push(fn);
+    refs.push({ what: 'fn', tok: name, fn });
+    pendingFn = fn;
+  }
+
+  // call reads `name(a, b)` where name is not an object: a function called, with the argument
+  // written for each parameter — an address, or a string or literal.
+  function call(chain) {
+    i++; // (
+    const c = { name: chain.root, args: [], fn: inFn() };
+    let n = 0;
+    for (;;) {
+      const t = peek();
+      if (t.t === ')') {
+        i++;
+        break;
+      }
+      if (t.t === 'nl' || t.t === 'eof') break;
+      if (t.t === ',') n++;
+      if (t.t === 'id') {
+        const a = expr(null);
+        a.inCall = c;
+        c.args[n] = a;
+        continue;
+      }
+      if (t.t === 'str' || t.t === 'raw') c.args[n] = { literal: t };
+      i++;
+    }
+    calls.push(c);
   }
 
   // statement reads one line: its keywords, a result being caught (`ok = ...`), and every
@@ -422,9 +468,17 @@ function parse(toks) {
       }
       if (t.t === 'id') {
         noBlock = inIf;
-        expr(null);
+        const chain = expr(null);
         noBlock = false;
+        if (chain.steps.length === 0 && peek().t === '(') call(chain);
         continue;
+      }
+      if (t.t === '{') {
+        blocks.push({ fn: pendingFn });
+        pendingFn = null;
+      } else if (t.t === '}') {
+        const b = blocks.pop();
+        if (b && b.fn) b.fn.end = t.line;
       }
       i++;
     }
@@ -438,9 +492,12 @@ function parse(toks) {
         i++;
         return;
       }
-      // (...) stays on one line; base and import are never arguments, so a block still open
-      // when one of them starts a line is a block being written, not one that swallows the rest.
-      if (t.t === 'eof' || (close === ')' && t.t === 'nl') || (t.t === 'id' && (t.v === 'base' || t.v === 'import'))) return;
+      // (...) stays on one line. A { } block holds content, one item a line, so a block still open
+      // when base or import starts a line is a block being written, not one that swallows the
+      // rest. Inside parentheses base is an argument like any other: move(base.Y.after),
+      // swap(base.Y), project(base.sections[...]).
+      const lineStart = toks[i - 1] && toks[i - 1].t === 'nl';
+      if (t.t === 'eof' || (close === ')' && t.t === 'nl') || (close === '}' && lineStart && t.t === 'id' && (t.v === 'base' || t.v === 'import'))) return;
       const step = argOf.chain.steps[argOf.index];
       if (t.t === 'id' && peek(1).t === ':') {
         i += 2;
@@ -484,7 +541,7 @@ function parse(toks) {
     }
     while (peek().t !== 'nl' && peek().t !== 'eof') i++;
   }
-  return { refs, imports, fns };
+  return { refs, imports, fns, calls };
 }
 
 // open reads a template: its settings, product path, statements, and the objects it names.
@@ -494,7 +551,7 @@ function open(docPath, text) {
   const target = targetOf(cfg, docPath);
   if (!target) return null;
   const toks = lex(text);
-  const { refs, imports, fns } = parse(toks);
+  const { refs, imports, fns, calls } = parse(toks);
   const objects = {
     base: { layer: 'base', file: path.join(layerDir(cfg, 'base'), target), typ: typeOf(target) },
     self: { layer: 'self', file: cfg.self == null ? null : path.join(layerDir(cfg, 'self'), target), typ: typeOf(target) },
@@ -512,7 +569,7 @@ function open(docPath, text) {
     importFile.set(imp, file);
     if (name !== 'self' && file) objects[name] = { layer, file, typ: typeOf(file) };
   }
-  return { cfg, target, docPath, toks, refs, imports, importFile, objects, resources, fns };
+  return { cfg, target, docPath, toks, refs, imports, importFile, objects, resources, fns, calls };
 }
 
 // walk follows the first `upto` steps of a chain the way the compiler does and says what they
@@ -520,7 +577,15 @@ function open(docPath, text) {
 // the method that ended the chain. null when the root is not an object.
 function walk(t, chain, upto) {
   const obj = t.objects[chain.root.v];
-  if (!obj) return null;
+  if (!obj) {
+    // A parameter is what each call of its function passes: the first call answers, and the
+    // others ride along for callers that need every one to agree.
+    const b = bindings(t, chain);
+    if (!b || b.length === 0) return null;
+    const all = b.map((x) => walk(t, x.chain, upto + x.shift)).filter(Boolean);
+    if (all.length === 0) return null;
+    return Object.assign(all[0], { alts: all.slice(1) });
+  }
   const r = { obj, typ: obj.typ, node: null, view: null, method: null, bad: false };
   const ident = (st) => !st.str && !literalNames(t);
   // self written in this file's resource sections: a step may name the section, and a step may
@@ -646,6 +711,29 @@ function walk(t, chain, upto) {
     }
   }
   return r;
+}
+
+// bindings: what a chain rooted at a function's parameter stands for at each call of that
+// function — the argument written there, with the chain's own steps after it. The compiler inlines
+// a function where it is called, so a parameter means nothing else, and a function nobody calls
+// binds to nothing. `shift` maps a step of the chain to the same step of the bound one.
+function bindings(t, chain, depth = 0) {
+  const fn = chain.fn;
+  if (!fn || !t.calls || depth > 8) return null;
+  const k = fn.params.findIndex((p) => p.v === chain.root.v);
+  if (k < 0) return null;
+  const out = [];
+  for (const c of t.calls) {
+    if (c.name.v !== fn.name.v) continue;
+    const a = c.args[k];
+    if (!a || !a.root) continue; // a string or a literal is content, not an address
+    const bound = { root: a.root, steps: [...a.steps, ...chain.steps], argOf: chain.argOf, fn: a.fn, call: c };
+    // an argument that is itself a parameter of the calling function binds again, one level up
+    const up = t.objects[a.root.v] ? null : bindings(t, bound, depth + 1);
+    if (up) out.push(...up.map((u) => ({ chain: u.chain, shift: u.shift + a.steps.length, call: c })));
+    else if (t.objects[a.root.v]) out.push({ chain: bound, shift: a.steps.length, call: c });
+  }
+  return out;
 }
 
 // isValue: a key whose value set / start / append write — a frontmatter key, or a toml / json key
@@ -970,6 +1058,7 @@ module.exports = {
   atLeast,
   literalNames,
   resourceDocs,
+  bindings,
   lastBefore,
   stepRef,
   enclosingCall,

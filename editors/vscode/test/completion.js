@@ -362,6 +362,37 @@ const find = (items, label) => items.find((i) => i.label === label);
   ok(it.markdown && it.markdown.includes('**Examples**'), 'a keyword comes with its help', it.markdown);
 }
 
+// ── a function's parameters ──
+{
+  const body = (call, cursor) => ['fn both(up, ours) {', `    ${cursor}`, '}', call].join('\n');
+  const one = labels(at(md, body('both(base."Example 2", self.x)', 'up.|')).items);
+  ok(one.includes('Phase 1') && one.includes('after') && one.includes('children'), 'a parameter completes as what the call passes', one);
+  const two = labels(at(md, body('both(base."Example 2", self.x)\nboth(base.Overview, self.x)', 'up.|')).items);
+  ok(two.includes('after') && !two.includes('Phase 1'), 'with two calls, only what holds at both is offered', two);
+  ok(labels(at(md, body('', 'up.|')).items).length === 0, 'a parameter nobody passes offers nothing');
+  const names = at(md, body('both(base.Overview, self.x)', '|')).items;
+  ok(find(names, 'up') && find(names, 'ours') && find(names, 'up').detail.includes('base.Overview'), 'inside the body, the parameters are offered with what is passed', labels(names));
+  ok(!labels(at(md, 'base.|\nfn both(up) {\n}').items).includes('up'), 'outside the body, no parameters');
+  const arg = labels(at(md, body('both(base.Overview, self.x)', 'up.after(|)')).items);
+  ok(arg.includes('ours'), 'a content argument offers the parameters too', arg);
+  const moved = labels(at(md, 'base.Overview.move(base.|)').items);
+  ok(moved.includes('Example 1') && !moved.includes('after'), 'move( takes an address: names, no methods', moved);
+  const inCall = labels(at(md, 'both(base.|)').items);
+  ok(inCall.includes('Overview') && !inCall.includes('after'), 'an argument of a call is an address: names, no methods', inCall);
+}
+
+// ── a projection's template ──
+{
+  const block = (cursor) => ['base.start.project(base.sections[level == 2]){', '    ```markdown', `    - ${cursor}`, '    ```', '}'].join('\n');
+  const { items } = at(md, block('[{|](#x)'));
+  ok(labels(items).join(',') === 'name,level,body,anchor', 'after { in a template, the fields', labels(items));
+  ok(find(items, 'name').insertText === 'name}', 'a field closes itself', find(items, 'name').insertText);
+  ok(find(at(md, block('{na|}')).items, 'name').insertText === 'name', 'a field already closed is not closed twice');
+  ok(labels(at(md, 'base.start(base.sections.project(`- {|`))').items).includes('anchor'), 'the one-line form takes fields too');
+  ok(labels(at(md, block('plain |')).items).length === 0, 'without a {, the template is text');
+  ok(labels(at(md, 'base.Overview.after(`{|`)').items).length === 0, 'outside a projection a literal is text');
+}
+
 // ── self written in the template: resource sections ──
 {
   const tail = ['', '---', 'Self:', '    ```markdown', '    ## job', '    ## tip', '    ```', '', '    ```json', '    { "ddd": 11 }', '    ```',

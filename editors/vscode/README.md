@@ -159,6 +159,9 @@ Suggestions open after `.`, `"`, `/` and `(`, or with Ctrl-Space:
 | `move(` / `swap(` / `split(` | `base.`, and for `move` also `after:` / `before:` |
 | `self.` in a template with `Self:` sections | The section names (`Self as notes:`), the kinds written there, then the parts; a part two documents share is offered with its section (`notes."tip"`), never bare |
 | `} ` after an if block | `else`, `else if` |
+| Inside a `fn` body | Its parameters, with what the first call passes (`up — base.Overview`) |
+| `up.` where `up` is a parameter | What holds at every call of the function: the names and methods of what each call passes, only those all of them have |
+| `{` in a projection's template | The fields it writes for each node: `name` / `level` / `body` / `anchor` |
 | `drop(` | `reason:` |
 | `base.frontmatter.description.start(` | Our keys, the same key first: `self.frontmatter.description` (in toml, `self.description`) |
 | `section("` / `function("` / `marker("` / `key("` | That kind of node in the file being changed |
@@ -174,9 +177,9 @@ What a suggestion inserts is always something the compiler resolves to that node
 
 ## Hover
 
-Hover a keyword — `after`, `merge`, `drop`, `as`, `section`, `import`, `reason:`, `if`, `fn`, `return`, `Self`, a group such as `sections`, an axis such as `children`, a predicate field such as `level`, and the rest — for its typed signature
+Hover a keyword — `after`, `merge`, `drop`, `as`, `section`, `import`, `reason:`, `if`, `fn`, `return`, `Self`, a group such as `sections`, an axis such as `children`, a predicate field such as `level`, a projection field such as `{anchor}`, and the rest — for its typed signature
 (`base.<key>.start(value: Value)`), what it does, what each parameter type accepts, and examples; completion shows the same
-next to each suggestion. Keywords do not jump anywhere. Hover `base`, `self` or an imported name to see which file it stands for.
+next to each suggestion. Keywords do not jump anywhere. Hover `base`, `self` or an imported name to see which file it stands for, and a function's parameter to see what each call passes for it.
 
 ## Signature help
 
@@ -196,6 +199,7 @@ In a template, Cmd-click a name (Ctrl-click on Windows / Linux), or press F12:
 | `Overview` in `if base.has.Overview` | That section upstream |
 | A call such as `bilingual(...)` | Its `fn` declaration in the template |
 | `ok` in `if !ok` or `err.format("...", ok)` | The `ok = ...` line that caught it |
+| A parameter, or a name after one (`up`, `up.Setup`) inside a `fn` | Where the argument each call passes leads — when every call leads to the same place; when they differ, nowhere, rather than a guess at which call was meant |
 | `self.job`, `self.notes.tip`, `self.json.ddd` in a template with `Self:` sections | That part inside the fence; `notes` → its `Self as notes:` line, `json` → the fence. A part two documents share leads nowhere, as the compiler refuses it |
 | `"Phase 1"` in `base."Example 2"."Phase 1"` | That subsection under that parent |
 | `"Install XSDD"` inside a method | That section of our file |

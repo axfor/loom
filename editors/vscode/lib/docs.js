@@ -274,6 +274,22 @@ Object.assign(KEYWORDS, {
   calls: PRED('calls', 'calls "command"', 'In a predicate: a shell function that runs this command — where a command goes, not in a comment or a string.', 'base.functions[calls "curl"]'),
 });
 
+// The fields a projection template writes for each node it reads (objparse.go's projectFields).
+// Any other {word} is refused by the build where it is written.
+const PROJECT_FIELDS = {
+  name: 'The node\'s name: a heading\'s text, a function\'s name, a key.',
+  level: 'The heading level, 1 to 6.',
+  body: 'Everything under the heading, as upstream wrote it.',
+  anchor: 'GitHub\'s link target for the heading: lower-cased, punctuation removed, spaces made hyphens, a repeat numbered -1, -2. It is GitHub\'s rule because renderers do not agree; a product read elsewhere may need its own.',
+};
+
+function fieldMarkdown(field) {
+  const what = PROJECT_FIELDS[field];
+  if (!what) return null;
+  return ['```loom', `{${field}}`, '```', '', `A projection template field. ${what}`, '', '**Example**', '', '```loom',
+    'base.start.project(base.sections[level == 2]){\n    ```markdown\n    - [{name}](#{anchor})\n    ```\n}', '```'].join('\n');
+}
+
 const OBJECTS = {
   base: 'The upstream file at this path (or where `import base` points) — the only object a template changes.',
   self: 'Our file at this path — a content source; methods are never called on it.',
@@ -301,4 +317,4 @@ function markdownFor(word) {
   return parts.join('\n');
 }
 
-module.exports = { KEYWORDS, OBJECTS, TYPES, typeDoc, markdownFor };
+module.exports = { KEYWORDS, OBJECTS, TYPES, PROJECT_FIELDS, typeDoc, markdownFor, fieldMarkdown };

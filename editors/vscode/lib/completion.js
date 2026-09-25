@@ -19,7 +19,7 @@
 const fs = require('fs');
 const path = require('path');
 const loom = require('./loom');
-const { markdownFor } = require('./docs');
+const { markdownFor, PROJECT_FIELDS, fieldMarkdown } = require('./docs');
 
 const METHOD_DOCS = {
   after: 'insert after the node',
@@ -126,6 +126,8 @@ function completions(docPath, text, line, character) {
   if (path.basename(docPath) === 'loom.om') return settings(text, line, character);
   const t = loom.open(docPath, text);
   if (!t) return [];
+  const fields = fieldItems(t, text, line, character);
+  if (fields) return fields;
   if (inCommentOrLiteral(t.toks, text, line, character)) return [];
   const cache = new Map();
   const cx = {
@@ -153,7 +155,7 @@ function completions(docPath, text, line, character) {
     if (ref.what === 'step') return stepItems(cx, ref.chain, ref.index, whole, false);
     if (ref.what === 'pred') return predicateItems(whole);
     if (ref.what === 'root' && ref.chain.argOf) return argItems(cx, ref.chain.argOf, whole, false);
-    if (ref.what === 'root' && isFirstOnLine(t.toks, inside)) return statementItems(whole);
+    if (ref.what === 'root' && isFirstOnLine(t.toks, inside)) return [...statementItems(whole), ...paramItems(t, line, whole)];
     if (ref.what === 'root' && afterClose(t.toks, inside)) return elseItems(whole);
     return [];
   }
@@ -164,7 +166,7 @@ function completions(docPath, text, line, character) {
   const empty = { line, s: character, e: character };
   if (!prev || prev.t === 'nl') {
     const call = loom.enclosingCall(t, k, line);
-    return call ? argItems(cx, call, empty, false) : statementItems(empty);
+    return call ? argItems(cx, call, empty, false) : [...statementItems(empty), ...paramItems(t, line, empty)];
   }
   if (prev.t === '[' || prev.t === 'and' || prev.t === 'or') return predicateItems(empty);
   if (prev.t === '}' && (k === 0 || t.toks[k - 1].t === 'nl')) return elseItems(empty);
@@ -216,6 +218,31 @@ function isFirstOnLine(toks, tok) {
 }
 
 
+// projectTemplate: the literal under the cursor when it is a projection's template — the text
+// written for each node project reads — or null.
+function projectTemplate(t, line, character) {
+  for (const r of t.refs) {
+    if (r.what !== 'arg' || r.tok.t !== 'raw') continue;
+    const k = r.tok;
+    const afterStart = line > k.line || (line === k.line && character > k.s);
+    const beforeEnd = line < k.endLine || (line === k.endLine && character < k.e);
+    if (afterStart && beforeEnd && r.argOf.chain.steps[r.argOf.index].name === 'project') return k;
+  }
+  return null;
+}
+
+// fieldItems: inside a projection's template, after {, the fields it can write.
+function fieldItems(t, text, line, character) {
+  if (!projectTemplate(t, line, character)) return null;
+  const src = text.split('\n')[line] || '';
+  const m = /\{([a-z]*)$/.exec(src.slice(0, character));
+  if (!m) return [];
+  const closed = src[character] === '}' || src.slice(character).startsWith(`${m[1]}}`);
+  const range = { line, s: character - m[1].length, e: character };
+  return Object.entries(PROJECT_FIELDS).map(([f, what]) =>
+    item(f, 'field', { detail: what.split(':')[0].split('.')[0], markdown: fieldMarkdown(f), insertText: closed ? f : `${f}}`, range, sortText: '0' }));
+}
+
 // inCommentOrLiteral: nothing is completed after // or inside a `literal`.
 function inCommentOrLiteral(toks, text, line, character) {
   for (const k of toks) {
@@ -243,16 +270,24 @@ function matchingOpen(toks, k) {
 // ── after a dot ─────────────────────────────────────────────────────────────
 
 function stepItems(cx, chain, index, range, quoted) {
+  if (!cx.t.objects[chain.root.v]) {
+    // a function's parameter: what is offered is what holds at every call of the function, since
+    // the function is written once and inlined at each
+    const bound = loom.bindings(cx.t, chain);
+    if (!bound || bound.length === 0) return [];
+    const each = bound.map((b) => stepItems(cx, b.chain, index + b.shift, range, quoted));
+    return each[0].filter((it) => each.every((items) => items.some((o) => o.label === it.label && o.insertText === it.insertText)));
+  }
   const r = loom.walk(cx.t, chain, index);
   if (!r || r.bad || r.method || r.asked) return [];
   const out = [];
-  if (r.place) return chain.root.v === 'base' && !quoted ? methodItems(r, range) : [];
+  if (r.place) return chain.root.v === 'base' && !quoted && !chain.inCall ? methodItems(r, range) : [];
   if (r.many) {
     if (quoted) return [];
     out.push(item('first', 'part', { detail: 'the first of the group', markdown: markdownFor('first'), range, sortText: '1' }));
     out.push(item('last', 'part', { detail: 'the last of the group', markdown: markdownFor('last'), range, sortText: '1' }));
     for (const q of loom.QUESTIONS) out.push(item(q, 'part', { detail: q === 'any' ? 'if: did the predicate find anything' : 'if: how many it found; holds when not zero', markdown: markdownFor(q), range, sortText: '3' }));
-    if (chain.root.v === 'base' && !chain.argOf) out.push(...methodItems(r, range));
+    if (chain.root.v === 'base' && !chain.argOf && !chain.inCall) out.push(...methodItems(r, range));
     return out;
   }
   // self written in this file: the section and kind names still to be said, then the parts of
@@ -325,7 +360,8 @@ function stepItems(cx, chain, index, range, quoted) {
       out.push(item(call, 'kind', { detail: `${call}("...")`, markdown: markdownFor(call), insertText: `${call}("$1")`, snippet: true, retrigger: call !== 'line', range, sortText: '3' }));
     }
   }
-  if (chain.root.v === 'base' && !chain.argOf) out.push(...methodItems(r, range));
+  // an argument of a function call is an address; nothing is done to it there
+  if (chain.root.v === 'base' && !chain.argOf && !chain.inCall) out.push(...methodItems(r, range));
   return out;
 }
 
@@ -559,6 +595,7 @@ function argItems(cx, argOf, range, quoted) {
   }
   if (quoted) return out;
   if (st.name !== 'drop') {
+    out.push(...paramItems(cx.t, cx.line, range));
     for (const [name, obj] of Object.entries(cx.t.objects)) {
       if (obj.layer === 'self' && obj.file) out.push(item(name, 'object', { detail: path.relative(cx.t.cfg.root, obj.file), range, sortText: '1' }));
       else if (obj.inline) out.push(item(name, 'object', { detail: 'Self: written in this file', range, sortText: '1' }));
@@ -611,6 +648,23 @@ function pathItems(cx, imp, tok) {
 
 // ── statements and settings ─────────────────────────────────────────────────
 
+// paramItems: the parameters of the function whose body the cursor is in, with what the first
+// call passes for each.
+function paramItems(t, line, range) {
+  const fn = (t.fns || []).find((f) => f.start < line && line < f.end);
+  if (!fn) return [];
+  return fn.params.map((p) => {
+    const b = loom.bindings(t, { root: p, steps: [], fn });
+    const passed = b && b.length ? ` — ${written(b[0].chain)}` : '';
+    return item(p.v, 'variable', { detail: `parameter of ${fn.name.v}${passed}`, range, sortText: '0' });
+  });
+}
+
+// written puts a chain back into Loom text: what a call passed, shown next to a parameter.
+function written(chain) {
+  return [chain.root.v, ...chain.steps.map((st) => (st.str ? loom.quote(st.name) : st.name))].join('.');
+}
+
 function statementItems(range) {
   return [
     item('base', 'object', { detail: 'the upstream file at this path; the only object a statement changes', insertText: 'base.', retrigger: true, range }),
@@ -631,4 +685,4 @@ function settings(text, line, character) {
   return SETTINGS.map(([label, insertText, detail]) => item(label, 'keyword', { detail, insertText, snippet: true, range }));
 }
 
-module.exports = { completions, nodeText, nodeTextFor };
+module.exports = { completions, nodeText, nodeTextFor, written, projectTemplate };

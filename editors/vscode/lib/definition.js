@@ -71,6 +71,21 @@ function definition(docPath, text, line, character) {
   return hit && { ...hit, origin: { line: ref.tok.line, s: ref.tok.s, e: ref.tok.e } };
 }
 
+// target is where a walk leads: the node it found, or the file it stopped in.
+function target(t, r) {
+  if (!r) return null;
+  if (r.bad) return r.obj.inline ? null : locate(r.obj.file, null, r.view, null, t.docPath);
+  return locate(r.obj.file, r.node, r.view, r.obj.inline && { resources: r.obj.inline, r }, t.docPath);
+}
+
+// agree: one place, when every way of reading the name leads there; otherwise nowhere, rather
+// than a guess at which call was meant.
+function agree(hits) {
+  if (hits.length === 0 || hits.some((h) => !h)) return null;
+  const same = (a, b) => a.file === b.file && a.line === b.line && a.s === b.s;
+  return hits.every((h) => same(h, hits[0])) ? hits[0] : null;
+}
+
 function resolve(t, ref) {
   const docPath = t.docPath;
   switch (ref.what) {
@@ -80,6 +95,9 @@ function resolve(t, ref) {
       const obj = t.objects[ref.tok.v];
       if (obj && obj.inline) return { file: docPath, line: obj.inline[0].line, end: obj.inline[0].line + 1, s: 0, e: 0 };
       if (obj) return locate(obj.file, null, null, null, docPath);
+      // a function's parameter leads where every call's argument does, when they all agree
+      const bound = loom.bindings(t, ref.chain);
+      if (bound) return agree(bound.map((b) => target(t, loom.walk(t, b.chain, b.shift))));
       if (ref.chain.steps.length) return null;
       // a call of a function declared in this file leads to its declaration, and a result caught
       // earlier — if !ok, err.format("...", ok) — to where it was caught
@@ -94,8 +112,15 @@ function resolve(t, ref) {
       if (isKeywordCall(st)) return null;
       const r = loom.walk(t, ref.chain, ref.index + 1);
       if (!r) return null;
-      if (r.bad) return r.obj.inline ? null : locate(r.obj.file, null, r.view, null, docPath);
-      return locate(r.obj.file, r.node, r.view, r.obj.inline && { resources: r.obj.inline, r }, docPath);
+      // a chain on a parameter is walked once per call; it leads somewhere when they all agree
+      return agree([r, ...(r.alts || [])].map((x) => target(t, x)));
+    }
+    case 'param': {
+      // fn bilingual(up, ours): where the first call's argument for it leads, if all calls agree
+      const k = ref.fn.params.indexOf(ref.tok);
+      const chain = { root: ref.tok, steps: [], argOf: null, fn: ref.fn };
+      const bound = k < 0 ? null : loom.bindings(t, chain);
+      return bound ? agree(bound.map((b) => target(t, loom.walk(t, b.chain, b.shift)))) : null;
     }
     case 'arg': {
       if (ref.tok.t !== 'str') return null;

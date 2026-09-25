@@ -5,13 +5,27 @@
 
 const path = require('path');
 const loom = require('./loom');
-const { OBJECTS, markdownFor } = require('./docs');
+const { OBJECTS, markdownFor, fieldMarkdown } = require('./docs');
+const { written, projectTemplate } = require('./completion');
 
 const KIND_NAMES = new Set(Object.values(loom.KIND_CALLS).flatMap(Object.keys));
 
 // isKeywordCall: a step that is a method, as(...) or a node kind such as section(...).
 function isKeywordCall(st) {
   return st.call && (loom.METHODS.has(st.name) || st.name === 'as' || KIND_NAMES.has(st.name));
+}
+
+// paramDoc lists what each call of a function passes for one of its parameters.
+function paramDoc(t, fn, name) {
+  const k = fn.params.findIndex((p) => p.v === name);
+  const calls = t ? t.calls.filter((c) => c.name.v === fn.name.v) : [];
+  const lines = calls.map((c) => {
+    const a = c.args[k];
+    const what = !a ? 'nothing' : a.literal ? '`' + (a.literal.t === 'str' ? loom.quote(a.literal.v) : 'a literal') + '`' : '`' + written(a) + '`';
+    return `- line ${c.name.line + 1}: ${what}`;
+  });
+  const said = lines.length ? `Each call passes:\n\n${lines.join('\n')}` : 'Nothing calls this function, so the parameter stands for nothing and the body never runs.';
+  return `**${name}** · parameter of \`fn ${fn.name.v}\`\n\nThe function is inlined where it is called, so the parameter means what the call passes. ${said}`;
 }
 
 // isWord: a step the compiler reads as a word of the language rather than a name — a group, an
@@ -31,6 +45,21 @@ function isWord(t, ref) {
 }
 
 function hover(docPath, text, line, character) {
+  // a {field} in a projection's template: what the build writes there for each node
+  const opened = loom.open(docPath, text) || (() => {
+    const toks = loom.lex(text);
+    return { toks, ...loom.parse(toks), objects: {} };
+  })();
+  if (projectTemplate(opened, line, character)) {
+    const src = text.split('\n')[line] || '';
+    for (const m of src.matchAll(/\{([a-z]+)\}/g)) {
+      if (m.index <= character && character < m.index + m[0].length) {
+        const markdown = fieldMarkdown(m[1]);
+        return markdown && { markdown, range: { line, s: m.index, e: m.index + m[0].length } };
+      }
+    }
+    return null;
+  }
   const toks = loom.lex(text);
   const k = toks.findIndex((t) => t.t === 'id' && t.line === line && t.s <= character && character < t.e);
   if (k < 0) return null;
@@ -54,6 +83,9 @@ function hover(docPath, text, line, character) {
   const ref = refs.find((r) => r.tok.line === line && r.tok.s === tok.s && r.tok.t === 'id');
   if (!ref) return null;
   if (ref.what === 'keyword' || ref.what === 'pred') return reply(tok.v);
+  // a function's parameter: what each call passes for it, which is all it ever means
+  const fn = ref.what === 'param' ? ref.fn : ref.what === 'root' && ref.chain.fn && !(t && t.objects[tok.v]) ? ref.chain.fn : null;
+  if (fn && fn.params.some((p) => p.v === tok.v)) return { markdown: paramDoc(t, fn, tok.v), range };
   if (ref.what === 'step') {
     const st = ref.chain.steps[ref.index];
     if (isKeywordCall(st) || (!st.str && (st.name === 'frontmatter' || st.name === 'body'))) return reply(st.name);
