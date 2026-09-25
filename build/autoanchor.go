@@ -437,7 +437,7 @@ func completeAnchors(c *lang.Config, t *lang.Template, write bool, r *Report) (*
 		}
 		var add []string
 		for _, k := range keys {
-			path := lang.NameText(k)
+			path := lang.NameTextFor(k, c.Loom)
 			if part == "frontmatter" {
 				path = "frontmatter." + path
 			}

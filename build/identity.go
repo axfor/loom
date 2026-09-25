@@ -98,7 +98,7 @@ func body(tree ast.Tree, n ast.Named) string {
 
 // follow rewrites the anchors of one template so they point at upstream's new names. It edits the
 // name where it is written and nothing else, so the diff a person reviews is one word per rename.
-func follow(t *lang.Template, rs []Rename) ([]string, error) {
+func follow(t *lang.Template, rs []Rename, loom string) ([]string, error) {
 	by := map[string]Rename{}
 	for _, r := range rs {
 		by[r.Kind+"\x00"+r.Old] = r
@@ -130,7 +130,7 @@ func follow(t *lang.Template, rs []Rename) ([]string, error) {
 				if tk.Pos.Line != s.At.Line || tk.Pos.Col != s.At.Col {
 					continue
 				}
-				edits = append(edits, edit{tk.Off, tk.End, lang.NameText(r.New),
+				edits = append(edits, edit{tk.Off, tk.End, lang.NameTextFor(r.New, loom),
 					fmt.Sprintf("%s → %s", r.Old, r.New)})
 				break
 			}

@@ -60,7 +60,7 @@ func (r *run) walk(c *lang.Config, t *lang.Template, tree ast.Tree, ss []lang.St
 			}
 			if len(branch) == 0 {
 				r.skipped = append(r.skipped, ReportLine{lang.Rel(c, t.Path),
-					fmt.Sprintf("%s skipped (%s)", t.Target, describeCond(s.Cond))})
+					fmt.Sprintf("%s skipped (%s)", t.Target, describeCond(s.Cond, c.Loom))})
 				continue
 			}
 			_ = taken
@@ -175,13 +175,13 @@ func (r *run) format(refs []lang.Ref) string {
 	return fmt.Sprintf(refs[0].Literal, args...)
 }
 
-func describeCond(c *lang.Cond) string {
+func describeCond(c *lang.Cond, loom string) string {
 	var what string
 	switch {
 	case c.Var != "":
 		what = c.Var
 	case c.Has != "":
-		what = "base.has." + lang.NameText(c.Has)
+		what = "base.has." + lang.NameTextFor(c.Has, loom)
 	case c.Any:
 		what = "the predicate found nothing"
 		if c.Not {

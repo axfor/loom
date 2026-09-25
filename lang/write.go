@@ -20,6 +20,19 @@ func NameText(name string) string {
 	return id
 }
 
+// NameTextFor writes a node name for a tree that declares a version. From Loom 2 an unquoted name
+// is the name as written, so a space cannot become an underscore: a name that is not already an
+// identifier is quoted. Before that, NameText's rule.
+func NameTextFor(name, loom string) string {
+	if !atLeast(loom, 2) {
+		return NameText(name)
+	}
+	if !isIdent(name) || contains(editMethods, name) || name == "as" || name == "frontmatter" || name == "body" {
+		return Quote(name)
+	}
+	return name
+}
+
 // quote writes a string literal, escaping only what it must: `"` becomes \"; a backslash becomes \\
 // only when followed by `"` or a backslash, or at the end. So \. in a regexp is written as is and
 // reads like hand-written code.

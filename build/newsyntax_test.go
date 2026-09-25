@@ -963,6 +963,22 @@ func TestDottedNameDependsOnTheVersion(t *testing.T) {
 	if err := weave("loom \"2.0\"\n", quoted); err != nil {
 		t.Errorf("Loom 2 takes the name in quotes: %v", err)
 	}
+
+	// Every segment of a path is a name, not only the first: below a section, and on our side.
+	mustWrite(t, filepath.Join(dir, "up", "f.md"), "# T\n\n## How Skills Work\n\n### Step One\n\nu\n\n## Other\n\no\n")
+	mustWrite(t, filepath.Join(dir, "me", "f.md"), "## Our Part\n\n### Sub Part\n\no\n")
+	for _, tpl := range []string{
+		"base.\"How Skills Work\".Step_One.after(self.\"Our Part\")\n",
+		"base.Other.after(self.Our_Part)\n",
+		"base.Other.after(self.\"Our Part\".Sub_Part)\n",
+	} {
+		if err := weave("", tpl); err != nil {
+			t.Errorf("Loom 1 reads every segment by the underscore rule: %s%v", tpl, err)
+		}
+		if err := weave("loom \"2.0\"\n", tpl); err == nil {
+			t.Errorf("Loom 2 looks for every segment as written, and there is no such name: %s", tpl)
+		}
+	}
 }
 
 // `value` asks what a key holds. It is not `empty`, which asks whether anything is under the key:

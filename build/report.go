@@ -167,11 +167,11 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 					// added to it: naming a mode here would send the author to an error instead.
 					if _, shared := keyValue(t.Type, up, k); !shared {
 						errs = append(errs, fmt.Errorf("%s: our key %q is not in the product %s, and upstream has no such key — add it to the file: base.append(self.%s)",
-							t.Path, k, t.Target, lang.NameText(k)))
+							t.Path, k, t.Target, lang.NameTextFor(k, c.Loom)))
 						continue
 					}
 					errs = append(errs, fmt.Errorf("%s: our key %q is not in the product %s — say what to do with it: base.%s.start(self.%s), or once for the whole tree with `keys start` in loom.om",
-						t.Path, k, t.Target, lang.NameText(k), lang.NameText(k)))
+						t.Path, k, t.Target, lang.NameTextFor(k, c.Loom), lang.NameTextFor(k, c.Loom)))
 				}
 			}
 		}
@@ -464,7 +464,7 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 		if missing := need[name] - have[name] - covered[name]; missing > 0 {
 			what := nodeWord(kind)
 			errs = append(errs, fmt.Errorf("%s: upstream content lost: in %s, %s %q is not in the product and no drop / replace gives a reason. "+
-				"Weave it in, or write: base.%s.drop(reason: \"...\")", t.Path, t.Target, what, name, lang.NameText(name)))
+				"Weave it in, or write: base.%s.drop(reason: \"...\")", t.Path, t.Target, what, name, lang.NameTextFor(name, c.Loom)))
 		}
 	}
 	return errs

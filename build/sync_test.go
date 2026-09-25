@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/axfor/loom/build"
+	"github.com/axfor/loom/lang"
 )
 
 func readFile(t *testing.T, p string) string {
@@ -213,5 +214,36 @@ func TestSyncReportsAFileUpstreamRemoved(t *testing.T) {
 	}
 	if got := readFile(t, filepath.Join(dir, "me", "run.sh")); got != meRun {
 		t.Errorf("our file must be left as it is:\n%s", got)
+	}
+}
+
+// A rename followed into a template is written the way the tree reads names. Loom 2 takes an
+// unquoted name as written, so the underscore form Loom 1 writes would point at a heading called
+// "New_Name" — a template sync itself had just broken.
+func TestSyncWritesTheNameByTheVersion(t *testing.T) {
+	for _, c := range []struct{ decl, want string }{
+		{"", "base.New_Name.after(self.Ours)\n"},
+		{"loom \"2.0\"\n", "base.\"New Name\".after(self.Ours)\n"},
+	} {
+		dir := t.TempDir()
+		mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n"+c.decl)
+		mustWrite(t, filepath.Join(dir, "up", "doc.md"), "# T\n\n## Old Name\n\nbody text\n")
+		mustWrite(t, filepath.Join(dir, "me", "doc.md"), "## Ours\n\no\n")
+		mustWrite(t, filepath.Join(dir, "me", "doc.md.lm"), "base.\"Old Name\".after(self.Ours)\n")
+		next := t.TempDir()
+		mustWrite(t, filepath.Join(next, "doc.md"), "# T\n\n## New Name\n\nbody text\n")
+		cfg, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := build.Sync(cfg, next); err != nil {
+			t.Fatal(err)
+		}
+		if got := readFile(t, filepath.Join(dir, "me", "doc.md.lm")); got != c.want {
+			t.Errorf("%q: the rename is written as\n  %s  want\n  %s", c.decl, got, c.want)
+		}
+		if _, err := buildTree(t, cfg, filepath.Join(dir, "out")); err != nil {
+			t.Errorf("%q: the followed template must build: %v", c.decl, err)
+		}
 	}
 }

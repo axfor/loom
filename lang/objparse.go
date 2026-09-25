@@ -779,7 +779,7 @@ func (in *interp) select_(r *receiver, st oStep) error {
 			return fmt.Errorf("%s: below a node you can only select a markdown section by name, base.\"Parent\".\"Child\", or a frontmatter key, base.frontmatter.description", st.pos)
 		}
 		r.within = append(r.within, Seg{r.anchor, r.ident})
-		r.anchor, r.ident, r.pos = st.name, !st.str, st.pos
+		r.anchor, r.ident, r.pos = st.name, in.ident(st), st.pos
 		return nil
 	}
 	switch {
@@ -825,7 +825,7 @@ func (in *interp) select_(r *receiver, st oStep) error {
 	default:
 		// From Loom 2 a dotted name is the name, one character for one character. Before that an
 		// underscore stood for a space, and a tree written then still means what it meant.
-		r.node, r.kind, r.anchor, r.ident = true, defaultKind[r.typ], st.name, !st.str && !atLeast(in.loom, 2)
+		r.node, r.kind, r.anchor, r.ident = true, defaultKind[r.typ], st.name, in.ident(st)
 	}
 	r.pos = st.pos
 	return nil
@@ -1188,7 +1188,7 @@ func (in *interp) moveTarget(side string, v oValue, typ string) (*Move, error) {
 			return nil, fmt.Errorf("%s: move takes a plain node, not a call", st.pos)
 		}
 		names = append(names, st.name)
-		if !st.str {
+		if in.ident(st) {
 			m.Ident = true
 		}
 	}
@@ -1358,10 +1358,10 @@ func (in *interp) contents(args []oArg, typ string, inView bool) ([]Ref, error) 
 					}
 				}
 				for _, st := range e.steps[:len(e.steps)-1] {
-					ref.Within = append(ref.Within, Seg{st.name, !st.str})
+					ref.Within = append(ref.Within, Seg{st.name, in.ident(st)})
 				}
 				last := e.steps[len(e.steps)-1]
-				ref.Kind, ref.Anchor, ref.Ident = "heading", last.name, !last.str
+				ref.Kind, ref.Anchor, ref.Ident = "heading", last.name, in.ident(last)
 			default:
 				st := e.steps[0]
 				switch {
@@ -1380,7 +1380,7 @@ func (in *interp) contents(args []oArg, typ string, inView bool) ([]Ref, error) 
 					if inView && e.root == "self" {
 						kt = typ
 					}
-					ref.Kind, ref.Anchor, ref.Ident = defaultKind[kt], st.name, !st.str && !atLeast(in.loom, 2)
+					ref.Kind, ref.Anchor, ref.Ident = defaultKind[kt], st.name, in.ident(st)
 				}
 			}
 			if err := in.fits(ref, obj, typ, inView, v.pos); err != nil {
@@ -1597,6 +1597,14 @@ func fenceKind(tag string) string {
 		return tag
 	}
 	return ""
+}
+
+// ident says whether a name is read by the underscore rule: an unquoted name in Loom 1, where
+// How_Skills_Work finds "How Skills Work". From Loom 2 every name is the name as written, in every
+// segment of a path and on either side — a rule that held for the first segment only would be two
+// rules, and the second one nobody could see.
+func (in *interp) ident(st oStep) bool {
+	return !st.str && !atLeast(in.loom, 2)
 }
 
 // atLeast reports whether a declared version is that major or newer. An undeclared version is the

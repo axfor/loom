@@ -146,7 +146,7 @@ func Sync(c *lang.Config, from string) (*SyncReport, error) {
 		if len(rs) == 0 {
 			continue
 		}
-		notes, err := follow(a.tpl, rs)
+		notes, err := follow(a.tpl, rs, c.Loom)
 		if err != nil {
 			return r, fmt.Errorf("%s: %v", lang.Rel(c, a.tpl.Path), err)
 		}

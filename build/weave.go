@@ -1290,7 +1290,7 @@ func inlineDoc(t *lang.Template, r lang.Ref) (string, error) {
 	for _, i := range hits {
 		both = append(both, where[i])
 	}
-	return "", fmt.Errorf("%s: %q is in %s — name the kind: self.%s.%s", r.Rng, r.Anchor, strings.Join(both, " and "), docs[hits[0]].Kind, lang.NameText(r.Anchor))
+	return "", fmt.Errorf("%s: %q is in %s — name the kind: self.%s.%s", r.Rng, r.Anchor, strings.Join(both, " and "), docs[hits[0]].Kind, lang.Quote(r.Anchor))
 }
 
 // locateQuiet answers only whether a reference is findable, with no error to report.
