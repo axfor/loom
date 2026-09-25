@@ -35,7 +35,7 @@ func node(t *testing.T) string {
 	if err != nil {
 		t.Skip("node is not installed; the editor mirror cannot be checked here")
 	}
-	for _, f := range []string{"lib/loom.js", "lib/completion.js"} {
+	for _, f := range []string{"lib/loom.js", "lib/completion.js", "lib/docs.js"} {
 		if _, err := os.ReadFile(filepath.Join(ext, f)); err != nil {
 			t.Fatal(err)
 		}
@@ -55,6 +55,12 @@ func mirror(t *testing.T) map[string]any {
 			DEFAULT_KIND: m.DEFAULT_KIND,
 			METHODS: set(m.METHODS),
 			TYPES: set(m.TYPES),
+			PLACES: set(m.PLACES),
+			AXES: set(m.AXES),
+			PRED_FIELDS: set(m.PRED_FIELDS),
+			QUESTIONS: set(m.QUESTIONS),
+			STATEMENT_WORDS: set(m.STATEMENT_WORDS),
+			DOCS: Object.keys(require("./lib/docs.js").KEYWORDS).sort(),
 		}));`
 	cmd := exec.Command(node, "-e", dump)
 	cmd.Dir = ext
@@ -133,6 +139,33 @@ func TestEditorMirrorsTheTables(t *testing.T) {
 	}
 	list("METHODS", editMethods)
 	list("TYPES", typeWords())
+	// The words that are not names: the editor's walk has to read each one as the compiler does, or
+	// completion offers a section called "children" and hover calls a place a method.
+	list("PLACES", placeWords)
+	list("AXES", axisWords)
+	list("PRED_FIELDS", predFields)
+	list("QUESTIONS", []string{"any", "count"})
+	list("STATEMENT_WORDS", []string{"if", "else", "fn", "return"})
+
+	// Every word of the language explains itself on hover. A method added to the compiler and not
+	// to the editor's docs is offered in completion with nothing to say about it.
+	var docs []string
+	raw, _ = json.Marshal(js["DOCS"])
+	if err := json.Unmarshal(raw, &docs); err != nil {
+		t.Fatal(err)
+	}
+	words := append(append(append(append([]string{}, editMethods...), placeWords...), axisWords...), predFields...)
+	words = append(words, "any", "count", "if", "else", "fn", "return", "err", "Self")
+	for _, calls := range classCalls {
+		for w := range calls {
+			words = append(words, w)
+		}
+	}
+	for _, w := range words {
+		if !contains(docs, w) {
+			t.Errorf("the editor has no help for %q: hover and completion say nothing about it", w)
+		}
+	}
 }
 
 // The grammars are the third copy, and the one that had been wrong in four places: a word the
@@ -440,7 +473,7 @@ func TestEditorWritesTheSameText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(exe, "-e", `const { nodeText } = require("./lib/completion.js");
+	cmd := exec.Command(exe, "-e", `const { nodeText, nodeTextFor } = require("./lib/completion.js");
 		const m = require("./lib/loom.js");
 		let src = ""; process.stdin.on("data", (d) => (src += d)).on("end", () => {
 			const { names, paths } = JSON.parse(src);
@@ -448,6 +481,8 @@ func TestEditorWritesTheSameText(t *testing.T) {
 				quote: names.map(m.quote),
 				typeOf: paths.map(m.typeOf),
 				nameText: names.map(nodeText),
+				nameText1: names.map((n) => nodeTextFor(n, "1.0")),
+				nameText2: names.map((n) => nodeTextFor(n, "2.0")),
 			}));
 		});`)
 	cmd.Dir = ext
@@ -488,6 +523,13 @@ func TestEditorWritesTheSameText(t *testing.T) {
 		}
 		if want := NameText(n); got != want {
 			t.Errorf("nameText(%q): editor %s, compiler %s", n, got, want)
+		}
+		// By version: Loom 1 is the rule above, Loom 2 takes a name as written and quotes the rest.
+		if got, want := js["nameText1"][k], NameTextFor(n, "1.0"); got != want {
+			t.Errorf("nameText(%q) in Loom 1: editor %s, compiler %s", n, got, want)
+		}
+		if got, want := js["nameText2"][k], NameTextFor(n, "2.0"); got != want {
+			t.Errorf("nameText(%q) in Loom 2: editor %s, compiler %s", n, got, want)
 		}
 	}
 }

@@ -30,7 +30,6 @@ function signature(docPath, text, line, character) {
   const kw = KEYWORDS[st.name];
   if (!kw || !st.call) return null;
   const on = receiverOn(t.objects[call.chain.root.v] ? loom.walk(t, call.chain, call.index) : null, st.name);
-  const sig = kw.signatures.find((s) => s.on === on) || kw.signatures[0];
 
   // The argument being written: commas (or lines, in a block) since the call opened; reason: is its own.
   let n = 0;
@@ -42,6 +41,10 @@ function signature(docPath, text, line, character) {
     if (tok.t === ',' || (open.t === '{' && tok.t === 'nl' && t.toks[i - 1].t !== '{')) n++;
     if (tok.t === 'id' && tok.v === 'reason' && t.toks[i + 1] && t.toks[i + 1].t === ':') named = true;
   }
+  // Of the signatures for this receiver, the first with room for the argument being written:
+  // split(at) until a second argument starts, then split(at, name).
+  const fits = kw.signatures.filter((x) => x.on === on);
+  const sig = fits.find((x) => x.params.length > n) || fits[fits.length - 1] || kw.signatures[0];
   const params = sig.params.map(([label, type]) => ({ label, doc: typeDoc(type) }));
   let active = Math.min(n, Math.max(params.length - 1, 0));
   if (params.length && params[0].label.startsWith('...')) active = 0;

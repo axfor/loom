@@ -264,6 +264,31 @@ check(sh, shText, 1, 'boot', ['mine/run.sh', 0]);
   check(f, src.replace('self.job', 'self.nope'), 0, 'nope', null);
 }
 
+// The added syntax: a name asked about, a name inside an if block, and a call of a function.
+{
+  const src = [
+    'if base.has.Old_Overview {',                    // 0
+    '    base.Old_Overview.after("Überblick")',       // 1
+    '}',                                              // 2
+    'fn both() {',                                    // 3
+    '    base.Old_Overview.after("Überblick")',       // 4
+    '}',                                              // 5
+    'both()',                                         // 6
+    'ok = base.Old_Overview.before("Überblick")',     // 7
+    'base.sections[level == 2].first.after("Überblick")', // 8
+  ].join('\n');
+  const f = doc;
+  const text = 'import base "/old/guide"\n' + src;
+  check(f, text, 1, 'Old_Overview', ['upstream/old/guide.md', 2]);
+  check(f, text, 2, 'Old_Overview', ['upstream/old/guide.md', 2]);
+  check(f, text, 5, 'Old_Overview', ['upstream/old/guide.md', 2]);
+  check(f, text, 7, 'both', ['t/skills/testing/SKILL.md.lm', 4]);
+  check(f, text, 8, 'Old_Overview', ['upstream/old/guide.md', 2]);
+  // A group, and where an axis lands, is not one heading: the file, never a guessed section.
+  check(f, text, 9, 'sections', ['upstream/old/guide.md', 0]);
+  check(f, text, 9, 'first', ['upstream/old/guide.md', 0]);
+}
+
 fs.rmSync(root, { recursive: true, force: true });
 console.log(`loom definition: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

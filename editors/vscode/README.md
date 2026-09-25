@@ -146,12 +146,17 @@ Suggestions open after `.`, `"`, `/` and `(`, or with Ctrl-Space:
 
 | Where | Offered |
 |---|---|
-| Start of a line | `base`, `import` (in `loom.om`: the settings) |
-| `base.` / `self.` / an imported name followed by `.` | The file's sections (keys, functions), then `frontmatter` / `body`, node kinds such as `section("...")`, and on `base` the methods that apply to the whole file |
-| `base.Install.` | The methods that apply to a node: `after` / `before` / `replace` / `drop` |
-| `base.frontmatter.` / `base.frontmatter.description.` | The frontmatter's keys and `set` / a key's `set` / `start` / `append` (on a toml key also `as`) |
-| `base."Example 2".` | The subsections of that section, then its methods |
-| `after(` / `after("` and the other content methods | Our sections, then `self` and imported names; `reason:` in `replace` |
+| Start of a line | `base`, `import`, `if`, `if / else if`, `fn`, `return`, `Self` (in `loom.om`: the settings) |
+| `base.` / `self.` / an imported name followed by `.` | The file's sections (keys, functions), then `frontmatter` / `body`, the groups (`sections`, `functions`, `keys`, `lines`…), `has`, node kinds such as `section("...")`, and on `base` the methods that apply to the whole file |
+| `base.Install.` | The methods the compiler accepts on that node: `after` / `before` / `replace` / `drop` / `move` / `wrap` / `swap`, and on a markdown section `promote` / `demote` / `unwrap` / `split` / `join` |
+| `base.frontmatter.` / `base.frontmatter.description.` | The frontmatter's keys and `set` / a key's `set` / `start` / `append` / `end` (on a toml key also `as`) |
+| `base."Example 2".` | The axes (`children` / `next` / `prev` / `parent`), the subsections of that section, then its methods |
+| `base.sections[` / after `&&` or `\|\|` in a predicate | The fields a predicate asks about: `level` / `name` / `value` / `empty` / `calls` / `has` |
+| `base.sections[level == 2].` | `first` / `last`, `any` / `count` for an `if`, and what a group takes: `drop`, and for sections `promote` / `demote` / `unwrap` |
+| `base.start.` / `base.Install.after.` | `project` — a place takes nothing else |
+| `if base.has.` | Upstream's names, and nothing else |
+| `after(` / `after("` and the other content methods | Our sections, then `self` and imported names; `reason:` in `replace`. In a tree that declares `loom "2.0"` a bare string is text, so our sections are offered as `self."Name"` |
+| `move(` / `swap(` / `split(` | `base.`, and for `move` also `after:` / `before:` |
 | `drop(` | `reason:` |
 | `base.frontmatter.description.start(` | Our keys, the same key first: `self.frontmatter.description` (in toml, `self.description`) |
 | `section("` / `function("` / `marker("` / `key("` | That kind of node in the file being changed |
@@ -160,14 +165,14 @@ Suggestions open after `.`, `"`, `/` and `(`, or with Ctrl-Space:
 
 What a suggestion inserts is always something the compiler resolves to that node:
 
-- A name with spaces or punctuation is inserted as a string; picking it inside a string replaces the whole string, quotes included.
+- A name with spaces or punctuation is inserted as a string; picking it inside a string replaces the whole string, quotes included. An upstream name with spaces is written with underscores (`How_it_compares`) the way the compiler writes it — except in a tree that declares `loom "2.0"`, where a name is taken as written and is quoted instead.
 - A name that appears more than once comes with the parent headings that tell it apart: `"Example 1"."Phase 1"` after a dot, `self."例 1"."Phase 1"` as an argument. A name no path can tell apart is not offered.
 - Each suggestion shows where the node is (`## Install · mine/README.md:12`) and the first lines of it.
 - Picking a method inserts its arguments (`drop(reason: "")`) and opens the next suggestions.
 
 ## Hover
 
-Hover a keyword — `after`, `merge`, `drop`, `as`, `section`, `import`, `reason:` and the rest — for its typed signature
+Hover a keyword — `after`, `merge`, `drop`, `as`, `section`, `import`, `reason:`, `if`, `fn`, `return`, `Self`, a group such as `sections`, an axis such as `children`, a predicate field such as `level`, and the rest — for its typed signature
 (`base.<key>.start(value: Value)`), what it does, what each parameter type accepts, and examples; completion shows the same
 next to each suggestion. Keywords do not jump anywhere. Hover `base`, `self` or an imported name to see which file it stands for.
 
@@ -185,7 +190,9 @@ In a template, Cmd-click a name (Ctrl-click on Windows / Linux), or press F12:
 |---|---|
 | The path or `cmd` in `import cmd "/.claude/commands/ship"` | That file in our layer (the extension may be omitted; same rules as the compiler) |
 | `base` / `self` / an imported name | The file it stands for: `base` is the upstream file at the same path (or wherever `import base "..."` points it), `self` is ours |
-| `base.Install`, `base."How it compares"`, `base.Usage_Tips` | That section of the upstream file (`_` matches a space) |
+| `base.Install`, `base."How it compares"`, `base.Usage_Tips` | That section of the upstream file (`_` matches a space, except under `loom "2.0"`) |
+| `Overview` in `if base.has.Overview` | That section upstream |
+| A call such as `bilingual(...)` | Its `fn` declaration in the template |
 | `"Phase 1"` in `base."Example 2"."Phase 1"` | That subsection under that parent |
 | `"Install XSDD"` inside a method | That section of our file |
 | `self.frontmatter`, `cmd.body` | Where that part starts |

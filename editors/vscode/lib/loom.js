@@ -15,7 +15,16 @@ const fs = require('fs');
 const path = require('path');
 
 const METHODS = new Set(['after', 'before', 'start', 'append', 'replace', 'drop', 'move', 'promote', 'demote', 'set', 'merge', 'wrap', 'swap', 'unwrap', 'split', 'join', 'end', 'project']);
-const CONTENT_METHODS = new Set(['after', 'before', 'start', 'append', 'replace', 'set']);
+const CONTENT_METHODS = new Set(['after', 'before', 'start', 'append', 'end', 'replace', 'set', 'wrap']);
+// Words that are not names, mirroring objparse.go and newparse.go: a bare place word is a
+// derived address, an axis walks the document's structure, a predicate asks about each node of a
+// group, and any / count ask whether a predicate found something.
+const PLACES = new Set(['after', 'before', 'start', 'end', 'append']);
+const AXES = new Set(['children', 'next', 'prev', 'parent', 'first', 'last']);
+const PRED_FIELDS = new Set(['level', 'name', 'value', 'empty', 'calls', 'has']);
+const QUESTIONS = new Set(['any', 'count']);
+// The statement keywords of the added syntax. `Self` opens a resource section, after the dashes.
+const STATEMENT_WORDS = new Set(['if', 'else', 'fn', 'return']);
 // The plural form selects a group and takes predicates instead of a name.
 const CLASS_CALLS = {
   markdown: { sections: 'heading', lines: 'line' },
@@ -83,9 +92,9 @@ function findConfig(from) {
   for (;;) {
     const p = path.join(dir, 'loom.om');
     if (isFile(p)) {
-      const cfg = { root: dir, base: null, self: null, templates: null, output: null };
+      const cfg = { root: dir, base: null, self: null, templates: null, output: null, loom: null };
       for (const line of fs.readFileSync(p, 'utf8').split('\n')) {
-        const m = /^\s*(base|self|templates|output)\s+"((?:[^"\\]|\\.)*)"/.exec(line);
+        const m = /^\s*(base|self|templates|output|loom)\s+"((?:[^"\\]|\\.)*)"/.exec(line);
         if (m) cfg[m[1]] = unquote(m[2]);
       }
       // without a templates setting, templates live next to our files in the self layer
@@ -96,6 +105,18 @@ function findConfig(from) {
     if (parent === dir) return null;
     dir = parent;
   }
+}
+
+// atLeast mirrors objparse.go's: a declared version of that major or newer. An unstated version is
+// the oldest, so a tree keeps the meaning it was written with.
+function atLeast(loom, major) {
+  const m = /^(\d+)\.(\d+)$/.exec(loom || '');
+  return Boolean(m) && Number(m[1]) >= major;
+}
+
+// literalNames: from Loom 2 an unquoted name is the name as written, and a bare string is text.
+function literalNames(t) {
+  return Boolean(t && t.cfg && atLeast(t.cfg.loom, 2));
 }
 
 function unquote(s) {
@@ -306,7 +327,10 @@ function lex(text) {
 function parse(toks) {
   const refs = [];
   const imports = [];
+  const fns = [];
   let i = 0;
+  // An if's condition is followed by its block, so a { there opens the block, not an argument.
+  let noBlock = false;
   const peek = (k = 0) => toks[Math.min(i + k, toks.length - 1)];
   const skipNl = () => {
     while (peek().t === 'nl') i++;
@@ -331,7 +355,11 @@ function parse(toks) {
       chain.steps.push(step);
       const index = chain.steps.length - 1;
       refs.push({ what: 'step', tok: n, chain, index });
-      if (peek().t === '(' || peek().t === '{') {
+      if (peek().t === '[') {
+        step.pred = true;
+        predicate({ chain, index });
+      }
+      if (peek().t === '(' || (peek().t === '{' && !noBlock)) {
         const close = peek().t === '(' ? ')' : '}';
         i++;
         step.call = true;
@@ -340,6 +368,65 @@ function parse(toks) {
       }
     }
     return chain;
+  }
+
+  // predicate reads base.sections[level == 2 && has."X"]: each word where a field is asked about
+  // is recorded, so it can be explained and completed; the values are skipped.
+  function predicate(of) {
+    i++; // [
+    let depth = 1;
+    for (;;) {
+      const t = peek();
+      if (t.t === 'nl' || t.t === 'eof') return;
+      i++;
+      if (t.t === '[') depth++;
+      else if (t.t === ']' && --depth === 0) return;
+      else if (t.t === 'id' && ['[', '(', '!', 'and', 'or'].includes(toks[i - 2].t)) refs.push({ what: 'pred', tok: t, of });
+    }
+  }
+
+  // fnDecl reads `fn name(a, b) {`: the name, so a call can lead to it, and its parameters.
+  function fnDecl() {
+    if (peek().t !== 'id') return;
+    const name = toks[i++];
+    const params = [];
+    if (peek().t === '(') {
+      i++;
+      while (peek().t === 'id' || peek().t === ',') {
+        if (peek().t === 'id') params.push(toks[i].v);
+        i++;
+      }
+    }
+    fns.push({ name, params });
+    refs.push({ what: 'fn', tok: name });
+  }
+
+  // statement reads one line: its keywords, a result being caught (`ok = ...`), and every
+  // expression on it — an if's condition and a block-opening `} else {` included.
+  function statement() {
+    let inIf = false;
+    for (;;) {
+      const t = peek();
+      if (t.t === 'nl' || t.t === 'eof' || t.t === 'sep') return;
+      if (t.t === 'id' && STATEMENT_WORDS.has(t.v)) {
+        i++;
+        refs.push({ what: 'keyword', tok: t });
+        if (t.v === 'if') inIf = true;
+        if (t.v === 'fn') fnDecl();
+        continue;
+      }
+      if (t.t === 'id' && peek(1).t === '=') {
+        i += 2;
+        continue;
+      }
+      if (t.t === 'id') {
+        noBlock = inIf;
+        expr(null);
+        noBlock = false;
+        continue;
+      }
+      i++;
+    }
   }
 
   function args(close, argOf) {
@@ -379,7 +466,8 @@ function parse(toks) {
   for (;;) {
     skipNl();
     const t = peek();
-    if (t.t === 'eof') break;
+    // After the dashes the file holds our content, not statements.
+    if (t.t === 'eof' || t.t === 'sep') break;
     if (t.t === 'id' && t.v === 'import') {
       i++;
       const imp = { name: null, spec: null };
@@ -390,14 +478,12 @@ function parse(toks) {
         if (imp.name) refs.push({ what: 'import', tok: imp.name, imp });
         refs.push({ what: 'import', tok: imp.spec, imp });
       }
-    } else if (t.t === 'id') {
-      expr(null);
     } else {
-      i++;
+      statement();
     }
     while (peek().t !== 'nl' && peek().t !== 'eof') i++;
   }
-  return { refs, imports };
+  return { refs, imports, fns };
 }
 
 // open reads a template: its settings, product path, statements, and the objects it names.
@@ -407,7 +493,7 @@ function open(docPath, text) {
   const target = targetOf(cfg, docPath);
   if (!target) return null;
   const toks = lex(text);
-  const { refs, imports } = parse(toks);
+  const { refs, imports, fns } = parse(toks);
   const objects = {
     base: { layer: 'base', file: path.join(layerDir(cfg, 'base'), target), typ: typeOf(target) },
     self: { layer: 'self', file: cfg.self == null ? null : path.join(layerDir(cfg, 'self'), target), typ: typeOf(target) },
@@ -425,7 +511,7 @@ function open(docPath, text) {
     importFile.set(imp, file);
     if (name !== 'self' && file) objects[name] = { layer, file, typ: typeOf(file) };
   }
-  return { cfg, target, docPath, toks, refs, imports, importFile, objects, resources };
+  return { cfg, target, docPath, toks, refs, imports, importFile, objects, resources, fns };
 }
 
 // walk follows the first `upto` steps of a chain the way the compiler does and says what they
@@ -435,6 +521,7 @@ function walk(t, chain, upto) {
   const obj = t.objects[chain.root.v];
   if (!obj) return null;
   const r = { obj, typ: obj.typ, node: null, view: null, method: null, bad: false };
+  const ident = (st) => !st.str && !literalNames(t);
   if (chain.argOf && chain.root.v === 'self') {
     // Inside a view, self means the same view of our file.
     const outer = walk(t, chain.argOf.chain, chain.argOf.index);
@@ -462,10 +549,45 @@ function walk(t, chain, upto) {
       r.method = st;
       continue;
     }
+    if (r.place || r.asked) {
+      r.bad = true;
+      continue;
+    }
+    const word = !st.call && !st.str && !st.pred;
+    // base.X.after, base.start: a place to write at, which only project is called on
+    if (word && PLACES.has(st.name)) {
+      r.place = st.name;
+      continue;
+    }
+    // base.sections[...].any: a question an if asks, and the end of the chain
+    if (word && r.many && QUESTIONS.has(st.name)) {
+      r.asked = st.name;
+      continue;
+    }
     if (r.node) {
+      if ((st.call || st.pred) && (CLASS_CALLS[r.typ] || {})[st.name]) {
+        r.bad = true; // a group is chosen from the whole file, so it comes first
+        continue;
+      }
       // a frontmatter key: base.frontmatter.description
       if (r.node.kind === 'frontmatter' && !st.call) {
         r.node = { kind: 'fmkey', name: st.name, ident: false };
+        continue;
+      }
+      // an axis: base.X.children, base.sections[...].first — first and last pick from a group,
+      // the others walk from one node, and children lands on a group again
+      if (!st.call && !st.str && AXES.has(st.name)) {
+        const one = st.name === 'first' || st.name === 'last';
+        if (one !== Boolean(r.many)) {
+          r.bad = true;
+          continue;
+        }
+        r.many = st.name === 'children';
+        r.node = { kind: r.node.kind, axis: st.name };
+        continue;
+      }
+      if (r.many || r.node.axis) {
+        r.bad = true;
         continue;
       }
       // a key path: base.jobs.build — yaml, toml and json address a nested key by the dotted path
@@ -481,10 +603,18 @@ function walk(t, chain, upto) {
         r.bad = true;
         continue;
       }
-      r.node = { kind: 'heading', name: st.name, ident: !st.str, within: [...(r.node.within || []), { name: r.node.name, ident: r.node.ident }] };
+      r.node = { kind: 'heading', name: st.name, ident: ident(st), within: [...(r.node.within || []), { name: r.node.name, ident: r.node.ident }] };
       continue;
     }
-    if (st.call) {
+    const group = !st.str && (CLASS_CALLS[r.typ] || {})[st.name];
+    if (group) {
+      // base.sections is every section; base.sections[...] or base.sections(level: 2) some of them
+      r.node = { kind: group, group: true };
+      r.many = true;
+    } else if (word && st.name === 'has' && !r.has) {
+      // if base.has.Overview: the name after has is a node, asked about rather than changed
+      r.has = true;
+    } else if (st.call) {
       const kind = (KIND_CALLS[r.typ] || {})[st.name];
       const a = st.args[0];
       if (kind && a && a.t === 'str') r.node = { kind, name: a.v, ident: false };
@@ -494,7 +624,7 @@ function walk(t, chain, upto) {
     } else if (!st.str && st.name === 'body' && obj.layer === 'self') {
       r.node = { kind: 'body' };
     } else {
-      r.node = { kind: DEFAULT_KIND[r.typ], name: st.name, ident: !st.str };
+      r.node = { kind: DEFAULT_KIND[r.typ], name: st.name, ident: ident(st) };
     }
   }
   return r;
@@ -746,6 +876,8 @@ function pick(nodes, name, ident, match = (n, want) => n.name === want) {
 
 // findNode locates a node the way the compiler does: {line, end, s, e} with end exclusive, or null.
 function findNode(text, node, view, typ) {
+  // A group, or where an axis lands, is not one named node the text can be searched for.
+  if (node.group || node.axis) return null;
   const { lines, offset } = viewLines(text, view);
   const shift = (n, name) => n && { line: n.line + offset, end: n.end + offset, s: Math.max(n.s, 0), e: Math.max(n.s, 0) + name.length };
   switch (node.kind) {
@@ -794,6 +926,11 @@ function findNode(text, node, view, typ) {
 module.exports = {
   CLASS_CALLS,
   METHODS,
+  PLACES,
+  AXES,
+  PRED_FIELDS,
+  QUESTIONS,
+  STATEMENT_WORDS,
   CONTENT_METHODS,
   KIND_CALLS,
   DEFAULT_KIND,
@@ -812,6 +949,8 @@ module.exports = {
   open,
   walk,
   isValue,
+  atLeast,
+  literalNames,
   lastBefore,
   stepRef,
   enclosingCall,

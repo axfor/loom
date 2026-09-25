@@ -64,6 +64,18 @@ s = at(md, 'base.section(|)');
 ok(s && s.label === 'base.section(heading: Name)', 'a node kind', s);
 s = at(md, 'base.Overview.after{\n    "Ours"\n    |\n}');
 ok(s && s.label.includes('after('), 'inside a block', s);
+s = at(md, 'base.Overview.wrap(self.Ours, |)');
+ok(s && s.label.startsWith('base.<node>.wrap(') && s.active === 1, 'wrap: the second argument goes after', s);
+s = at(md, 'base.Overview.split(base.Overview.line("x"), |)');
+ok(s && s.label.includes('split(at: Node, name: Name)') && s.active === 1, 'split: a second argument picks the signature that names the second half', s);
+s = at(md, 'base.Overview.split(|)');
+ok(s && s.label === 'base.<section>.split(at: Node)', 'split: one argument is where to cut', s);
+s = at(md, 'base.Overview.unwrap(|)');
+ok(s && s.params[0].label === 'reason: Reason', 'unwrap takes a reason', s);
+s = at(md, 'base.start.project(|)');
+ok(s && s.label.startsWith('base.<place>.project('), 'project on a place', s);
+s = at(md, 'if base.has.Overview {\n    base.Overview.move(|)\n}');
+ok(s && s.label.startsWith('base.<node>.move('), 'inside an if block', s);
 ok(at(md, 'base.Overview.after("x")\n|') === null, 'outside a call: nothing');
 ok(at(md, 'base.Overview.|') === null, 'after a dot: nothing');
 

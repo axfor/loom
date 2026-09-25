@@ -106,7 +106,7 @@ const find = (items, label) => items.find((i) => i.label === label);
   const l3 = labels(at(md, 'base.frontmatter.|').items);
   ok(l3.join(',') === 'name,description,set', 'frontmatter offers its keys and set', l3);
   const l3b = labels(at(md, 'base.frontmatter.description.|').items);
-  ok(l3b.join(',') === 'set,start,append', 'a frontmatter key offers set, start and append', l3b);
+  ok(l3b.join(',') === 'set,start,append,end', 'a frontmatter key offers set, start, append and end — append by its other name', l3b);
   const l4 = labels(at(md, 'base.Overview.after("x").|').items);
   ok(l4.length === 0, 'nothing follows a method', l4);
 }
@@ -296,6 +296,89 @@ const find = (items, label) => items.find((i) => i.label === label);
   ok(!l.includes('level:'), 'a key has no level, so level: is not offered', l);
   const lines = labels(at(md, 'base.lines(|)').items);
   ok(!lines.includes('level:'), 'a line has no level either', lines);
+}
+
+// ── the added syntax ──
+{
+  // Each receiver offers what the compiler accepts on it (objparse.go's edit), no more.
+  const sec = labels(at(md, 'base.Overview.|').items);
+  ok(['move', 'wrap', 'swap', 'promote', 'demote', 'unwrap', 'split', 'join'].every((x) => sec.includes(x)), 'a section offers the structural methods', sec);
+  const fn = labels(at(sh, 'base.main.|').items);
+  ok(['move', 'wrap', 'swap'].every((x) => fn.includes(x)) && !['promote', 'unwrap', 'split', 'join'].some((x) => fn.includes(x)),
+    'a shell function takes no heading operations', fn);
+  const file = labels(at(md, 'base.|').items);
+  ok(file.includes('end') && file.includes('sections') && file.includes('lines') && file.includes('has'), 'the file offers end, its groups, and has', file);
+  const shFile = labels(at(sh, 'base.|').items);
+  ok(shFile.includes('functions') && shFile.includes('markers') && !shFile.includes('sections'), 'a group word follows the type', shFile);
+}
+{
+  // A group: first / last, the if questions, and what means the same done to each of them.
+  const g = labels(at(md, 'base.sections[level == 2].|').items);
+  ok(['first', 'last', 'any', 'count', 'drop', 'promote', 'demote', 'unwrap'].every((x) => g.includes(x)), 'a group offers first, last, any, count and the group methods', g);
+  ok(!g.includes('after') && !g.includes('Overview'), 'a group takes no single-node method and no name', g);
+  const bare = labels(at(md, 'base.sections.|').items);
+  ok(bare.includes('first') && bare.includes('drop'), 'a bare group word is every node of the kind', bare);
+  const keys = labels(at(toml, 'base.keys[empty].|').items);
+  ok(keys.includes('drop') && !keys.includes('promote'), 'a group of keys has no heading level to change', keys);
+  const one = labels(at(md, 'base.sections[level == 2].first.|').items);
+  ok(one.includes('after') && one.includes('children') && !one.includes('first'), 'first picks one node, which takes node methods and axes', one);
+  const kids = labels(at(md, 'base.Overview.children.|').items);
+  ok(kids.includes('first') && kids.includes('drop') && !kids.includes('after'), 'children lands on a group again', kids);
+}
+{
+  const pl = labels(at(md, 'base.start.|').items);
+  ok(pl.join(',') === 'project', 'a place takes only project', pl);
+  const pl2 = labels(at(md, 'base.Overview.after.|').items);
+  ok(pl2.join(',') === 'project', 'a place next to a node takes only project', pl2);
+  const has = labels(at(md, 'if base.has.|').items);
+  ok(has.includes('Overview') && !has.includes('after') && !has.includes('sections'), 'has asks about a name, so names and nothing else', has);
+}
+{
+  // Inside a predicate: the fields it can ask about, and a snippet for how each is written.
+  const { items } = at(md, 'base.sections[|]');
+  const l = labels(items);
+  ok(['level', 'name', 'value', 'empty', 'calls', 'has'].every((x) => l.includes(x)), 'inside [ the predicate fields are offered', l);
+  ok(find(items, 'level').insertText === 'level == ${1:2}', 'level inserts a comparison to fill in', find(items, 'level').insertText);
+  const and = labels(at(md, 'base.sections[level == 2 && |]').items);
+  ok(and.includes('name'), 'after && the next field is offered', and);
+  const typing = labels(at(md, 'base.sections[lev|]').items);
+  ok(typing.includes('level'), 'typing a field completes it', typing);
+}
+{
+  // Statements of the added syntax are read line by line, so what follows them still completes.
+  const inIf = labels(at(md, 'if base.has.Overview {\n    base.Overview.|\n}').items);
+  ok(inIf.includes('after'), 'inside an if block, statements complete as anywhere else', inIf);
+  const cond = labels(at(md, 'if base.has.Overview {\n}\nbase.|').items);
+  ok(cond.includes('Overview'), 'an if block ends, and the file goes on', cond);
+  const caught = labels(at(md, 'ok = base.Overview.|').items);
+  ok(caught.includes('after'), 'a caught result still completes its statement', caught);
+  const st = labels(at(md, '|').items);
+  ok(['if', 'fn', 'return', 'Self'].every((x) => st.includes(x)), 'a new line offers the statement keywords', st);
+  const it = find(at(md, '|').items, 'if');
+  ok(it.markdown && it.markdown.includes('**Examples**'), 'a keyword comes with its help', it.markdown);
+}
+
+// ── a tree that declares Loom 2 ──
+{
+  // Names are taken as written and a bare string is text, so completion writes what that means:
+  // a name with a space is quoted, and our sections are named on self.
+  const v2 = path.join(root, 'v2');
+  write('v2/loom.om', 'loom "2.0"\nbase "up"\nself "me"\n');
+  write('v2/up/a.md', '## How it compares\n\nx\n\n## Plain\n\ny\n');
+  write('v2/me/a.md', '## Our Part\n\no\n');
+  const f = path.join(v2, 'me/a.md.lm');
+  const items = at(f, 'base.|').items;
+  ok(find(items, 'How it compares').insertText === '"How it compares"', 'Loom 2: a name with a space is quoted, not underscored', find(items, 'How it compares').insertText);
+  ok(find(items, 'Plain').insertText === 'Plain', 'Loom 2: an identifier is written as it is', find(items, 'Plain').insertText);
+  const args = at(f, 'base.Plain.after(|)').items;
+  ok(find(args, 'Our Part') && find(args, 'Our Part').insertText === 'self."Our Part"', 'Loom 2: our section is named on self, since a bare string is text', find(args, 'Our Part'));
+  ok(labels(at(f, 'base.Plain.after("Our|")').items).length === 0, 'Loom 2: inside a string there is nothing to complete');
+  const src = 'base.How_it_compares.after(self.x)\nbase."How it compares".after("Our Part")';
+  const under = definition(f, src, 0, 6);
+  ok(under && under.line === 0 && under.s === 0 && under.e === 0, 'Loom 2: How_it_compares is not "How it compares" — the file, not the heading', under);
+  const quoted = definition(f, src, 1, 7);
+  ok(quoted && quoted.line === 0 && quoted.e > 0, 'Loom 2: the quoted name is the heading', quoted);
+  ok(definition(f, src, 1, src.split('\n')[1].indexOf('Our Part')) === null, 'Loom 2: a bare string is text and leads nowhere');
 }
 
 fs.rmSync(root, { recursive: true, force: true });

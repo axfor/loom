@@ -9,6 +9,8 @@
 //   "Install XSDD" inside .after(...)    content by name     → that heading in our file
 //   self.frontmatter / cmd.body           a part of a file    → where that part starts
 //   self.frontmatter.description          a key's value       → that key in our file
+//   if base.has.Overview                  a node asked about  → that heading upstream
+//   bilingual(...)                        a function call     → its fn declaration in this file
 //
 // The result says what was clicked (origin: the whole token, so a string with spaces is one
 // link) and where it leads (the node's first line, the name on it, and where the node ends).
@@ -78,7 +80,10 @@ function resolve(t, ref) {
       return locate(t.importFile.get(ref.imp), null);
     case 'root': {
       const obj = t.objects[ref.tok.v];
-      return obj ? locate(obj.file, null, null, obj.inline, docPath) : null;
+      if (obj) return locate(obj.file, null, null, obj.inline, docPath);
+      // a call of a function declared in this file leads to its declaration
+      const fn = ref.chain.steps.length === 0 && t.fns.find((f) => f.name.v === ref.tok.v);
+      return fn ? { file: docPath, line: fn.name.line, end: fn.name.line + 1, s: fn.name.s, e: fn.name.e } : null;
     }
     case 'step': {
       const st = ref.chain.steps[ref.index];
@@ -98,7 +103,8 @@ function resolve(t, ref) {
         const sel = loom.walk(t, chain, index + 1);
         return locate(sel.obj.file, sel.node, sel.view, sel.obj.inline, docPath);
       }
-      if (loom.CONTENT_METHODS.has(st.name)) {
+      // from Loom 2 a bare string is text, not the name of a section of ours
+      if (loom.CONTENT_METHODS.has(st.name) && !loom.literalNames(t)) {
         return locate(t.objects.self.file, { kind: loom.DEFAULT_KIND[r.typ], name: ref.tok.v, ident: false }, r.view);
       }
       return null;

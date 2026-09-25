@@ -105,6 +105,14 @@ function nodeText(name) {
   return id;
 }
 
+// nodeTextFor writes a name for a tree that declares a version, as lang.NameTextFor does. From
+// Loom 2 an unquoted name is the name as written, so a space cannot become an underscore: a name
+// that is not already an identifier is quoted.
+function nodeTextFor(name, version) {
+  if (!loom.atLeast(version, 2)) return nodeText(name);
+  return IDENT.test(name) && !RESERVED.has(name) ? name : loom.quote(name);
+}
+
 // typedAs: what an identifier typed for this name looks like, so `Usage_T` still finds "Usage Tips".
 function typedAs(name) {
   return `${name.replace(/ /g, '_')} ${name}`;
@@ -143,6 +151,7 @@ function completions(docPath, text, line, character) {
       return [];
     }
     if (ref.what === 'step') return stepItems(cx, ref.chain, ref.index, whole, false);
+    if (ref.what === 'pred') return predicateItems(whole);
     if (ref.what === 'root' && ref.chain.argOf) return argItems(cx, ref.chain.argOf, whole, false);
     if (ref.what === 'root' && isFirstOnLine(t.toks, inside)) return statementItems(whole);
     return [];
@@ -156,12 +165,24 @@ function completions(docPath, text, line, character) {
     const call = loom.enclosingCall(t, k, line);
     return call ? argItems(cx, call, empty, false) : statementItems(empty);
   }
+  if (prev.t === '[' || prev.t === 'and' || prev.t === 'or') return predicateItems(empty);
   if (prev.t === '(' || prev.t === ',' || prev.t === '{') {
     const call = loom.enclosingCall(t, k, line);
     return call ? argItems(cx, call, empty, false) : [];
   }
   if (prev.t !== '.' || k === 0) return [];
   const owner = t.toks[k - 1];
+  if (owner.t === ']') {
+    // after a predicate: base.sections[level == 2].
+    let depth = 0;
+    let open = k - 1;
+    for (; open >= 0; open--) {
+      if (t.toks[open].t === ']') depth++;
+      else if (t.toks[open].t === '[' && --depth === 0) break;
+    }
+    const ref = open > 0 && loom.stepRef(t, t.toks[open - 1]);
+    return ref ? stepItems(cx, ref.chain, ref.index + 1, empty, false) : [];
+  }
   if (owner.t === ')') {
     // only .as(type) is followed by more steps
     const open = matchingOpen(t.toks, k - 1);
@@ -208,16 +229,25 @@ function matchingOpen(toks, k) {
 
 function stepItems(cx, chain, index, range, quoted) {
   const r = loom.walk(cx.t, chain, index);
-  if (!r || r.bad || r.method) return [];
+  if (!r || r.bad || r.method || r.asked) return [];
   const out = [];
+  if (r.place) return chain.root.v === 'base' && !quoted ? methodItems(r, range) : [];
+  if (r.many) {
+    if (quoted) return [];
+    out.push(item('first', 'part', { detail: 'the first of the group', markdown: markdownFor('first'), range, sortText: '1' }));
+    out.push(item('last', 'part', { detail: 'the last of the group', markdown: markdownFor('last'), range, sortText: '1' }));
+    for (const q of loom.QUESTIONS) out.push(item(q, 'part', { detail: q === 'any' ? 'if: did the predicate find anything' : 'if: how many it found; holds when not zero', markdown: markdownFor(q), range, sortText: '3' }));
+    if (chain.root.v === 'base' && !chain.argOf) out.push(...methodItems(r, range));
+    return out;
+  }
   const text = cx.read(r.obj.file);
-  if (text != null) {
+  if (text != null && !(r.node && r.node.axis)) {
     const src = { ...loom.viewLines(text, r.view), where: path.relative(cx.t.cfg.root, r.obj.file), typ: r.typ };
     // The compiler writes the two sides differently, and this follows it: an anchor into upstream
     // is written as NameText does it, because lm sync rewrites that token when upstream renames
     // something; content of ours is always quoted, because that is what anchor completion appends.
     // Matching both is what keeps a template from being rewritten the moment the build touches it.
-    const name = r.obj.layer === 'base' ? nodeText : loom.quote;
+    const name = r.obj.layer === 'base' ? (n) => nodeTextFor(n, cx.t.cfg.loom) : loom.quote;
     const write = quoted
       ? (parts) => ({ insertText: parts.map(loom.quote).join('.'), filterText: loom.quote(parts[parts.length - 1]) })
       : (parts) => ({
@@ -239,9 +269,7 @@ function stepItems(cx, chain, index, range, quoted) {
         out.push(item(seg, 'node', { detail: `${src.where}:${n.line + 1}`, ...write([seg]), range }));
       }
     } else if (r.node.kind === 'heading') {
-      for (const [a, why] of [['children', 'the sections one level down'], ['next', 'the next section at this level'], ['prev', 'the one before'], ['parent', 'the section this one sits in']]) {
-        out.push(item(a, 'part', { detail: why, range, sortText: '3' }));
-      }
+      out.push(...axisItems(range));
       // below a section, only its subsections: base."Example 2"."Phase 1"
       const sel = loom.findNode(text, r.node, r.view);
       if (sel) {
@@ -250,44 +278,82 @@ function stepItems(cx, chain, index, range, quoted) {
       }
     }
   }
+  // where an axis landed has no name to list subsections of, but can walk on
+  if (r.node && r.node.axis && r.node.kind === 'heading' && !quoted) out.push(...axisItems(range));
   if (quoted) return out;
 
+  if (r.has) return out;
   if (!r.node) {
+    for (const [word, kind] of Object.entries(loom.CLASS_CALLS[r.typ] || {})) {
+      out.push(item(word, 'part', { detail: `every ${kind}; [ ... ] picks some`, markdown: markdownFor(word), range, sortText: '3' }));
+    }
+    if (chain.root.v === 'base') out.push(item('has', 'part', { detail: 'if: does upstream have a part by this name', markdown: markdownFor('has'), insertText: 'has.', retrigger: true, range, sortText: '4' }));
     if (r.typ === 'markdown' && !r.view) out.push(item('frontmatter', 'part', { detail: 'the frontmatter', markdown: markdownFor('frontmatter'), range, sortText: '1' }));
     if (r.obj.layer === 'self' && r.typ === 'markdown') out.push(item('body', 'part', { detail: 'everything after the frontmatter', markdown: markdownFor('body'), range, sortText: '1' }));
     for (const call of Object.keys(loom.KIND_CALLS[r.typ] || {})) {
       out.push(item(call, 'kind', { detail: `${call}("...")`, markdown: markdownFor(call), insertText: `${call}("$1")`, snippet: true, retrigger: call !== 'line', range, sortText: '3' }));
     }
   }
-  if (chain.root.v === 'base' && !chain.argOf) {
-    for (const m of methodsFor(r)) {
-      const insertText = m === 'replace' && !r.node && !r.view ? 'replace(self, reason: "$1")' : SNIPPETS[m];
-      out.push(item(m, 'method', { detail: METHOD_DOCS[m], markdown: markdownFor(m), insertText, snippet: true, retrigger: m !== 'drop' && m !== 'replace', range, sortText: '2' }));
-    }
-  }
+  if (chain.root.v === 'base' && !chain.argOf) out.push(...methodItems(r, range));
   return out;
 }
 
-// methodsFor: the methods the compiler accepts on what a chain selects.
+function axisItems(range) {
+  return [['children', 'the sections one level down'], ['next', 'the next section at this level'], ['prev', 'the one before'], ['parent', 'the section this one sits in']]
+    .map(([a, why]) => item(a, 'part', { detail: why, markdown: markdownFor(a), range, sortText: '3' }));
+}
+
+function methodItems(r, range) {
+  return methodsFor(r).map((m) => {
+    const insertText = m === 'replace' && !r.node && !r.view ? 'replace(self, reason: "$1")' : SNIPPETS[m];
+    const retrigger = !['drop', 'replace', 'unwrap', 'join', 'promote', 'demote'].includes(m);
+    return item(m, 'method', { detail: METHOD_DOCS[m], markdown: markdownFor(m), insertText, snippet: true, retrigger, range, sortText: '2' });
+  });
+}
+
+// NODE_METHODS are what any single node takes; a markdown section takes the heading operations too.
+const NODE_METHODS = ['after', 'before', 'replace', 'drop', 'move', 'wrap', 'swap'];
+
+// methodsFor: the methods the compiler accepts on what a chain selects (objparse.go's edit).
 function methodsFor(r) {
+  if (r.place) return ['project'];
   if (!r.node) {
-    const m = ['start', 'append'];
+    const m = ['start', 'append', 'end'];
     if (!r.view) m.push('replace', 'merge');
     return m;
   }
+  // a group takes what means the same done to each of them
+  if (r.many) return r.node.kind === 'heading' ? ['drop', 'promote', 'demote', 'unwrap'] : ['drop'];
   switch (r.node.kind) {
     case 'frontmatter':
       return ['set'];
     case 'fmkey':
-      return ['set', 'start', 'append'];
+      return ['set', 'start', 'append', 'end'];
     case 'body':
       return [];
     case 'key':
     case 'path':
-      return r.view ? ['after', 'before', 'replace', 'drop'] : ['after', 'before', 'replace', 'drop', 'set', 'start', 'append', 'as'];
+      return r.view ? NODE_METHODS : [...NODE_METHODS, 'set', 'start', 'append', 'end', 'as'];
+    case 'heading':
+      return [...NODE_METHODS, 'promote', 'demote', 'unwrap', 'split', 'join'];
     default:
-      return ['after', 'before', 'replace', 'drop'];
+      return NODE_METHODS;
   }
+}
+
+// predicateItems: what a predicate can ask about each node, inside base.sections[ ... ].
+const PREDICATES = {
+  level: ['level == ${1:2}', 'the heading level, 1 to 6: == != < <= > >='],
+  name: ['name ${1|==,~|} "$2"', 'the name: == exactly, ~ a regular expression'],
+  value: ['value == "$1"', 'what a key holds'],
+  empty: ['empty', 'nothing under it'],
+  calls: ['calls "$1"', 'a shell function that runs this command'],
+  has: ['has."$1"', 'a part by this name inside it'],
+};
+
+function predicateItems(range) {
+  return Object.entries(PREDICATES).map(([word, [insertText, detail]]) =>
+    item(word, 'argument', { detail, markdown: markdownFor(word), insertText, snippet: true, range, sortText: '1' }));
 }
 
 // nodeItems lists the nodes of one kind in file order. `chapter` narrows headings to one
@@ -388,7 +454,7 @@ function argItems(cx, argOf, range, quoted) {
     return quoted ? [] : [item('self', 'object', { detail: 'our file at this path', range })];
   }
   // a key's value: ours, from the same kind of key in our file
-  if (['set', 'start', 'append'].includes(st.name) && loom.isValue(r)) {
+  if (['set', 'start', 'append', 'end'].includes(st.name) && loom.isValue(r)) {
     if (quoted) return [];
     const src = source(self.file, null);
     if (!src) return [];
@@ -401,7 +467,20 @@ function argItems(cx, argOf, range, quoted) {
       })
       .sort((a, b) => a.sortText.localeCompare(b.sortText));
   }
+  // where a node goes, or what it trades places with: a node of upstream
+  if (st.name === 'move' || st.name === 'swap' || st.name === 'split') {
+    if (quoted) return [];
+    const out = [item('base', 'object', { detail: 'a node of upstream', insertText: 'base.', retrigger: true, range, sortText: '1' })];
+    if (st.name === 'move') {
+      for (const side of ['after', 'before']) out.push(item(`${side}:`, 'argument', { detail: `${side} this node`, insertText: `${side}: base.`, retrigger: true, range, sortText: '0' }));
+    }
+    return out;
+  }
   if (!loom.CONTENT_METHODS.has(st.name) && st.name !== 'drop') return [];
+  // From Loom 2 a bare string is the text itself, not a name: nothing to complete inside one, and
+  // our sections are written on self.
+  const literal = loom.literalNames(cx.t);
+  if (literal && quoted) return [];
   if (st.name === 'set' && r.node && r.node.kind === 'frontmatter') {
     return quoted ? [] : [item('self.frontmatter', 'part', { detail: 'frontmatter can only be set to another frontmatter', range })];
   }
@@ -410,7 +489,7 @@ function argItems(cx, argOf, range, quoted) {
   if (st.name !== 'drop') {
     // a bare string names our content; a path is not a string, so it is written on self
     const src = source(self.file, r.view);
-    const write = (parts) => (single(parts)
+    const write = (parts) => (single(parts) && !literal
       ? asString(parts)
       : { insertText: `self.${parts.map(loom.quote).join('.')}`, filterText: quoted ? loom.quote(parts[parts.length - 1]) : typedAs(parts[parts.length - 1]) });
     if (src) out.push(...nodeItems(src, loom.DEFAULT_KIND[r.typ], null, write, range));
@@ -472,11 +551,11 @@ function statementItems(range) {
   return [
     item('base', 'object', { detail: 'the upstream file at this path; the only object a statement changes', insertText: 'base.', retrigger: true, range }),
     item('import', 'keyword', { detail: 'import [name] "path": another file of our layer', markdown: markdownFor('import'), insertText: 'import "$1"', snippet: true, retrigger: true, range }),
-    item('if', 'keyword', { detail: 'ask the document something, and write only if it holds', insertText: 'if base.has.${1:Name} {\n\t$0\n}', snippet: true, range }),
+    item('if', 'keyword', { detail: 'ask the document something, and write only if it holds', markdown: markdownFor('if'), insertText: 'if base.has.${1:Name} {\n\t$0\n}', snippet: true, range }),
     item('if / else if', 'keyword', { detail: 'a chain of questions: the first that holds decides', insertText: 'if base.has.${1:One} {\n\t$2\n} else if base.has.${3:Two} {\n\t$0\n}', snippet: true, range }),
-    item('fn', 'keyword', { detail: 'group statements inside this file; inlined where it is called', insertText: 'fn ${1:name}() {\n\t$0\n}', snippet: true, range }),
-    item('return', 'keyword', { detail: 'return self: the product is our file; needs a reason', insertText: 'return self // reason: $1', snippet: true, range }),
-    item('Self', 'keyword', { detail: 'a resource section: our content, written in this file', insertText: '---\nSelf:\n    ```${1:markdown}\n    $0\n    ```', snippet: true, range }),
+    item('fn', 'keyword', { detail: 'group statements inside this file; inlined where it is called', markdown: markdownFor('fn'), insertText: 'fn ${1:name}() {\n\t$0\n}', snippet: true, range }),
+    item('return', 'keyword', { detail: 'return self: the product is our file; needs a reason', markdown: markdownFor('return'), insertText: 'return self // reason: $1', snippet: true, range }),
+    item('Self', 'keyword', { detail: 'a resource section: our content, written in this file', markdown: markdownFor('Self'), insertText: '---\nSelf:\n    ```${1:markdown}\n    $0\n    ```', snippet: true, range }),
   ];
 }
 
@@ -488,4 +567,4 @@ function settings(text, line, character) {
   return SETTINGS.map(([label, insertText, detail]) => item(label, 'keyword', { detail, insertText, snippet: true, range }));
 }
 
-module.exports = { completions, nodeText };
+module.exports = { completions, nodeText, nodeTextFor };

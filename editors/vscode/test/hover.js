@@ -70,6 +70,59 @@ const start = at(3, 'append');
 ok(start.markdown.includes('base.append(...content: Content)') && start.markdown.includes('base.<key>.append(value: Value)'),
   'a method with two receivers shows both signatures', start.markdown);
 
+// The added syntax: every word the compiler reads as a word, not a name, explains itself.
+{
+  const src = [
+    'if base.has.main {',                                           // 0
+    '    base.main.wrap(self.main, self.main)',                    // 1
+    '} else if base.functions[calls "curl" && !empty].any {',      // 2
+    '    base.functions[calls "curl"].drop(reason: "x")',          // 3
+    '} else {',                                                    // 4
+    '    return err.format("no main: %s", ok)',                    // 5
+    '}',                                                           // 6
+    'fn twice(up, ours) {',                                        // 7
+    '    up.after(ours)',                                          // 8
+    '}',                                                           // 9
+    'base.main.move(base.main.after)',                             // 10
+    'return self // reason: ours',                                 // 11
+    '---',                                                         // 12
+    'Self:',                                                       // 13
+    '    ```shell',                                                // 14
+    '    main() { :; }',                                           // 15
+    '    ```',                                                     // 16
+  ].join('\n');
+  const on = (line, word, n = 1) => {
+    const l = src.split('\n')[line];
+    let col = -1;
+    for (let k = 0; k < n; k++) col = l.indexOf(word, col + 1);
+    return hover(tpl, src, line, col);
+  };
+  for (const [line, word, n] of [[0, 'if'], [0, 'has'], [1, 'wrap'], [2, 'else'], [2, 'if'], [2, 'functions'], [2, 'calls'], [2, 'empty'], [2, 'any'],
+    [3, 'drop'], [5, 'return'], [5, 'err'], [7, 'fn'], [10, 'move'], [10, 'after'], [11, 'return'], [13, 'Self']]) {
+    const h = on(line, word, n);
+    ok(h && h.markdown.includes('**Examples**'), `${word} on line ${line}: explained`, h && h.markdown.slice(0, 60));
+  }
+  // A place word hanging off a node is the place, and says so.
+  ok(on(10, 'after').markdown.includes('base.<node>.after  ·'), 'a bare after reads as a place', on(10, 'after').markdown.slice(0, 120));
+  ok(on(0, 'main') === null && on(8, 'up') === null, 'a node name and a parameter are not keywords');
+}
+{
+  // Words stay names where the compiler reads them as names: a quoted "children" is a section.
+  const src = 'base."children".drop(reason: "x")\nbase.main.children.drop(reason: "x")';
+  const l0 = src.split('\n')[0];
+  ok(hover(tpl, src, 0, l0.indexOf('children')) === null, 'a quoted word is a name');
+  const h = hover(tpl, src, 1, src.split('\n')[1].indexOf('children'));
+  ok(h && h.markdown.includes('one level down'), 'a bare axis word is the axis', h);
+}
+{
+  // Without a tree the words still read as words: the examples the extension ships are read, not built.
+  const src = 'base.sections[level == 2].first.children.demote()';
+  for (const w of ['sections', 'level', 'first', 'children', 'demote']) {
+    const h = hover('/nowhere/x.lm', src, 0, src.indexOf(w));
+    ok(h && h.markdown.includes('**Examples**'), `${w} is explained outside a tree`, h);
+  }
+}
+
 fs.rmSync(root, { recursive: true, force: true });
 console.log(`loom hover: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
