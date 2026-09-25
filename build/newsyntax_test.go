@@ -1297,3 +1297,30 @@ func TestTheAdviceInAnErrorBuilds(t *testing.T) {
 		t.Errorf("a bare class projects in the one-line form too: %v", err)
 	}
 }
+
+// An insertion at the line a rewrite starts on survives it. Edits apply back to front, and at the
+// same line the later statement went first — so `base.Install.drop(...)` followed by
+// `base.Install.before(x)` inserted x inside the span the drop then deleted by its old line
+// numbers. The product lost our content and the build said nothing.
+func TestAnInsertionWhereARewriteStartsSurvives(t *testing.T) {
+	const up = "# T\n\n## Examples\n\nex\n\n## Install\n\ni\n\n## Usage\n\nu\n"
+	for _, rewrite := range []string{
+		`base.Install.drop(reason: "r")`,
+		"base.Install.replace(`y`, reason: \"r\")",
+		`base.Install.demote()`,
+		`base.Install.move(after: base.Usage)`,
+		`base.Install.swap(base.Usage)`,
+	} {
+		for _, insert := range []string{"base.Examples.after(`x`)", "base.Install.before(`x`)"} {
+			weave := newTree(t, "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n", up, "")
+			got, err := weave(rewrite + "\n" + insert + "\n")
+			if err != nil {
+				t.Errorf("%s / %s: %v", rewrite, insert, err)
+				continue
+			}
+			if !strings.Contains(got, "<!-- B -->\nx\n<!-- E -->") {
+				t.Errorf("%s then %s lost our content:\n%s", rewrite, insert, got)
+			}
+		}
+	}
+}

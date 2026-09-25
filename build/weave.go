@@ -509,6 +509,13 @@ func apply(c *lang.Config, t *lang.Template, stmts []lang.Stmt, tree ast.Tree, r
 		if edits[i].s != edits[j].s {
 			return edits[i].s > edits[j].s
 		}
+		// At the same line, what rewrites a span goes before what inserts there. Applied the
+		// other way round, the insertion lands inside the span, and the rewrite — working from
+		// the old line numbers — deletes it with the span: `base.Install.drop(...)` followed by
+		// `base.Install.before(x)` wove a product without x, and said nothing.
+		if ri, rj := edits[i].e > edits[i].s, edits[j].e > edits[j].s; ri != rj {
+			return ri
+		}
 		return edits[i].idx > edits[j].idx
 	})
 	for _, e := range edits {

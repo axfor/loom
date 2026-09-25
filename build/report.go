@@ -99,7 +99,7 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 	}
 
 	var inserted []string
-	var drops, replaces, moves, levels, values []lang.Stmt
+	var drops, replaces, moves, levels, values, inserts []lang.Stmt
 	var walk func(ss []lang.Stmt)
 	walk = func(ss []lang.Stmt) {
 		for _, s := range ss {
@@ -126,6 +126,7 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 				}
 				inserted = append(inserted, s.Reason)
 			case "after", "before", "append", "prepend":
+				inserts = append(inserts, s)
 				for _, ref := range s.Srcs {
 					inserted = append(inserted, refName(ref))
 				}
@@ -397,6 +398,31 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 		}
 		if unlevel(got) != unlevel(want) {
 			errs = append(errs, fmt.Errorf("%s: %s was %sd and something other than its heading level changed", s.Rng, s.Anchor, s.Op))
+		}
+	}
+
+	// What a statement inserts must be in the product. Nothing else checks it: the byte comparison
+	// strips our marks, and the rest counts upstream's nodes. So when the weave lost a section of
+	// ours — an insertion at the very line a drop started once was deleted with it — the product
+	// only looked like a template that inserted less, and the report said +1.
+	if !whole && !merged {
+		woven := ast.Addressable(ast.New(t.Type, out), kind)
+		for _, s := range inserts {
+			for _, ref := range s.Srcs {
+				if ref.Layer != "self" || ref.IsLit || ref.Kind != kind || ref.Anchor == "" {
+					continue
+				}
+				found := false
+				for _, n := range woven {
+					if n.Name == ref.Anchor || (ref.Ident && identMatch(n.Name, ref.Anchor)) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					errs = append(errs, fmt.Errorf("%s: our %s %q is inserted by this statement but is not in the product %s", s.Rng, nodeWord(kind), ref.Anchor, t.Target))
+				}
+			}
 		}
 	}
 
