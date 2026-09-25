@@ -89,7 +89,9 @@ type Move struct {
 	Anchor string
 	Ident  bool
 	Within []Seg
-	At     Pos // where Anchor is written, so lm sync can follow a rename of it
+	Axis   string  // steps from Anchor to the node meant: children.first
+	Select *Select // the target was picked from a group: base.sections[...].first
+	At     Pos     // where Anchor is written, so lm sync can follow a rename of it
 }
 
 // Template is one template: which product it weaves, from which base, and how.

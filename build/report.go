@@ -48,6 +48,15 @@ type Report struct {
 	UpBytes, VerifiedBytes int
 }
 
+// moveName says where a move went as the template says it: the node, and the axes from it.
+func moveName(m *lang.Move) string {
+	name := m.Anchor
+	if m.Axis != "" {
+		name += "." + m.Axis
+	}
+	return name
+}
+
 // nowAt reads a node that was moved or had its level changed from where it is now. Its path says
 // where it was: a promote takes it out of its parent, a move can take it anywhere. So the path is
 // shortened from the end — the ancestors it still has — down to none, and the first that holds
@@ -259,7 +268,7 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 	}
 	for _, s := range moves {
 		r.Moved = append(r.Moved, ReportLine{t.Target + " § " + realName(s),
-			s.Move.Side + " " + s.Move.Anchor + " · bytes unchanged"})
+			s.Move.Side + " " + moveName(s.Move) + " · bytes unchanged"})
 	}
 	for _, s := range levels {
 		r.Moved = append(r.Moved, ReportLine{t.Target + " § " + realName(s),

@@ -716,3 +716,30 @@ func TestEditorFindsTheSameTarget(t *testing.T) {
 		}
 	}
 }
+
+// The editor's help shows examples beside every word, and a reader copies them. Two had shown
+// forms the compiler refuses — a { } block on one line, a line("…") below a section — so every
+// example is parsed here, by the compiler's own parser.
+func TestEditorHelpExamplesParse(t *testing.T) {
+	cmd := exec.Command(node(t), "-e", `const { KEYWORDS } = require("./lib/docs.js");
+		const out = [];
+		for (const [word, k] of Object.entries(KEYWORDS)) for (const e of k.examples) out.push([word, e]);
+		console.log(JSON.stringify(out));`)
+	cmd.Dir = ext
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("reading the editor's examples: %v", err)
+	}
+	var examples [][2]string
+	if err := json.Unmarshal(out, &examples); err != nil {
+		t.Fatal(err)
+	}
+	if len(examples) < 50 {
+		t.Fatalf("only %d examples read; the help has more, so this is not reading it right", len(examples))
+	}
+	for _, e := range examples {
+		if _, _, _, err := parseObjects("help", []byte(e[1]+"\n")); err != nil {
+			t.Errorf("the help for %q shows what the compiler refuses:\n%s\n  %v", e[0], e[1], err)
+		}
+	}
+}

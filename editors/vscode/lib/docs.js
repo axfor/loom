@@ -129,7 +129,7 @@ const KEYWORDS = {
       { on: 'node', label: 'base.<section>.split(at: Node)', params: [['at: Node', 'a heading inside the section']] },
       { on: 'node', label: 'base.<section>.split(at: Node, name: Name)', params: [['at: Node', 'where the second half starts'], ['name: Name', 'the second half\'s heading']] },
     ],
-    examples: ['base.Setup.split(base.Setup."Step B")', 'base.Setup.split(base.Setup.line("Then:"), "Setup, part two")'],
+    examples: ['base.Setup.split(base.Setup."Step B")', 'base.Setup.split(base.line("Then:"), "Setup, part two")'],
   },
   join: {
     what: 'Run this markdown section and the next together: the next one\'s heading goes. That heading is upstream content, so a reason is required.',
@@ -234,7 +234,7 @@ const KEYWORDS = {
   count: {
     what: 'In an `if`: the number of nodes the predicate found, which holds when it is not zero — the same question as `any`.',
     signatures: [{ on: 'node', label: 'if base.sections[...].count', params: [] }],
-    examples: ['if base.sections[level == 2].count {\n    base.start.project(base.sections[level == 2]){ `- {name}` }\n}'],
+    examples: ['if base.sections[level == 2].count {\n    base.start.project(base.sections[level == 2], `- {name}`)\n}'],
   },
 };
 

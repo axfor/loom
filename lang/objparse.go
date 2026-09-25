@@ -733,7 +733,9 @@ func (in *interp) select_(r *receiver, st oStep) error {
 		if r.place != "" {
 			return fmt.Errorf("%s: one place at a time", st.pos)
 		}
-		r.place, r.pos = st.name, st.pos
+		// r.pos stays on the node's own name: it is where lm sync rewrites a rename, and the
+		// place word is not the name.
+		r.place = st.name
 		return nil
 	}
 	if r.node {
@@ -765,7 +767,7 @@ func (in *interp) select_(r *receiver, st oStep) error {
 			} else {
 				r.axis += "." + st.name
 			}
-			r.pos = st.pos
+			// r.pos stays on the name the axes walk from, for the same reason as a place.
 			return nil
 		}
 		// Key path: base.jobs.test — yaml and json address a nested key by the dotted path of
@@ -1023,7 +1025,7 @@ func (in *interp) method(r receiver, st oStep) error {
 		// the second half, at this section's own level. Cutting anywhere else does need one, so
 		// the second half has something to be called.
 		if !r.node || len(pos) == 0 || len(pos) > 2 || pos[0].val.kind != vExpr {
-			return fmt.Errorf("%s: split takes where to cut: base.X.split(base.X.Step_1), or where and what to call the second half: base.X.split(base.X.line(\"…\"), \"X, part two\")", at)
+			return fmt.Errorf("%s: split takes where to cut: base.X.split(base.X.Step_1), or where and what to call the second half: base.X.split(base.line(\"…\"), \"X, part two\")", at)
 		}
 		if len(pos) == 1 {
 			if r.typ != "markdown" || r.kind != "heading" {
@@ -1034,7 +1036,7 @@ func (in *interp) method(r receiver, st oStep) error {
 				return err
 			}
 			out = append(out, Stmt{Op: "split", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within,
-				Move: &Move{Side: "before", Kind: cut.Kind, Anchor: cut.Anchor, Ident: cut.Ident, Within: cut.Within, At: cut.At}, Rng: at})
+				Move: cut, Rng: at})
 			break
 		}
 		if pos[1].val.kind != vString {
@@ -1048,7 +1050,7 @@ func (in *interp) method(r receiver, st oStep) error {
 			return fmt.Errorf("%s: split cuts a section in two, so it applies to a markdown section", at)
 		}
 		out = append(out, Stmt{Op: "split", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within,
-			Move: &Move{Side: "before", Kind: cut.Kind, Anchor: cut.Anchor, Ident: cut.Ident, Within: cut.Within, At: cut.At}, Reason: pos[1].val.str, Rng: at})
+			Move: cut, Reason: pos[1].val.str, Rng: at})
 	case "project":
 		// base.start.project(sel){ template } — the place says where the derived content goes,
 		// the selection says what shape it is read from, the block is how each node is written.
@@ -1057,7 +1059,7 @@ func (in *interp) method(r receiver, st oStep) error {
 			return fmt.Errorf("%s: project writes somewhere: base.start.project(...), base.append.project(...)", at)
 		}
 		if len(pos) != 2 || pos[0].val.kind != vExpr || (pos[1].val.kind != vRaw && pos[1].val.kind != vString) {
-			return fmt.Errorf("%s: project takes what to read and how to write it: base.start.project(base.sections[level == 2]){ `- {name}` }", at)
+			return fmt.Errorf("%s: project takes what to read and how to write it: base.start.project(base.sections[level == 2], `- {name}`), or the template in a block on lines of its own", at)
 		}
 		ref, ok, err := in.projectionOf(pos[0].val.expr, pos[1].val.str, at)
 		if err != nil {
@@ -1181,27 +1183,19 @@ func (in *interp) moveTarget(side string, v oValue, typ string) (*Move, error) {
 	if len(e.steps) == 0 {
 		return nil, fmt.Errorf("%s: move needs a node to go next to: move(%s: base.X)", v.pos, side)
 	}
-	m := &Move{Side: side, Kind: defaultKind[typ]}
-	var names []string
+	// The target is read exactly as the same path is where it starts a statement — names by
+	// their spelling, a kind such as line("…"), axes, first / last of a group — so
+	// base.Setup.children.first points at the same node in either place.
+	r := receiver{typ: typ, pos: v.pos}
 	for _, st := range e.steps {
-		if st.call {
-			return nil, fmt.Errorf("%s: move takes a plain node, not a call", st.pos)
+		if err := in.select_(&r, st); err != nil {
+			return nil, err
 		}
-		names = append(names, st.name)
 	}
-	last := e.steps[len(e.steps)-1]
-	m.At = last.pos
-	if hasValues(typ) {
-		m.Anchor = strings.Join(names, ".")
-		return m, nil
+	if !r.node || r.many || r.place != "" || r.viewOf != "" {
+		return nil, fmt.Errorf("%s: a move goes next to one node of this file: move(%s: base.X)", v.pos, side)
 	}
-	// Each segment is read by its own spelling, as it is where the same path starts a statement:
-	// base.How_It.Step_A finds "How It" > "Step A" in either place.
-	for _, st := range e.steps[:len(e.steps)-1] {
-		m.Within = append(m.Within, Seg{st.name, in.ident(st), st.pos})
-	}
-	m.Anchor, m.Ident = last.name, in.ident(last)
-	return m, nil
+	return &Move{Side: side, Kind: r.kind, Anchor: r.anchor, Ident: r.ident, Within: r.within, Axis: r.axis, Select: r.sel, At: r.pos}, nil
 }
 
 // predicate reads the arguments of a class call into a selection.
@@ -1251,37 +1245,29 @@ func (in *interp) predicate(st oStep, kind string) (*Select, error) {
 // one content source rooted at upstream: it copies none of what upstream says, only the shape,
 // so what it writes is new rather than duplicated.
 func (in *interp) projection(e *oExpr, pos Pos, typ string) (Ref, bool, error) {
-	if len(e.steps) != 2 || (!e.steps[0].call && e.steps[0].pred == nil) || !e.steps[1].call || e.steps[1].name != "project" {
+	if len(e.steps) != 2 || !e.steps[1].call || e.steps[1].name != "project" {
 		return Ref{}, false, nil
 	}
-	obj, ok := in.objects[e.root]
-	if !ok || obj.layer == "self" {
-		return Ref{}, false, nil
-	}
-	kind := classCalls[obj.typ][e.steps[0].name]
-	if kind == "" {
-		return Ref{}, false, nil
-	}
-	var sel *Select
-	var err error
-	if e.steps[0].pred != nil {
-		sel, err = selectOf(e.steps[0].pred, kind, e.steps[0].pos)
-	} else {
-		sel, err = in.predicate(e.steps[0], kind)
-	}
-	if err != nil {
-		return Ref{}, false, err
-	}
+	// The group is read as it is in the other spelling, base.start.project(...): a bare class is
+	// every node of the kind there, so it is here too.
 	a := e.steps[1].args
+	one := len(a) == 1 && a[0].name == "" && (a[0].val.kind == vRaw || a[0].val.kind == vString)
+	tpl := ""
+	if one {
+		tpl = a[0].val.str
+	}
+	group := *e
+	group.steps = e.steps[:1]
+	ref, ok, err := in.projectionOf(&group, tpl, pos)
+	if err != nil || !ok {
+		return ref, ok, err
+	}
 	// project(`...`) and project{ ``` ... ``` } are the same thing: the block form only puts the
 	// template on lines of its own.
-	if len(a) != 1 || a[0].name != "" || (a[0].val.kind != vRaw && a[0].val.kind != vString) {
+	if !one {
 		return Ref{}, false, fmt.Errorf("%s: project takes one template: project(`- {name}`)", e.steps[1].pos)
 	}
-	if err := checkFields(a[0].val.str, pos); err != nil {
-		return Ref{}, false, err
-	}
-	return Ref{Layer: obj.layer, Kind: "project", Project: sel, Literal: a[0].val.str, IsLit: true, Rng: pos}, true, nil
+	return ref, true, nil
 }
 
 func (in *interp) contents(args []oArg, typ string, inView bool) ([]Ref, error) {

@@ -296,3 +296,26 @@ func TestSyncFollowsEveryPlaceANameIsWritten(t *testing.T) {
 		t.Errorf("the if still takes the branch it took before the rename:\n%s", got)
 	}
 }
+
+// A statement that walks an axis or writes at a place still names its node where the node is
+// written. lm sync had rewritten the axis instead: base.Setup.children became
+// base.Setup.Getting_Started.
+func TestSyncRewritesTheNameNotTheWordAfterIt(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n")
+	mustWrite(t, filepath.Join(dir, "up", "a.md"), "# T\n\n## Setup\n\ns\n\n### Step A\n\na\n\n## Other\n\no\n")
+	mustWrite(t, filepath.Join(dir, "me", "a.md.lm"), "base.Setup.children.demote()\nbase.Setup.after.project(base.sections[level == 3], `- {name}`)\nbase.Other.move(after: base.Setup.children.first)\n")
+	next := t.TempDir()
+	mustWrite(t, filepath.Join(next, "a.md"), "# T\n\n## Getting Started\n\ns\n\n### Step A\n\na\n\n## Other\n\no\n")
+	c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := build.Sync(c, next); err != nil {
+		t.Fatal(err)
+	}
+	want := "base.Getting_Started.children.demote()\nbase.Getting_Started.after.project(base.sections[level == 3], `- {name}`)\nbase.Other.move(after: base.Getting_Started.children.first)\n"
+	if got := readFile(t, filepath.Join(dir, "me", "a.md.lm")); got != want {
+		t.Errorf("the rename lands on the name:\n%s\nwant\n%s", got, want)
+	}
+}

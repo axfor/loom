@@ -246,7 +246,7 @@ func apply(c *lang.Config, t *lang.Template, stmts []lang.Stmt, tree ast.Tree, r
 			if err != nil {
 				return err
 			}
-			dst, _, err := locate(tree, s.Move.Kind, s.Move.Within, s.Move.Anchor, s.Move.Ident, s)
+			dst, err := moveTo(tree, s)
 			if err != nil {
 				return err
 			}
@@ -347,7 +347,7 @@ func apply(c *lang.Config, t *lang.Template, stmts []lang.Stmt, tree ast.Tree, r
 			if err != nil {
 				return err
 			}
-			b, _, err := locate(tree, s.Move.Kind, s.Move.Within, s.Move.Anchor, s.Move.Ident, s)
+			b, err := moveTo(tree, s)
 			if err != nil {
 				return err
 			}
@@ -377,7 +377,7 @@ func apply(c *lang.Config, t *lang.Template, stmts []lang.Stmt, tree ast.Tree, r
 			if g == nil {
 				return fmt.Errorf("%s: %s is not a heading", s.Rng, s.Anchor)
 			}
-			cut, _, err := locate(tree, s.Move.Kind, s.Move.Within, s.Move.Anchor, s.Move.Ident, s)
+			cut, err := moveTo(tree, s)
 			if err != nil {
 				return err
 			}
@@ -1019,6 +1019,20 @@ func keyValue(typ, src, key string) (string, bool) {
 // targets is what a statement applies to: the one node it names, or every node its
 // predicate found. A predicate that matches nothing is an error — a statement that
 // silently did nothing is the kind of quiet the language exists to prevent.
+// moveTo finds the one node a move, swap or split points at, by the rules a statement's own node
+// is found by — a path, axes, a node picked from a group.
+func moveTo(tree ast.Tree, s lang.Stmt) ([2]int, error) {
+	m := s.Move
+	spans, err := targets(tree, lang.Stmt{Kind: m.Kind, Within: m.Within, Anchor: m.Anchor, Ident: m.Ident, Axis: m.Axis, Select: m.Select, Rng: s.Rng})
+	if err != nil {
+		return [2]int{}, err
+	}
+	if len(spans) != 1 {
+		return [2]int{}, fmt.Errorf("%s: this points at %d nodes, and a move goes next to one", s.Rng, len(spans))
+	}
+	return spans[0], nil
+}
+
 func targets(tree ast.Tree, s lang.Stmt) ([][2]int, error) {
 	if s.Select == nil {
 		span, _, err := locate(tree, s.Kind, s.Within, s.Anchor, s.Ident, s)

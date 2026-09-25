@@ -1246,3 +1246,54 @@ func TestATextFileLosesNoLineInSilence(t *testing.T) {
 		t.Errorf("adding lines loses nothing: %v", err)
 	}
 }
+
+// Where a move, swap or split points is read as the same path is read where it starts a
+// statement: axes, a node picked from a group, a kind such as line("…"). They had been taken for
+// heading names, so the spec's own base.Setup.split(base.Setup.children.first) found no "children".
+func TestAMoveTargetIsReadLikeAStatement(t *testing.T) {
+	const up = "# T\n\n## Overview\n\no\n\n## Setup\n\nintro\n\n### Step A\n\na\n\n### Step B\n\nb\n\n## B\n\nbb\n"
+	for _, c := range []struct{ tpl, want string }{
+		{"base.Setup.split(base.Setup.children.first)\n", "# T | ## Overview | ## Setup | ## Step A | ### Step B | ## B"},
+		{"base.B.move(after: base.Setup.children.first)\n", "# T | ## Overview | ## Setup | ### Step A | ## B | ### Step B"},
+		// a section is its heading to the next heading, so Setup's subsections stay where they are
+		{"base.B.swap(base.Overview.next)\n", "# T | ## Overview | ## B | ### Step A | ### Step B | ## Setup"},
+		{"base.B.move(base.Overview.after)\n", "# T | ## Overview | ## B | ## Setup | ### Step A | ### Step B"},
+		{"base.B.move(before: base.sections[level == 3].last)\n", "# T | ## Overview | ## Setup | ### Step A | ## B | ### Step B"},
+		{"base.Setup.split(base.line(\"intro\"), \"Setup, part two\")\n", "# T | ## Overview | ## Setup | ## Setup, part two | ### Step A | ### Step B | ## B"},
+	} {
+		weave := newTree(t, "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n", up, "")
+		got, err := weave(c.tpl)
+		if err != nil {
+			t.Errorf("%s%v", c.tpl, err)
+			continue
+		}
+		if h := headings(got); h != c.want {
+			t.Errorf("%s  got  %s\n  want %s", c.tpl, h, c.want)
+		}
+	}
+}
+
+// The advice an error gives has to be something that builds. Two gave forms the parser refuses: a
+// { } block on one line, and a line("…") below a section.
+func TestTheAdviceInAnErrorBuilds(t *testing.T) {
+	const up = "# T\n\n## Setup\n\nintro\n\n## B\n\nbb\n"
+	weave := newTree(t, "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n", up, "")
+	_, err := weave("base.Setup.split()\n")
+	if err == nil || !strings.Contains(err.Error(), `base.X.split(base.line("…"), "X, part two")`) {
+		t.Fatalf("split says how to cut at a line: %v", err)
+	}
+	if _, err := weave("base.Setup.split(base.line(\"intro\"), \"Setup, part two\")\n"); err != nil {
+		t.Errorf("and that form builds: %v", err)
+	}
+	_, err = weave("base.start.project()\n")
+	if err == nil || !strings.Contains(err.Error(), "base.start.project(base.sections[level == 2], `- {name}`)") {
+		t.Fatalf("project says how it is written: %v", err)
+	}
+	if _, err := weave("base.start.project(base.sections[level == 2], `- {name}`)\n"); err != nil {
+		t.Errorf("and that form builds: %v", err)
+	}
+	// Both spellings of a projection read the group the same way: a bare class is all of it.
+	if _, err := weave("base.start(base.sections.project(`- {name}`))\n"); err != nil {
+		t.Errorf("a bare class projects in the one-line form too: %v", err)
+	}
+}
