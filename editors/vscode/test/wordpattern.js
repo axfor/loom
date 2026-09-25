@@ -59,12 +59,31 @@ const lines = [
   '    self."Example 2"."Phase 1"',
   'import cmd "/.claude/commands/ship"',
   'base.prompt.as(markdown).Steps.after("Our step")',
+  // the added syntax: brackets, comparisons and operators end a word, as they end a token
+  'base.sections[level==2&&has."Example 1"].first.children.demote()',
+  'base.functions[calls "curl"||name~"^x"].drop(reason: "a")',
+  'ok=base.Install.after(self.setup)',
+  'if !ok {',
+  '} else if base.sections[name!="Step 1"].any {',
+  'base.keys[value<="x"].drop(reason: "b")',
   'base.Install.after(' + Array.from({ length: 12 }, (_, k) => `"Section number ${k} with a longer title"`).join(', ') + ')',
 ];
 
 let pass = 0;
 let fail = 0;
 let slowest = 0;
+
+// A predicate's brackets pair and close like the others, or typing base.sections[ leaves it open.
+for (const [open, close] of [['{', '}'], ['(', ')'], ['[', ']']]) {
+  const paired = cfg.brackets.some(([a, b]) => a === open && b === close) &&
+    cfg.autoClosingPairs.some((p) => p.open === open && p.close === close) &&
+    cfg.surroundingPairs.some(([a, b]) => a === open && b === close);
+  if (paired) pass++;
+  else {
+    fail++;
+    console.log(`  ❌ ${open}${close} is not a bracket pair that closes and surrounds`);
+  }
+}
 for (const text of lines) {
   for (const tok of lex(text)) {
     if (tok.t !== 'str' && tok.t !== 'id') continue;

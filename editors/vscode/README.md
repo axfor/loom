@@ -157,6 +157,8 @@ Suggestions open after `.`, `"`, `/` and `(`, or with Ctrl-Space:
 | `if base.has.` | Upstream's names, and nothing else |
 | `after(` / `after("` and the other content methods | Our sections, then `self` and imported names; `reason:` in `replace`. In a tree that declares `loom "2.0"` a bare string is text, so our sections are offered as `self."Name"` |
 | `move(` / `swap(` / `split(` | `base.`, and for `move` also `after:` / `before:` |
+| `self.` in a template with `Self:` sections | The section names (`Self as notes:`), the kinds written there, then the parts; a part two documents share is offered with its section (`notes."tip"`), never bare |
+| `} ` after an if block | `else`, `else if` |
 | `drop(` | `reason:` |
 | `base.frontmatter.description.start(` | Our keys, the same key first: `self.frontmatter.description` (in toml, `self.description`) |
 | `section("` / `function("` / `marker("` / `key("` | That kind of node in the file being changed |
@@ -193,6 +195,8 @@ In a template, Cmd-click a name (Ctrl-click on Windows / Linux), or press F12:
 | `base.Install`, `base."How it compares"`, `base.Usage_Tips` | That section of the upstream file (`_` matches a space, except under `loom "2.0"`) |
 | `Overview` in `if base.has.Overview` | That section upstream |
 | A call such as `bilingual(...)` | Its `fn` declaration in the template |
+| `ok` in `if !ok` or `err.format("...", ok)` | The `ok = ...` line that caught it |
+| `self.job`, `self.notes.tip`, `self.json.ddd` in a template with `Self:` sections | That part inside the fence; `notes` → its `Self as notes:` line, `json` → the fence. A part two documents share leads nowhere, as the compiler refuses it |
 | `"Phase 1"` in `base."Example 2"."Phase 1"` | That subsection under that parent |
 | `"Install XSDD"` inside a method | That section of our file |
 | `self.frontmatter`, `cmd.body` | Where that part starts |

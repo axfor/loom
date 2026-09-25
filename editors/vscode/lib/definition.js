@@ -32,27 +32,25 @@ function locate(file, node, view, inline, docPath) {
   return { file, ...hit };
 }
 
-// inTemplate finds a named part inside a resource section, and gives its line in the template.
-function inTemplate(resources, node, docPath) {
-  if (!node || !node.name) return null;
-  // The address is self[.section][.kind].part, and the walk cannot know which of those a step is
-  // until it sees the sections — so a leading section or kind name is peeled off here.
-  let want = node;
-  let only = resources;
-  const within = node.within || [];
-  if (within.length && resources.some((r) => r.name === within[0].name)) {
-    only = resources.filter((r) => r.name === within[0].name);
-    want = { ...node, within: within.slice(1) };
+// inTemplate finds a named part inside the resource sections, and gives its line in the template.
+// The walk has already read the address self[.section][.kind].part; `inline` carries the section
+// and kind it named. Found in exactly one document, or nowhere — two is the compiler's error too.
+function inTemplate(inline, node, docPath) {
+  const { resources, r } = inline;
+  if (!node) {
+    // self.n1 → its `Self as n1:` line; self.json → the fence holding it
+    const docs = loom.resourceDocs(resources, r);
+    if (r.resKind && docs.length === 1) return { file: docPath, line: docs[0].line - 1, end: docs[0].line, s: 0, e: 0 };
+    const res = r.res && resources.find((x) => x.name === r.res);
+    return res ? { file: docPath, line: res.line, end: res.line + 1, s: 0, e: 0 } : null;
   }
-  for (const res of only) {
-    for (const doc of res.docs) {
-      const hit = loom.findNode(doc.text, want, null, doc.kind);
-      if (hit) {
-        return { file: docPath, line: doc.line + hit.line, end: doc.line + hit.end, s: doc.indent + hit.s, e: doc.indent + hit.e };
-      }
-    }
+  if (!node.name) return null;
+  const hits = [];
+  for (const doc of loom.resourceDocs(resources, r)) {
+    const hit = loom.findNode(doc.text, node, null, doc.kind);
+    if (hit) hits.push({ file: docPath, line: doc.line + hit.line, end: doc.line + hit.end, s: doc.indent + hit.s, e: doc.indent + hit.e });
   }
-  return null;
+  return hits.length === 1 ? hits[0] : null;
 }
 
 function definition(docPath, text, line, character) {
@@ -80,10 +78,15 @@ function resolve(t, ref) {
       return locate(t.importFile.get(ref.imp), null);
     case 'root': {
       const obj = t.objects[ref.tok.v];
-      if (obj) return locate(obj.file, null, null, obj.inline, docPath);
-      // a call of a function declared in this file leads to its declaration
-      const fn = ref.chain.steps.length === 0 && t.fns.find((f) => f.name.v === ref.tok.v);
-      return fn ? { file: docPath, line: fn.name.line, end: fn.name.line + 1, s: fn.name.s, e: fn.name.e } : null;
+      if (obj && obj.inline) return { file: docPath, line: obj.inline[0].line, end: obj.inline[0].line + 1, s: 0, e: 0 };
+      if (obj) return locate(obj.file, null, null, null, docPath);
+      if (ref.chain.steps.length) return null;
+      // a call of a function declared in this file leads to its declaration, and a result caught
+      // earlier — if !ok, err.format("...", ok) — to where it was caught
+      const fn = t.fns.find((f) => f.name.v === ref.tok.v);
+      if (fn) return { file: docPath, line: fn.name.line, end: fn.name.line + 1, s: fn.name.s, e: fn.name.e };
+      const caught = t.refs.filter((x) => x.what === 'caught' && x.tok.v === ref.tok.v && x.tok.line <= ref.tok.line).pop();
+      return caught ? { file: docPath, line: caught.tok.line, end: caught.tok.line + 1, s: caught.tok.s, e: caught.tok.e } : null;
     }
     case 'step': {
       const st = ref.chain.steps[ref.index];
@@ -91,7 +94,8 @@ function resolve(t, ref) {
       if (isKeywordCall(st)) return null;
       const r = loom.walk(t, ref.chain, ref.index + 1);
       if (!r) return null;
-      return locate(r.obj.file, r.bad ? null : r.node, r.view, r.obj.inline, docPath);
+      if (r.bad) return r.obj.inline ? null : locate(r.obj.file, null, r.view, null, docPath);
+      return locate(r.obj.file, r.node, r.view, r.obj.inline && { resources: r.obj.inline, r }, docPath);
     }
     case 'arg': {
       if (ref.tok.t !== 'str') return null;
@@ -101,7 +105,7 @@ function resolve(t, ref) {
       if (!r || r.bad) return null;
       if ((loom.KIND_CALLS[r.typ] || {})[st.name]) {
         const sel = loom.walk(t, chain, index + 1);
-        return locate(sel.obj.file, sel.node, sel.view, sel.obj.inline, docPath);
+        return locate(sel.obj.file, sel.node, sel.view, sel.obj.inline && { resources: sel.obj.inline, r: sel }, docPath);
       }
       // from Loom 2 a bare string is text, not the name of a section of ours
       if (loom.CONTENT_METHODS.has(st.name) && !loom.literalNames(t)) {

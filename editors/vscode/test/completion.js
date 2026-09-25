@@ -354,8 +354,31 @@ const find = (items, label) => items.find((i) => i.label === label);
   ok(caught.includes('after'), 'a caught result still completes its statement', caught);
   const st = labels(at(md, '|').items);
   ok(['if', 'fn', 'return', 'Self'].every((x) => st.includes(x)), 'a new line offers the statement keywords', st);
+  const els = labels(at(md, 'if base.has.Overview {\n} |').items);
+  ok(els.join(',') === 'else,else if', 'after an if block closes, else is offered', els);
+  const typed = labels(at(md, 'if base.has.Overview {\n} el|').items);
+  ok(typed.includes('else'), 'typing else after the block completes it', typed);
   const it = find(at(md, '|').items, 'if');
   ok(it.markdown && it.markdown.includes('**Examples**'), 'a keyword comes with its help', it.markdown);
+}
+
+// ── self written in the template: resource sections ──
+{
+  const tail = ['', '---', 'Self:', '    ```markdown', '    ## job', '    ## tip', '    ```', '', '    ```json', '    { "ddd": 11 }', '    ```',
+    'Self as notes:', '    ```markdown', '    ## tip', '    ```'].join('\n');
+  const top = at(md, 'base.Overview.after(self.|)' + tail).items;
+  const l = labels(top);
+  ok(l.includes('notes') && l.includes('markdown') && l.includes('json') && l.includes('job'), 'self. offers the section names, the kinds, and the parts', l);
+  ok(!l.includes('tip') && find(top, 'notes › tip') && find(top, 'notes › tip').insertText === 'notes."tip"',
+    'a part two documents share is offered with its section, and never bare', l);
+  ok(!l.includes('sections') && !l.includes('has'), 'content is one node at a time: no groups on self', l);
+  const kind = labels(at(md, 'base.Overview.after(self.json.|)' + tail).items);
+  ok(kind.includes('ddd') && !kind.includes('job'), 'a kind narrows to that document', kind);
+  const sec = labels(at(md, 'base.Overview.after(self.notes.|)' + tail).items);
+  ok(sec.includes('tip') && !sec.includes('job') && !sec.includes('notes'), 'a section narrows to its documents', sec);
+  const args = at(md, 'base.Overview.after(|)' + tail).items;
+  ok(find(args, 'job') && find(args, 'notes › tip') && find(args, 'notes › tip').insertText === 'self.notes."tip"' && labels(args).includes('self'),
+    'a content argument offers the parts of Self and self itself', labels(args));
 }
 
 // ── a tree that declares Loom 2 ──

@@ -173,6 +173,20 @@ func TestEditorMirrorsTheTables(t *testing.T) {
 func TestGrammarsKnowEveryWord(t *testing.T) {
 	alt(t, "loom.tmLanguage.json", "named-argument", namedArgs)
 	alt(t, "loom.tmLanguage.json", "format", typeWords())
+	// The words of the added syntax: a field the predicate rule misses is painted as a name.
+	alt(t, "loom.tmLanguage.json", "predicate", predFields)
+	alt(t, "loom.tmLanguage.json", "axis", append(append(append([]string{}, axisWords...), placeWords...), "any", "count", "has"))
+	var groups []string
+	seen := map[string]bool{}
+	for _, calls := range classCalls {
+		for w := range calls {
+			if !seen[w] {
+				seen[w] = true
+				groups = append(groups, w)
+			}
+		}
+	}
+	alt(t, "loom.tmLanguage.json", "group", groups)
 	alt(t, "loom-om.tmLanguage.json", "format", typeWords())
 	// Two rules list the settings: the one that highlights them, and the one that paints
 	// everything else illegal. Both live under their own key and both are checked.

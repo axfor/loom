@@ -154,6 +154,7 @@ function completions(docPath, text, line, character) {
     if (ref.what === 'pred') return predicateItems(whole);
     if (ref.what === 'root' && ref.chain.argOf) return argItems(cx, ref.chain.argOf, whole, false);
     if (ref.what === 'root' && isFirstOnLine(t.toks, inside)) return statementItems(whole);
+    if (ref.what === 'root' && afterClose(t.toks, inside)) return elseItems(whole);
     return [];
   }
 
@@ -166,6 +167,7 @@ function completions(docPath, text, line, character) {
     return call ? argItems(cx, call, empty, false) : statementItems(empty);
   }
   if (prev.t === '[' || prev.t === 'and' || prev.t === 'or') return predicateItems(empty);
+  if (prev.t === '}' && (k === 0 || t.toks[k - 1].t === 'nl')) return elseItems(empty);
   if (prev.t === '(' || prev.t === ',' || prev.t === '{') {
     const call = loom.enclosingCall(t, k, line);
     return call ? argItems(cx, call, empty, false) : [];
@@ -194,6 +196,19 @@ function completions(docPath, text, line, character) {
   return stepItems(cx, ref.chain, ref.what === 'root' ? 0 : ref.index + 1, empty, false);
 }
 
+
+// afterClose: the word follows a `}` that starts its line — where an if's else goes.
+function afterClose(toks, tok) {
+  const k = toks.indexOf(tok);
+  return k > 0 && toks[k - 1].t === '}' && (k === 1 || toks[k - 2].t === 'nl');
+}
+
+function elseItems(range) {
+  return [
+    item('else', 'keyword', { detail: 'what the if does when its question does not hold', markdown: markdownFor('else'), insertText: 'else {\n\t$0\n}', snippet: true, range }),
+    item('else if', 'keyword', { detail: 'ask the next question', markdown: markdownFor('else'), insertText: 'else if base.has.${1:Name} {\n\t$0\n}', snippet: true, range }),
+  ];
+}
 
 function isFirstOnLine(toks, tok) {
   const k = toks.indexOf(tok);
@@ -240,9 +255,23 @@ function stepItems(cx, chain, index, range, quoted) {
     if (chain.root.v === 'base' && !chain.argOf) out.push(...methodItems(r, range));
     return out;
   }
-  const text = cx.read(r.obj.file);
-  if (text != null && !(r.node && r.node.axis)) {
-    const src = { ...loom.viewLines(text, r.view), where: path.relative(cx.t.cfg.root, r.obj.file), typ: r.typ };
+  // self written in this file: the section and kind names still to be said, then the parts of
+  // every document the address can still mean
+  if (r.obj.inline && !r.node && !quoted) {
+    if (!r.res && !r.resKind) {
+      for (const res of r.obj.inline) if (res.name) out.push(item(res.name, 'part', { detail: `Self as ${res.name}:`, range, sortText: '1' }));
+    }
+    if (!r.resKind) {
+      const kinds = new Set(loom.resourceDocs(r.obj.inline, r).map((d) => d.kind));
+      for (const k of kinds) out.push(item(k, 'type', { detail: `the ${k} document of Self`, range, sortText: '1' }));
+    }
+  }
+  const found = [];
+  for (const { text, where, res } of sourcesOf(cx, r)) {
+    if (r.node && r.node.axis) break;
+    const out = [];
+    found.push({ res, items: out });
+    const src = { ...loom.viewLines(text, r.view), where, typ: r.typ };
     // The compiler writes the two sides differently, and this follows it: an anchor into upstream
     // is written as NameText does it, because lm sync rewrites that token when upstream renames
     // something; content of ours is always quoted, because that is what anchor completion appends.
@@ -269,7 +298,7 @@ function stepItems(cx, chain, index, range, quoted) {
         out.push(item(seg, 'node', { detail: `${src.where}:${n.line + 1}`, ...write([seg]), range }));
       }
     } else if (r.node.kind === 'heading') {
-      out.push(...axisItems(range));
+      if (r.obj.layer === 'base') out.push(...axisItems(range));
       // below a section, only its subsections: base."Example 2"."Phase 1"
       const sel = loom.findNode(text, r.node, r.view);
       if (sel) {
@@ -278,13 +307,15 @@ function stepItems(cx, chain, index, range, quoted) {
       }
     }
   }
+  out.push(...apart(found, (res, it) => ({ ...it, label: `${res} › ${it.label}`, insertText: `${res}.${it.insertText}` })));
   // where an axis landed has no name to list subsections of, but can walk on
   if (r.node && r.node.axis && r.node.kind === 'heading' && !quoted) out.push(...axisItems(range));
   if (quoted) return out;
 
   if (r.has) return out;
   if (!r.node) {
-    for (const [word, kind] of Object.entries(loom.CLASS_CALLS[r.typ] || {})) {
+    // a group is something to change, or to ask about; content comes one node at a time
+    for (const [word, kind] of chain.root.v === 'base' ? Object.entries(loom.CLASS_CALLS[r.typ] || {}) : []) {
       out.push(item(word, 'part', { detail: `every ${kind}; [ ... ] picks some`, markdown: markdownFor(word), range, sortText: '3' }));
     }
     if (chain.root.v === 'base') out.push(item('has', 'part', { detail: 'if: does upstream have a part by this name', markdown: markdownFor('has'), insertText: 'has.', retrigger: true, range, sortText: '4' }));
@@ -295,6 +326,35 @@ function stepItems(cx, chain, index, range, quoted) {
     }
   }
   if (chain.root.v === 'base' && !chain.argOf) out.push(...methodItems(r, range));
+  return out;
+}
+
+// sourcesOf: the text an object's names are read from — its file, or for self written in this
+// file, each resource document the walk can be reading, of the kind the parts are read as.
+function sourcesOf(cx, r) {
+  if (r.obj.inline) {
+    return loom.resourceDocs(r.obj.inline, r)
+      .filter((d) => d.kind === r.typ)
+      .map((d) => ({ text: d.text, where: d.res ? `Self as ${d.res}` : 'Self', res: d.res }));
+  }
+  const text = cx.read(r.obj.file);
+  return text == null ? [] : [{ text, where: path.relative(cx.t.cfg.root, r.obj.file) }];
+}
+
+// apart merges what several resource documents offer. A name only one of them has is offered as
+// it is; a name more than one has would be the compiler's "is in two documents" error, so it is
+// offered with its section named where it has one — and not at all from the section that has no
+// name to say, as a name no path can tell apart is never offered.
+function apart(found, qualify) {
+  const count = new Map();
+  for (const f of found) for (const it of f.items) count.set(it.label, (count.get(it.label) || 0) + 1);
+  const out = [];
+  for (const f of found) {
+    for (const it of f.items) {
+      if (count.get(it.label) === 1) out.push(it);
+      else if (f.res) out.push(qualify(f.res, it));
+    }
+  }
   return out;
 }
 
@@ -488,16 +548,20 @@ function argItems(cx, argOf, range, quoted) {
   const out = [];
   if (st.name !== 'drop') {
     // a bare string names our content; a path is not a string, so it is written on self
-    const src = source(self.file, r.view);
     const write = (parts) => (single(parts) && !literal
       ? asString(parts)
       : { insertText: `self.${parts.map(loom.quote).join('.')}`, filterText: quoted ? loom.quote(parts[parts.length - 1]) : typedAs(parts[parts.length - 1]) });
-    if (src) out.push(...nodeItems(src, loom.DEFAULT_KIND[r.typ], null, write, range));
+    const ours = self.inline
+      ? sourcesOf(cx, { obj: self, typ: r.typ }).map(({ text, where, res }) => ({ ...loom.viewLines(text, null), where, typ: r.typ, res }))
+      : [source(self.file, r.view)].filter(Boolean);
+    const found = ours.map((src) => ({ res: src.res, items: nodeItems(src, loom.DEFAULT_KIND[r.typ], null, write, range) }));
+    out.push(...apart(found, (res, it) => ({ ...it, label: `${res} › ${it.label}`, insertText: `self.${res}.${loom.quote(it.label)}` })));
   }
   if (quoted) return out;
   if (st.name !== 'drop') {
     for (const [name, obj] of Object.entries(cx.t.objects)) {
       if (obj.layer === 'self' && obj.file) out.push(item(name, 'object', { detail: path.relative(cx.t.cfg.root, obj.file), range, sortText: '1' }));
+      else if (obj.inline) out.push(item(name, 'object', { detail: 'Self: written in this file', range, sortText: '1' }));
     }
   }
   if (st.name === 'replace' || st.name === 'drop') {

@@ -416,6 +416,7 @@ function parse(toks) {
         continue;
       }
       if (t.t === 'id' && peek(1).t === '=') {
+        refs.push({ what: 'caught', tok: t });
         i += 2;
         continue;
       }
@@ -522,6 +523,23 @@ function walk(t, chain, upto) {
   if (!obj) return null;
   const r = { obj, typ: obj.typ, node: null, view: null, method: null, bad: false };
   const ident = (st) => !st.str && !literalNames(t);
+  // self written in this file's resource sections: a step may name the section, and a step may
+  // name the kind — both optional, in that order, as objparse.go reads them. What follows is an
+  // address inside those documents, of the kind named or else of the product's own type.
+  let first = 0;
+  if (obj.inline) {
+    const s0 = chain.steps[0];
+    if (s0 && !s0.str && !s0.call && obj.inline.some((res) => res.name && res.name === s0.name)) {
+      r.res = s0.name;
+      first++;
+    }
+    const s1 = chain.steps[first];
+    if (s1 && !s1.str && !s1.call && TYPES.has(s1.name)) {
+      r.resKind = s1.name;
+      r.typ = s1.name;
+      first++;
+    }
+  }
   if (chain.argOf && chain.root.v === 'self') {
     // Inside a view, self means the same view of our file.
     const outer = walk(t, chain.argOf.chain, chain.argOf.index);
@@ -530,7 +548,7 @@ function walk(t, chain, upto) {
       r.view = outer.view;
     }
   }
-  for (let k = 0; k < upto && k < chain.steps.length; k++) {
+  for (let k = first; k < upto && k < chain.steps.length; k++) {
     const st = chain.steps[k];
     if (r.method || r.bad) {
       r.bad = true;
@@ -951,6 +969,7 @@ module.exports = {
   isValue,
   atLeast,
   literalNames,
+  resourceDocs,
   lastBefore,
   stepRef,
   enclosingCall,
@@ -988,6 +1007,20 @@ function readResources(toks, text) {
     }
     out.push({ name, docs, line: t.line });
     i = k;
+  }
+  return out;
+}
+
+// resourceDocs: the documents of our resource sections a walk can be reading from — the section
+// it named, the kind it named, and otherwise every one, which is where the compiler looks too.
+function resourceDocs(resources, r) {
+  const out = [];
+  for (const res of resources) {
+    if (r.res && res.name !== r.res) continue;
+    for (const doc of res.docs) {
+      if (r.resKind && doc.kind !== r.resKind) continue;
+      out.push({ ...doc, res: res.name });
+    }
   }
   return out;
 }

@@ -263,6 +263,41 @@ check(sh, shText, 1, 'boot', ['mine/run.sh', 0]);
   // A name no section holds leads nowhere, rather than to the wrong place.
   check(f, src.replace('self.job', 'self.nope'), 0, 'nope', null);
 }
+{
+  // The whole address, self[.section][.kind].part: each step optional, read the compiler's way.
+  const f = path.join(root, 't/skills/testing/SKILL.md.lm');
+  const src = [
+    'base.Overview.after(self.markdown.job)',     // 0
+    'base.Overview.after(self.json.ddd)',         // 1
+    'base.Overview.after(self.notes.markdown.tip)', // 2
+    'base.Overview.after(self.notes.tip)',        // 3
+    'base.Overview.after(self.tip)',              // 4
+    '---',                                        // 5
+    'Self:',                                      // 6
+    '    ```markdown',                            // 7
+    '    ## job',                                 // 8
+    '    ## tip',                                 // 9
+    '    ```',                                    // 10
+    '',                                           // 11
+    '    ```json',                                // 12
+    '    { "ddd": 11 }',                          // 13
+    '    ```',                                    // 14
+    'Self as notes:',                             // 15
+    '    ```markdown',                            // 16
+    '    ## tip',                                 // 17
+    '    ```',                                    // 18
+  ].join('\n');
+  const at = 't/skills/testing/SKILL.md.lm';
+  check(f, src, 0, 'job', [at, 8]);
+  check(f, src, 1, 'ddd', [at, 13]);
+  check(f, src, 2, 'tip', [at, 17]);
+  check(f, src, 3, 'tip', [at, 17]);
+  // tip is in two documents: the compiler refuses it, so the jump goes nowhere rather than guess
+  check(f, src, 4, 'tip', null);
+  // a section name leads to its Self line, a kind to the fence holding it
+  check(f, src, 3, 'notes', [at, 15]);
+  check(f, src, 1, 'json', [at, 12]);
+}
 
 // The added syntax: a name asked about, a name inside an if block, and a call of a function.
 {
@@ -283,6 +318,9 @@ check(sh, shText, 1, 'boot', ['mine/run.sh', 0]);
   check(f, text, 2, 'Old_Overview', ['upstream/old/guide.md', 2]);
   check(f, text, 5, 'Old_Overview', ['upstream/old/guide.md', 2]);
   check(f, text, 7, 'both', ['t/skills/testing/SKILL.md.lm', 4]);
+  const caught = 'ok = base.Old_Overview.after("Überblick")\nif !ok {\n    return err.format("no %s", ok)\n}';
+  check(f, caught, 1, 'ok', [path.relative(root, f), 0]);
+  check(f, caught, 2, 'ok', [path.relative(root, f), 0], 1);
   check(f, text, 8, 'Old_Overview', ['upstream/old/guide.md', 2]);
   // A group, and where an axis lands, is not one heading: the file, never a guessed section.
   check(f, text, 9, 'sections', ['upstream/old/guide.md', 0]);

@@ -233,7 +233,29 @@ function expectNot(grammar, line, text, scope) {
   expect(lm, 'base.sections[name ~ "^S" && !empty].demote()', '&&', 'keyword.operator.loom');
   expect(lm, 'base.sections[name ~ "^S" && !empty].demote()', 'empty', 'support.function.predicate.loom');
   expect(lm, 'base.X.children.drop(reason: "r")', 'children', 'support.function.axis.loom');
-  expect(lm, 'base.sections.demote()', 'sections', 'support.function.axis.loom');
+  // A group is a word of the language whether it is bare, picked by a predicate, or called.
+  for (const g of ['base.sections.demote()', 'base.sections[level == 2].demote()', 'base.sections(level: 2).demote()']) {
+    expect(lm, g, 'sections', 'support.type.group.loom');
+  }
+  expect(lm, 'base.keys[value == ""].drop(reason: "r")', 'value', 'support.function.predicate.loom');
+  // Self as name: names a section, and is not a named argument that does not exist
+  expect(lm, 'Self as notes:', 'as', 'keyword.operator.as.loom');
+  expect(lm, 'Self as notes:', 'notes', 'entity.name.section.loom');
+  expectNot(lm, 'Self as notes:', 'notes', 'invalid.illegal.unknown-argument.loom');
+  expect(lm, 'Self:', 'Self', 'keyword.control.loom');
+  // a result caught, and the ! that asks whether it failed
+  expect(lm, 'ok = base.X.after(self.y)', 'ok', 'variable.other.readwrite.loom');
+  expect(lm, 'ok = base.X.after(self.y)', '=', 'keyword.operator.assignment.loom');
+  expectNot(lm, 'ok = base.X.after(self.y)', 'ok', 'invalid.illegal.unknown-statement.loom');
+  expect(lm, 'if !ok {', '!', 'keyword.operator.logical.loom');
+  // an if's { opens its block: the name before it is a node, not a misspelled method
+  expect(lm, 'if base.has.Overview {', 'Overview', 'variable.other.property.loom');
+  expectNot(lm, 'if base.has.Overview {', 'Overview', 'invalid.illegal.unknown-method.loom');
+  expect(lm, '} else if base.has.Usage {', 'Usage', 'variable.other.property.loom');
+  expect(lm, 'return err.format("no %s", ok)', 'format', 'entity.name.function.method.loom');
+  expectNot(lm, 'return err.format("no %s", ok)', 'format', 'invalid.illegal.unknown-method.loom');
+  // and outside an if, a { after an unknown name is still a method misspelled
+  expect(lm, 'base.X.aftr{', 'aftr', 'invalid.illegal.unknown-method.loom');
   expect(lm, 'base.start.project(base.sections){', 'start', 'support.function.axis.loom');
   expect(lm, 'base.X.after{', 'after', 'entity.name.function.method.loom');
   expect(lm, 'base.frontmatter.d.end(self.frontmatter.d)', 'end', 'entity.name.function.method.loom');
@@ -264,6 +286,31 @@ function expectNot(grammar, line, text, scope) {
   expect(sh, 'echo "{{@@url}}"', '{{@@url}}', 'constant.character.escape.placeholder.loom');
   expectNot(sh, 'echo "{{ .Values.url }}"', '.Values', 'variable.other.placeholder.loom');
 
+  // The spec's own examples are correct Loom: not one of its code blocks may be painted as a typo.
+  // A rule that marks a real construct illegal makes a correct file look broken, and the spec is
+  // where every construct is written down.
+  const spec = path.join(root, '..', '..', 'SYNTAX.md');
+  if (fs.existsSync(spec)) {
+    let blocks = 0;
+    for (const m of fs.readFileSync(spec, 'utf8').matchAll(/^```go\n([\s\S]*?)^```$/gm)) {
+      blocks++;
+      let st = vsctm.INITIAL;
+      for (const line of m[1].split('\n')) {
+        const r = lm.tokenizeLine(line, st);
+        st = r.ruleStack;
+        const bad = r.tokens.find((t) => t.scopes.some((x) => x.startsWith('invalid.')));
+        if (bad) {
+          fail++;
+          console.log(`  ❌ SYNTAX.md: ${JSON.stringify(line.slice(bad.startIndex, bad.endIndex))} is painted as a typo in ${JSON.stringify(line)}`);
+        }
+      }
+    }
+    if (blocks >= 30) pass++;
+    else {
+      fail++;
+      console.log(`  ❌ only ${blocks} code blocks read from SYNTAX.md; the spec has more, so this is not reading it right`);
+    }
+  }
   console.log(`loom grammar: ${pass} passed, ${fail} failed`);
   process.exit(fail === 0 ? 0 : 1);
 })().catch((e) => {

@@ -16,7 +16,16 @@
       "include": "#unknown-statement"
     },
     {
+      "include": "#caught"
+    },
+    {
       "include": "#separator"
+    },
+    {
+      "include": "#resource"
+    },
+    {
+      "include": "#condition"
     },
     {
       "include": "#keyword"
@@ -26,6 +35,9 @@
     },
     {
       "include": "#axis"
+    },
+    {
+      "include": "#group"
     },
     {
       "include": "#string"
@@ -186,6 +198,18 @@
     },
     "step": {
       "patterns": [
+        {
+          "comment": "err.format(...): the build's own error, written by return",
+          "match": "(?<=\\berr)(\\.)\\s*(format)\\s*(?=\\()",
+          "captures": {
+            "1": {
+              "name": "punctuation.accessor.loom"
+            },
+            "2": {
+              "name": "entity.name.function.method.loom"
+            }
+          }
+        },
         {
           "comment": "methods: they change base",
           "match": "(\\.)\\s*(after|before|start|append|replace|drop|set|merge|wrap|swap|unwrap|split|join|move|promote|demote|project|end)\\s*(?=[({])",
@@ -505,7 +529,7 @@
     },
     "axis": {
       "comment": "a step to a node the document relates to this one",
-      "match": "(\\.)\\s*(children|next|prev|parent|first|last|any|count|has|sections|lines|functions|markers|keys|values|start|end|append|after|before)(?![\\w({\\[])",
+      "match": "(\\.)\\s*(children|next|prev|parent|first|last|any|count|has|start|end|append|after|before)(?![\\w({\\[])",
       "captures": {
         "1": {
           "name": "punctuation.accessor.loom"
@@ -531,7 +555,7 @@
       },
       "patterns": [
         {
-          "match": "\\b(level|name|empty|calls|has)\\b",
+          "match": "\\b(level|name|value|empty|calls|has)\\b",
           "name": "support.function.predicate.loom"
         },
         {
@@ -550,6 +574,107 @@
       "comment": "the line of dashes: everything after it is resource sections",
       "match": "^\\s*---+\\s*$",
       "name": "punctuation.definition.section.loom"
+    },
+    "group": {
+      "comment": "a group of nodes: every one of a kind, or those a predicate in brackets picks",
+      "match": "(\\.)\\s*(sections|lines|functions|markers|keys|values)(?![\\w])",
+      "captures": {
+        "1": {
+          "name": "punctuation.accessor.loom"
+        },
+        "2": {
+          "name": "support.type.group.loom"
+        }
+      }
+    },
+    "resource": {
+      "comment": "Self: / Self as name: — a resource section after the dashes",
+      "match": "^\\s*(Self)\\b(?:\\s+(as)\\s+([\\p{L}_][\\p{L}\\p{N}_]*))?\\s*(:)",
+      "captures": {
+        "1": {
+          "name": "keyword.control.loom"
+        },
+        "2": {
+          "name": "keyword.operator.as.loom"
+        },
+        "3": {
+          "name": "entity.name.section.loom"
+        },
+        "4": {
+          "name": "punctuation.separator.key-value.loom"
+        }
+      }
+    },
+    "caught": {
+      "comment": "ok = ...: a result caught for an if to ask about, and the ! that asks whether it failed",
+      "patterns": [
+        {
+          "match": "^\\s*([\\p{L}_][\\p{L}\\p{N}_]*)\\s*(=)(?!=)",
+          "captures": {
+            "1": {
+              "name": "variable.other.readwrite.loom"
+            },
+            "2": {
+              "name": "keyword.operator.assignment.loom"
+            }
+          }
+        },
+        {
+          "match": "(?<=\\bif)\\s*(!)",
+          "captures": {
+            "1": {
+              "name": "keyword.operator.logical.loom"
+            }
+          }
+        }
+      ]
+    },
+    "condition": {
+      "comment": "an if's question runs to the { that opens its block, which is not a method's block — so a name before it is a node, not a method misspelled",
+      "begin": "(?<![\\w.])(if)(?![\\w])",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.loom"
+        }
+      },
+      "end": "(?=\\{)|$",
+      "patterns": [
+        {
+          "include": "#comment"
+        },
+        {
+          "include": "#caught"
+        },
+        {
+          "include": "#predicate"
+        },
+        {
+          "include": "#axis"
+        },
+        {
+          "include": "#group"
+        },
+        {
+          "include": "#string"
+        },
+        {
+          "include": "#number"
+        },
+        {
+          "include": "#object"
+        },
+        {
+          "match": "(\\.)\\s*([\\p{L}_][\\p{L}\\p{N}_]*)",
+          "captures": {
+            "1": {
+              "name": "punctuation.accessor.loom"
+            },
+            "2": {
+              "name": "variable.other.property.loom"
+            }
+          }
+        }
+      ]
     }
   }
 }
