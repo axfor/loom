@@ -1233,7 +1233,7 @@ func project(c *lang.Config, t *lang.Template, r lang.Ref, rel string) (string, 
 // which.
 func inlineDoc(t *lang.Template, r lang.Ref) (string, error) {
 	var docs []lang.ResourceDoc
-	var where []string
+	var where, section []string
 	for _, res := range t.Resources {
 		if r.Res != "" && res.Name != r.Res {
 			continue
@@ -1243,6 +1243,7 @@ func inlineDoc(t *lang.Template, r lang.Ref) (string, error) {
 				continue
 			}
 			docs = append(docs, d)
+			section = append(section, res.Name)
 			name := d.Kind
 			if res.Name != "" {
 				name = res.Name + "." + d.Kind
@@ -1287,10 +1288,29 @@ func inlineDoc(t *lang.Template, r lang.Ref) (string, error) {
 		return "", fmt.Errorf("%s: none of our documents (%s) has %q", r.Rng, strings.Join(where, ", "), r.Anchor)
 	}
 	var both []string
+	kinds, sections := map[string]bool{}, map[string]bool{}
 	for _, i := range hits {
 		both = append(both, where[i])
+		kinds[docs[i].Kind] = true
+		sections[section[i]] = true
 	}
-	return "", fmt.Errorf("%s: %q is in %s — name the kind: self.%s.%s", r.Rng, r.Anchor, strings.Join(both, " and "), docs[hits[0]].Kind, lang.Quote(r.Anchor))
+	// Say the step that tells them apart. The kind does only when the documents differ in kind;
+	// otherwise it is the section, and a section without a name cannot be named until it has one.
+	how := fmt.Sprintf("name the kind: self.%s.%s", docs[hits[0]].Kind, lang.Quote(r.Anchor))
+	if len(kinds) < len(hits) {
+		named := ""
+		for _, i := range hits {
+			if section[i] != "" {
+				named = section[i]
+				break
+			}
+		}
+		how = fmt.Sprintf("name the section: self.%s.%s", named, lang.Quote(r.Anchor))
+		if sections[""] {
+			how += "; the one in Self: has no name to say — give it one: Self as main:"
+		}
+	}
+	return "", fmt.Errorf("%s: %q is in %s — %s", r.Rng, r.Anchor, strings.Join(both, " and "), how)
 }
 
 // locateQuiet answers only whether a reference is findable, with no error to report.

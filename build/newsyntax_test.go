@@ -273,6 +273,10 @@ func TestResourceSections(t *testing.T) {
 		{"base.Setup.after(self.job)\n---\nSelf:\n    ```nope\n    x\n    ```\n", "unknown kind"},
 		{"base.Setup.after(self.job)\n---\nSelf:\n", "holds nothing"},
 		{"base.Setup.after(self.job)\n---\nSelf:\n    ```markdown\n    ## job\n    ```\n---\nSelf:\n    ```markdown\n    ## other\n    ```\n", "written twice"},
+		// Two of the same kind are told apart by their section, not their kind; and a section with
+		// no name cannot be named until it has one, which is what the author is told to do.
+		{"base.Setup.after(self.job)\n---\nSelf as a:\n    ```markdown\n    ## job\n    ```\n---\nSelf as b:\n    ```markdown\n    ## job\n    ```\n", "name the section: self.a.\"job\""},
+		{"base.Setup.after(self.job)\n---\nSelf:\n    ```markdown\n    ## job\n    ```\n---\nSelf as b:\n    ```markdown\n    ## job\n    ```\n", "give it one: Self as main:"},
 	} {
 		if _, err := weave(c.tpl); err == nil {
 			t.Errorf("%q: accepted", c.tpl)
