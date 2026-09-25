@@ -1324,3 +1324,23 @@ func TestAnInsertionWhereARewriteStartsSurvives(t *testing.T) {
 		}
 	}
 }
+
+// A split at a heading changes that heading's level and nothing else, and it is that heading the
+// build checks — not the section being cut, whose own lines a split never touches.
+func TestASplitChecksTheHeadingItCutsAt(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n")
+	mustWrite(t, filepath.Join(dir, "up", "a.md"), "# T\n\n## Setup\n\nintro\n\n### Step B\n\nb\n\n## Other\n\no\n")
+	mustWrite(t, filepath.Join(dir, "me", "a.md.lm"), "base.Setup.split(base.Setup.\"Step B\")\n")
+	c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := buildTree(t, c, filepath.Join(dir, "out")); err != nil {
+		t.Fatalf("a split at a heading builds: %v", err)
+	}
+	mustWrite(t, filepath.Join(dir, "me", "a.md.lm"), "base.Setup.split(base.Setup.\"Step B\")\nbase.Setup.drop(reason: \"x\")\n")
+	if _, err := buildTree(t, c, filepath.Join(dir, "out2")); err == nil || strings.Contains(err.Error(), "splitd") {
+		t.Errorf("a split of a section also dropped is refused, in words: %v", err)
+	}
+}

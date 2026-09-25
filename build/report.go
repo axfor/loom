@@ -48,6 +48,42 @@ type Report struct {
 	UpBytes, VerifiedBytes int
 }
 
+// splitKept checks the heading a split cut at: in the product once, and identical to upstream's
+// but for its # markers.
+func splitKept(up, out ast.Tree, s lang.Stmt) error {
+	span, err := moveTo(up, s)
+	if err != nil {
+		return nil // the anchor error is reported where the weave failed
+	}
+	name := ""
+	for _, n := range ast.Addressable(up, "heading") {
+		if n.Line == span[0] {
+			name = n.Name
+		}
+	}
+	var got []string
+	found := 0
+	for _, n := range ast.Addressable(out, "heading") {
+		if n.Name == name {
+			found++
+			got = out.Lines()[n.Line:n.End]
+		}
+	}
+	if found != 1 {
+		return fmt.Errorf("%s: %q, where %s was split, is not in the product once", s.Rng, name, s.Anchor)
+	}
+	trim := func(ls []string) string {
+		for len(ls) > 0 && strings.TrimSpace(ls[len(ls)-1]) == "" {
+			ls = ls[:len(ls)-1]
+		}
+		return strings.Join(ls, "\n")
+	}
+	if unlevel(trim(got)) != unlevel(trim(up.Lines()[span[0]:span[1]])) {
+		return fmt.Errorf("%s: %s was split at %q, and something other than its heading level changed", s.Rng, s.Anchor, name)
+	}
+	return nil
+}
+
 // moveName says where a move went as the template says it: the node, and the axes from it.
 func moveName(m *lang.Move) string {
 	name := m.Anchor
@@ -387,13 +423,21 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 		if !upOK {
 			break
 		}
+		if s.Op == "split" {
+			// A split at a heading changes that heading, not the section it cuts, so the cut is
+			// what has to come through unchanged but for its level.
+			if err := splitKept(upTree, ast.New(t.Type, outText), s); err != nil {
+				errs = append(errs, err)
+			}
+			continue
+		}
 		want, err := nodeText(upTree, s.Kind, s.Within, s.Anchor, s.Ident, s)
 		if err != nil {
 			continue
 		}
 		got, err := nowAt(ast.New(t.Type, outText), s)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("%s: %s was %sd but is not in the product", s.Rng, s.Anchor, s.Op))
+			errs = append(errs, fmt.Errorf("%s: %s was %s but is not in the product", s.Rng, s.Anchor, s.Op+"d"))
 			continue
 		}
 		if unlevel(got) != unlevel(want) {
