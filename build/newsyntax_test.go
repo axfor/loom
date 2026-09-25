@@ -1210,3 +1210,39 @@ func TestDroppingAKeyTakesWhatIsUnderIt(t *testing.T) {
 		t.Errorf("the key and what is under it are gone, the rest stays:\n%s", got)
 	}
 }
+
+// A text file's lines are accounted for like any other type's nodes. A merge that rewrote an
+// upstream line and said nothing used to pass: the line was simply gone. Now it is named, with the
+// statement that accounts for it — and that statement is checked to be true.
+func TestATextFileLosesNoLineInSilence(t *testing.T) {
+	const up = "// check the skills\nconst a = require('./a');\nrun(a);\n"
+	build := func(ours, tpl string) error {
+		dir := t.TempDir()
+		mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\n")
+		mustWrite(t, filepath.Join(dir, "up", "v.js"), up)
+		mustWrite(t, filepath.Join(dir, "me", "v.js"), ours)
+		mustWrite(t, filepath.Join(dir, "me", "v.lm"), tpl)
+		c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = buildTree(t, c, filepath.Join(dir, "out"))
+		return err
+	}
+	const ours = "// check the skills, ours too\nconst a = require('./a');\nrun(a);\n"
+	err := build(ours, "base.merge(self)\n")
+	if err == nil || !strings.Contains(err.Error(), `line "// check the skills" is not in the product`) ||
+		!strings.Contains(err.Error(), `base.line("// check the skills").drop(reason:`) {
+		t.Errorf("a rewritten line is lost unless a reason is given, and the error says how: %v", err)
+	}
+	if err := build(ours, "base.merge(self)\nbase.line(\"// check the skills\").drop(reason: \"we check ours too\")\n"); err != nil {
+		t.Errorf("a line dropped with a reason is accounted for: %v", err)
+	}
+	// A drop is a claim, and a merge's product is checked against it.
+	if err := build(up, "base.merge(self)\nbase.line(\"// check the skills\").drop(reason: \"x\")\n"); err == nil || !strings.Contains(err.Error(), "still there") {
+		t.Errorf("a line declared dropped that is still there is refused: %v", err)
+	}
+	if err := build(up+"more();\n", "base.merge(self)\n"); err != nil {
+		t.Errorf("adding lines loses nothing: %v", err)
+	}
+}

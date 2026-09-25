@@ -204,6 +204,12 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 		kind = "function"
 	case "toml", "yaml":
 		kind = "key"
+	case "text":
+		// A text file's nodes are its lines, and a line is named by what it says: changing one
+		// loses it as surely as deleting it. That is stricter than the other types, where a node
+		// keeps its name while its body changes — and it is the only way a merge of a .js or .txt
+		// file can be held to the rule that nothing of upstream's goes missing in silence.
+		kind = "line"
 	}
 	// A tree for every type, not just the two that have names worth accounting for: the byte count
 	// below has to locate a dropped node to subtract it, and without a tree it either crashes or,
@@ -338,8 +344,8 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 		}
 	}
 
-	// What follows is accounting by name, and only markdown headings and shell functions have
-	// names to account for. Everything found so far still counts: returning nil here threw away
+	// What follows is accounting by name: markdown headings, shell functions, toml and yaml keys,
+	// and the lines of a text file. Everything found so far still counts: returning nil here threw away
 	// errors already collected, which is how a key of ours could go missing in silence.
 	if upTree == nil || kind == "" {
 		return errs
@@ -500,8 +506,14 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 	for _, name := range order {
 		if missing := need[name] - have[name] - covered[name]; missing > 0 {
 			what := nodeWord(kind)
+			// A line is named by its text, which is rarely an identifier: say it the way that
+			// always reads as a line.
+			how := "base." + lang.NameTextFor(name, c.Loom)
+			if kind == "line" {
+				how = "base.line(" + lang.Quote(name) + ")"
+			}
 			errs = append(errs, fmt.Errorf("%s: upstream content lost: in %s, %s %q is not in the product and no drop / replace gives a reason. "+
-				"Weave it in, or write: base.%s.drop(reason: \"...\")", t.Path, t.Target, what, name, lang.NameTextFor(name, c.Loom)))
+				"Weave it in, or write: %s.drop(reason: \"...\")", t.Path, t.Target, what, name, how))
 		}
 	}
 	return errs

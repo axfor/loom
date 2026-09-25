@@ -371,15 +371,18 @@ do. Each row was checked by running the build, not read off the code.
 | toml | by key | by key | the whole file, unless a value is written | — | yes |
 | yaml | by key | by key | the whole file, unless a value is written | — | yes |
 | json | by construction: a registry merge is upstream's entries plus ours | — | — (a registry is merged whole) | — | — |
-| text | **no** — see below | **no** | the whole file | — | — (a move needs a plain node, and every line is a call) |
+| text | by line — see below | **no** | the whole file | — | — (a move needs a plain node, and every line is a call) |
 
 Anchor completion stops where order stops meaning anything: a section follows the section before
 it, and so does a function, but a toml key's neighbour says nothing about where a new key belongs.
 
-**text is the one gap, and it is deliberate.** Its nodes are lines, and a line *is* its content, so
+**text is held to more than the others.** Its nodes are lines, and a line *is* its content, so
 "this node is still here" — the question asked of the other types, indifferent to what changed
-inside it — becomes "this line is unchanged". That is a far stricter promise, not the same one
-extended, so it is not made without asking. TODO.md carries the decision and what it would cost.
+inside it — becomes "this line is unchanged". A merge of a `.js` file that rewrites an upstream
+line has to say why, `base.line("...").drop(reason: "...")`, and the build checks the line really
+is gone. That is a far stricter promise than the other types make, and it was made on purpose:
+without it a text merge could lose upstream's lines in silence, which is the one thing this
+language exists to prevent.
 
 A nested key is reached by chaining names, `base.jobs.test`, or by quoting the whole path,
 `base."jobs.test"`, for a segment a dot cannot spell. A trailing part of a path is enough while it
@@ -958,8 +961,8 @@ it, and the build refuses them rather than ignore them.
 2. Completes anchors (below) and writes them back into templates.
 3. Weaves each template and checks it:
    - **lost content**: for every kind of node the build can name — markdown sections, shell
-     functions, toml and yaml keys — every upstream node must still be in the product (marks
-     stripped) or be accounted for by a `drop` / `replace` with a reason.
+     functions, toml and yaml keys, the lines of a text file — every upstream node must still be in
+     the product (marks stripped) or be accounted for by a `drop` / `replace` with a reason.
      Otherwise the build fails. A whole-file replace with a reason accounts for the whole file.
    - **dropping a section with subsections** requires dropping (or otherwise accounting for) each
      subsection, since a section stops at the next heading.
