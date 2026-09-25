@@ -142,6 +142,16 @@ func (r *run) ask(tree ast.Tree, c *lang.Cond) (bool, error) {
 		yes = why == ""
 	case c.Has != "":
 		yes = len(tree.Find(c.Kind, c.Has)) > 0
+		// Loom 1 reads an unquoted name by the underscore rule here as everywhere: has.Set_Up
+		// asks about "Set Up". A question, so a name matched is a yes and none is a no.
+		if !yes && c.HasIdent {
+			for _, n := range ast.Addressable(tree, c.Kind) {
+				if identMatch(n.Name, c.Has) {
+					yes = true
+					break
+				}
+			}
+		}
 	case c.Any:
 		found, err := selected(tree, c.Sel)
 		if err != nil {

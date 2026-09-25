@@ -210,11 +210,16 @@ func run(cmd string, args []string) error {
 
 func printSync(r *build.SyncReport) {
 	fmt.Printf("upstream    %4d added · %d changed · %d removed\n", len(r.Added), len(r.Changed), len(r.Removed))
+	// Most lines are files; followed and ambiguous list renames, several of which can be one file.
 	list := func(title string, paths []string, note string) {
 		if len(paths) == 0 {
 			return
 		}
-		fmt.Printf("%-11s %4d files   %s\n", title, len(paths), note)
+		unit := "files"
+		if title == "followed" || title == "ambiguous" {
+			unit = "names"
+		}
+		fmt.Printf("%-11s %4d %-5s   %s\n", title, len(paths), unit, note)
 		for _, p := range paths {
 			fmt.Printf("  %s\n", p)
 		}

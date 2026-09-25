@@ -778,7 +778,7 @@ func (in *interp) select_(r *receiver, st oStep) error {
 		if st.call || r.typ != "markdown" || r.kind != "heading" || (!st.str && (st.name == "frontmatter" || st.name == "body")) {
 			return fmt.Errorf("%s: below a node you can only select a markdown section by name, base.\"Parent\".\"Child\", or a frontmatter key, base.frontmatter.description", st.pos)
 		}
-		r.within = append(r.within, Seg{r.anchor, r.ident})
+		r.within = append(r.within, Seg{r.anchor, r.ident, r.pos})
 		r.anchor, r.ident, r.pos = st.name, in.ident(st), st.pos
 		return nil
 	}
@@ -1034,7 +1034,7 @@ func (in *interp) method(r receiver, st oStep) error {
 				return err
 			}
 			out = append(out, Stmt{Op: "split", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within,
-				Move: &Move{Side: "before", Kind: cut.Kind, Anchor: cut.Anchor, Ident: cut.Ident, Within: cut.Within}, Rng: at})
+				Move: &Move{Side: "before", Kind: cut.Kind, Anchor: cut.Anchor, Ident: cut.Ident, Within: cut.Within, At: cut.At}, Rng: at})
 			break
 		}
 		if pos[1].val.kind != vString {
@@ -1048,7 +1048,7 @@ func (in *interp) method(r receiver, st oStep) error {
 			return fmt.Errorf("%s: split cuts a section in two, so it applies to a markdown section", at)
 		}
 		out = append(out, Stmt{Op: "split", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within,
-			Move: &Move{Side: "before", Kind: cut.Kind, Anchor: cut.Anchor, Ident: cut.Ident, Within: cut.Within}, Reason: pos[1].val.str, Rng: at})
+			Move: &Move{Side: "before", Kind: cut.Kind, Anchor: cut.Anchor, Ident: cut.Ident, Within: cut.Within, At: cut.At}, Reason: pos[1].val.str, Rng: at})
 	case "project":
 		// base.start.project(sel){ template } — the place says where the derived content goes,
 		// the selection says what shape it is read from, the block is how each node is written.
@@ -1188,19 +1188,19 @@ func (in *interp) moveTarget(side string, v oValue, typ string) (*Move, error) {
 			return nil, fmt.Errorf("%s: move takes a plain node, not a call", st.pos)
 		}
 		names = append(names, st.name)
-		if in.ident(st) {
-			m.Ident = true
-		}
 	}
+	last := e.steps[len(e.steps)-1]
+	m.At = last.pos
 	if hasValues(typ) {
 		m.Anchor = strings.Join(names, ".")
-		m.Ident = false
 		return m, nil
 	}
-	for _, n := range names[:len(names)-1] {
-		m.Within = append(m.Within, Seg{Name: n})
+	// Each segment is read by its own spelling, as it is where the same path starts a statement:
+	// base.How_It.Step_A finds "How It" > "Step A" in either place.
+	for _, st := range e.steps[:len(e.steps)-1] {
+		m.Within = append(m.Within, Seg{st.name, in.ident(st), st.pos})
 	}
-	m.Anchor = names[len(names)-1]
+	m.Anchor, m.Ident = last.name, in.ident(last)
 	return m, nil
 }
 
@@ -1358,7 +1358,7 @@ func (in *interp) contents(args []oArg, typ string, inView bool) ([]Ref, error) 
 					}
 				}
 				for _, st := range e.steps[:len(e.steps)-1] {
-					ref.Within = append(ref.Within, Seg{st.name, in.ident(st)})
+					ref.Within = append(ref.Within, Seg{st.name, in.ident(st), st.pos})
 				}
 				last := e.steps[len(e.steps)-1]
 				ref.Kind, ref.Anchor, ref.Ident = "heading", last.name, in.ident(last)

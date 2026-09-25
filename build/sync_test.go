@@ -247,3 +247,52 @@ func TestSyncWritesTheNameByTheVersion(t *testing.T) {
 		}
 	}
 }
+
+// A rename is followed everywhere the template names the node, however it is written: the
+// statement's own node, a parent in a path, where a move points, and what an if asks about. One
+// left behind either stops the build or — in an if — quietly takes the other branch.
+func TestSyncFollowsEveryPlaceANameIsWritten(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n")
+	mustWrite(t, filepath.Join(dir, "up", "a.md"), "# T\n\n## Set Up\n\nsetup body\n\n### Step A\n\na\n\n## Other\n\no\n")
+	mustWrite(t, filepath.Join(dir, "me", "a.md"), "## Ours\n\nours\n")
+	tpl := "if base.has.Set_Up {\n    base.Set_Up.after(self.Ours)\n} else {\n    base.start(self.Ours)\n}\n" +
+		"base.Other.move(after: base.\"Set Up\")\nbase.Set_Up.Step_A.promote()\n"
+	mustWrite(t, filepath.Join(dir, "me", "a.md.lm"), tpl)
+	mustWrite(t, filepath.Join(dir, "up", "ci.yaml"), "jobs:\n  old:\n    runs-on: ubuntu\n")
+	mustWrite(t, filepath.Join(dir, "me", "ci.yaml.lm"), "base.jobs.old.\"runs-on\".after(`    timeout: 5`)\n")
+	next := t.TempDir()
+	mustWrite(t, filepath.Join(next, "a.md"), "# T\n\n## Getting Started\n\nsetup body\n\n### Step A\n\na\n\n## Other\n\no\n")
+	mustWrite(t, filepath.Join(next, "ci.yaml"), "jobs:\n  new:\n    runs-on: ubuntu\n")
+	c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := buildTree(t, c, filepath.Join(dir, "out")); err != nil {
+		t.Fatalf("the tree must build before the sync: %v", err)
+	}
+	r, err := build.Sync(c, next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "if base.has.Getting_Started {\n    base.Getting_Started.after(self.Ours)\n} else {\n    base.start(self.Ours)\n}\n" +
+		"base.Other.move(after: base.Getting_Started)\nbase.Getting_Started.Step_A.promote()\n"
+	if got := readFile(t, filepath.Join(dir, "me", "a.md.lm")); got != want {
+		t.Errorf("every place the name is written follows it:\n%s\nwant\n%s", got, want)
+	}
+	// A key is named by its path; only the segment that changed is rewritten, the parent's too.
+	if got := readFile(t, filepath.Join(dir, "me", "ci.yaml.lm")); got != "base.jobs.new.\"runs-on\".after(`    timeout: 5`)\n" {
+		t.Errorf("a nested key's rename rewrites its own segment:\n%s", got)
+	}
+	// One line per rename, not one per place it was written.
+	if n := strings.Count(strings.Join(r.Followed, "\n"), "Set Up → Getting Started"); n != 1 {
+		t.Errorf("the rename is reported %d times: %v", n, r.Followed)
+	}
+	out := filepath.Join(dir, "out2")
+	if _, err := buildTree(t, c, out); err != nil {
+		t.Errorf("the followed tree must build: %v", err)
+	}
+	if got := readFile(t, filepath.Join(out, "a.md")); !strings.Contains(got, "## Getting Started\n\nsetup body\n\n<!-- B -->") {
+		t.Errorf("the if still takes the branch it took before the rename:\n%s", got)
+	}
+}

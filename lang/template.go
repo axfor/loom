@@ -89,6 +89,7 @@ type Move struct {
 	Anchor string
 	Ident  bool
 	Within []Seg
+	At     Pos // where Anchor is written, so lm sync can follow a rename of it
 }
 
 // Template is one template: which product it weaves, from which base, and how.
@@ -108,18 +109,23 @@ type Template struct {
 type Seg struct {
 	Name  string
 	Ident bool
+	At    Pos // where the segment is written, so lm sync can follow a rename of it
 }
 
 // Cond is what an `if` asks. Either a variable an earlier statement's result was caught in, or a
 // read-only question about the document — which is always safe, because asking writes nothing.
 type Cond struct {
 	Not  bool
-	Var  string  // `if !ok`
-	Kind string  // the node kind the question is about
-	Has  string  // `if base.has.Overview`
-	Sel  *Select // `if base.sections[level == 2].any`
-	Any  bool
-	Rng  Pos
+	Var  string // `if !ok`
+	Kind string // the node kind the question is about
+	Has  string // `if base.has.Overview`
+	// HasIdent: Has is written unquoted and read by the underscore rule (Loom 1); HasAt is where,
+	// so lm sync can follow a rename of it.
+	HasIdent bool
+	HasAt    Pos
+	Sel      *Select // `if base.sections[level == 2].any`
+	Any      bool
+	Rng      Pos
 }
 
 // Resource is one `Self:` section: the documents written inline in the template.

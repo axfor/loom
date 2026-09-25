@@ -48,6 +48,21 @@ type Report struct {
 	UpBytes, VerifiedBytes int
 }
 
+// nowAt reads a node that was moved or had its level changed from where it is now. Its path says
+// where it was: a promote takes it out of its parent, a move can take it anywhere. So the path is
+// shortened from the end — the ancestors it still has — down to none, and the first that holds
+// the node is where it is.
+func nowAt(tree ast.Tree, s lang.Stmt) (string, error) {
+	var err error
+	for k := len(s.Within); k >= 0; k-- {
+		var text string
+		if text, err = nodeText(tree, s.Kind, s.Within[:k], s.Anchor, s.Ident, s); err == nil {
+			return text, nil
+		}
+	}
+	return "", err
+}
+
 // ReportLine is one line of the report: which product file, and what happened to it.
 type ReportLine struct {
 	Path, Detail string
@@ -339,7 +354,7 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 			if err != nil {
 				continue // the anchor error is reported where the weave failed
 			}
-			got, err := nodeText(moved, s.Kind, s.Within, s.Anchor, s.Ident, s)
+			got, err := nowAt(moved, s)
 			if err != nil {
 				errs = append(errs, fmt.Errorf("%s: %s was moved but is not in the product", s.Rng, s.Anchor))
 				continue
@@ -360,7 +375,7 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 		if err != nil {
 			continue
 		}
-		got, err := nodeText(ast.New(t.Type, outText), s.Kind, s.Within, s.Anchor, s.Ident, s)
+		got, err := nowAt(ast.New(t.Type, outText), s)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %s was %sd but is not in the product", s.Rng, s.Anchor, s.Op))
 			continue
@@ -401,11 +416,33 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 		}
 		return lines
 	}
+	nodeSpans := func(s lang.Stmt) [][2]int {
+		if len(s.Within) > 0 {
+			if span, _, err := locate(upTree, kind, s.Within, s.Anchor, s.Ident, s); err == nil {
+				return [][2]int{span}
+			}
+			return nil
+		}
+		return upTree.Find(kind, realName(s))
+	}
 	accounted := append(append([]lang.Stmt{}, drops...), replaces...)
 	for _, s := range accounted {
 		if s.Kind == kind {
 			for _, l := range nodeLines(s) {
 				coveredAt[l] = true
+			}
+			// A key's lines hold the keys nested under it, so dropping or replacing it takes them
+			// too, and they are accounted for by it — naming them again would write over the same
+			// lines twice. A markdown section ends at the next heading, subsections included, so
+			// each of those is still its own to account for.
+			if kind != "heading" {
+				for _, sp := range nodeSpans(s) {
+					for _, n := range upNames {
+						if n.Line > sp[0] && n.Line < sp[1] {
+							coveredAt[n.Line] = true
+						}
+					}
+				}
 			}
 		}
 	}

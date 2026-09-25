@@ -111,7 +111,7 @@ func (in *interp) cond(e *oExpr, not bool) (*Cond, error) {
 	c.Kind = defaultKind[obj.typ]
 	// base.has.Overview — does the document have a part by this name
 	if len(e.steps) == 2 && e.steps[0].name == "has" && !e.steps[0].call && !e.steps[1].call {
-		c.Has = e.steps[1].name
+		c.Has, c.HasIdent, c.HasAt = e.steps[1].name, in.ident(e.steps[1]), e.steps[1].pos
 		return c, nil
 	}
 	// base.sections[...].any — does the predicate find anything

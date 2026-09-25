@@ -1136,3 +1136,77 @@ func TestProjectionFields(t *testing.T) {
 		t.Error("an unknown field in the one-line form was accepted")
 	}
 }
+
+// The same path is read the same way wherever it is written. Loom 1 reads an unquoted segment by
+// the underscore rule where a statement starts — and where a move, swap or split points, and in
+// what an if asks, which had kept only some of it.
+func TestEveryPathIsReadTheSameWay(t *testing.T) {
+	const up = "# T\n\n## How It\n\n### Step A\n\na\n\n## Other\n\no\n"
+	for _, c := range []struct{ decl, tpl string }{
+		{"", "base.Other.move(after: base.How_It.Step_A)\n"},
+		{"", "base.Other.move(base.How_It.Step_A.after)\n"},
+		{"", "base.Other.swap(base.How_It.Step_A)\n"},
+		{"", "base.How_It.split(base.How_It.Step_A)\n"},
+	} {
+		weave := newTree(t, "base \"up\"\nself \"me\"\n"+c.decl, up, "")
+		if _, err := weave(c.tpl); err != nil {
+			t.Errorf("Loom 1 reads every segment by the underscore rule: %s%v", c.tpl, err)
+		}
+		weave2 := newTree(t, "base \"up\"\nself \"me\"\nloom \"2.0\"\n", up, "")
+		if _, err := weave2(c.tpl); err == nil {
+			t.Errorf("Loom 2 reads every segment as written, and there is no How_It: %s", c.tpl)
+		}
+	}
+
+	// if base.has.How_It asks about "How It" in Loom 1: the then-branch is taken.
+	weave := newTree(t, "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n", up, "## Ours\n\no\n")
+	got, err := weave("if base.has.How_It {\n    base.Other.after(self.Ours)\n} else {\n    base.start(self.Ours)\n}\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h := headings(got); h != "# T | ## How It | ### Step A | ## Other | ## Ours" {
+		t.Errorf("has.How_It found \"How It\", so ours goes after Other:\n  %s", h)
+	}
+}
+
+// A node moved or promoted out of its parent is accounted for where it now is. Its path says
+// where it was; looking for it there reported a promote that had worked as a node gone missing.
+func TestLeavingItsParentIsNotGoingMissing(t *testing.T) {
+	for _, tpl := range []string{
+		"base.Setup.Step_A.promote()\nbase.Other.after(self.Ours)\n",
+		"base.Setup.Step_A.move(after: base.Other)\nbase.Other.after(self.Ours)\n",
+	} {
+		dir := t.TempDir()
+		mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n")
+		mustWrite(t, filepath.Join(dir, "up", "a.md"), "# T\n\n## Setup\n\ns\n\n### Step A\n\na\n\n## Other\n\no\n")
+		mustWrite(t, filepath.Join(dir, "me", "a.md"), "## Ours\n\nours\n")
+		mustWrite(t, filepath.Join(dir, "me", "a.md.lm"), tpl)
+		c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := buildTree(t, c, filepath.Join(dir, "out")); err != nil {
+			t.Errorf("%s%v", tpl, err)
+		}
+	}
+}
+
+// Dropping a key takes the keys nested under it, and accounts for them: they are inside its lines.
+// Dropping a markdown section does not, since a section ends at the next heading.
+func TestDroppingAKeyTakesWhatIsUnderIt(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\n")
+	mustWrite(t, filepath.Join(dir, "up", "ci.yaml"), "jobs:\n  old:\n    runs-on: ubuntu\n  keep:\n    runs-on: macos\n")
+	mustWrite(t, filepath.Join(dir, "me", "ci.yaml.lm"), "base.jobs.old.drop(reason: \"we do not run it\")\n")
+	c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(dir, "out")
+	if _, err := buildTree(t, c, out); err != nil {
+		t.Fatalf("a dropped key accounts for what is under it: %v", err)
+	}
+	if got := readFile(t, filepath.Join(out, "ci.yaml")); got != "jobs:\n  keep:\n    runs-on: macos\n" {
+		t.Errorf("the key and what is under it are gone, the rest stays:\n%s", got)
+	}
+}
