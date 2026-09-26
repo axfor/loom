@@ -139,6 +139,14 @@ func Describe(c *lang.Config, path string) (*Info, error) {
 					u.Anchor = real(baseTree(in), s.Kind, s.Within, s.Anchor, s.Ident)
 				}
 				i.Anchors = append(i.Anchors, u)
+				// where a move goes, what a swap trades with, where a split cuts
+				if m := s.Move; m != nil {
+					mu := Use{Kind: m.Kind, Anchor: m.Anchor, Where: m.At.String()}
+					if m.Ident || len(m.Within) > 0 {
+						mu.Anchor = real(baseTree(in), m.Kind, m.Within, m.Anchor, m.Ident)
+					}
+					i.Anchors = append(i.Anchors, mu)
+				}
 				i.Inserts = append(i.Inserts, srcs(s.Srcs, in)...)
 				switch s.Op {
 				case "drop":
@@ -153,6 +161,14 @@ func Describe(c *lang.Config, path string) (*Info, error) {
 			case "value":
 				i.Inserts = append(i.Inserts, Src{Layer: s.SetRef.Layer, Kind: s.SetRef.Kind, Anchor: s.SetRef.Anchor, File: s.SetRef.File, Lit: s.SetRef.IsLit})
 			case "if":
+				// What it asks about is a dependency: renamed upstream, the answer changes.
+				if cd := s.Cond; cd != nil && cd.Has != "" {
+					u := Use{Kind: cd.Kind, Anchor: cd.Has, Where: cd.HasAt.String()}
+					if cd.HasIdent {
+						u.Anchor = real(baseTree(in), cd.Kind, nil, cd.Has, true)
+					}
+					i.Anchors = append(i.Anchors, u)
+				}
 				// Both branches depend on upstream, whichever one runs.
 				walk(s.Kids, in)
 				walk(s.Else, in)

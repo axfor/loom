@@ -38,7 +38,17 @@ func anchorUses(t *lang.Template) []anchorUse {
 			switch s.Op {
 			case "after", "before", "replace", "drop", "unwrap", "join", "split", "move", "swap", "promote", "demote":
 				out = append(out, anchorUse{kind: s.Kind, anchor: s.Anchor, within: s.Within, ident: s.Ident, rng: s.Rng})
+				// Where a move goes, what a swap trades with, where a split cuts: a node of
+				// upstream's the template depends on as much as the one it changes.
+				if m := s.Move; m != nil {
+					out = append(out, anchorUse{kind: m.Kind, anchor: m.Anchor, within: m.Within, ident: m.Ident, rng: m.At})
+				}
 			case "if":
+				// What an if asks about is a dependency too: rename it upstream and the question
+				// quietly answers the other way.
+				if c := s.Cond; c != nil && c.Has != "" {
+					out = append(out, anchorUse{kind: c.Kind, anchor: c.Has, ident: c.HasIdent, rng: c.HasAt})
+				}
 				// Both branches anchor into upstream. Which one runs depends on upstream, and a
 				// list of anchors that left one out would be a list of half the dependencies.
 				walk(s.Kids)

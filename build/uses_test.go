@@ -73,3 +73,33 @@ func TestUses(t *testing.T) {
 		t.Errorf("a pattern matching nothing should say so: %q", out.String())
 	}
 }
+
+// A template depends on more than the nodes it changes: where a move goes, and what an if asks
+// about. Left out, lm uses said nothing named Usage, and removing Usage upstream would have
+// sent the question the other way in silence.
+func TestUsesIncludesTargetsAndQuestions(t *testing.T) {
+	dir := t.TempDir()
+	w := func(rel, text string) { mustWrite(t, filepath.Join(dir, rel), text) }
+	w("loom.om", "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n")
+	w("up/doc.md", "# T\n\n## Overview\n\no\n\n## Install\n\ni\n\n## Set Up\n\ns\n")
+	w("me/doc.md", "## A\n\na\n")
+	w("me/doc.lm", "if base.has.Set_Up {\n    base.Overview.after(self.A)\n}\nbase.Install.move(after: base.\"Set Up\")\n")
+	c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := build.Uses(c, &out, ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); !strings.Contains(got, "Set Up") || !strings.Contains(got, "doc.lm:1:13") || !strings.Contains(got, "doc.lm:4:31") {
+		t.Errorf("the question and the move target both name Set Up:\n%s", got)
+	}
+	out.Reset()
+	if err := build.ListAnchors(c, &out); err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(out.String(), "Set Up"); n != 2 {
+		t.Errorf("lm anchors lists both, found %d:\n%s", n, out.String())
+	}
+}
