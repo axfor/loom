@@ -1634,3 +1634,32 @@ func TestReturnInAFunction(t *testing.T) {
 		t.Errorf("err.format in a fn stands: %v", err)
 	}
 }
+
+// A move gives a markdown section blank lines to sit between; it gave them to everything, so a
+// yaml key, a shell function and a line of text came out with blank lines the move had promised
+// not to add.
+func TestAMoveAddsNothingOutsideMarkdown(t *testing.T) {
+	for _, c := range []struct{ file, up, tpl, want string }{
+		{"ci.yaml", "jobs:\n  build:\n    runs-on: ubuntu\n  test:\n    runs-on: macos\nname: ci\n",
+			"base.jobs.test.move(before: base.jobs.build)\n", "jobs:\n  test:\n    runs-on: macos\n  build:\n    runs-on: ubuntu\nname: ci\n"},
+		{"notes.txt", "one\ntwo\nthree\n", "base.line(\"three\").move(before: base.line(\"one\"))\n", "three\none\ntwo\n"},
+		{"run.sh", "#!/bin/sh\na() {\n  echo a\n}\nb() {\n  echo b\n}\n", "base.b.move(before: base.a)\n", "#!/bin/sh\nb() {\n  echo b\n}\na() {\n  echo a\n}\n"},
+	} {
+		dir := t.TempDir()
+		mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\n")
+		mustWrite(t, filepath.Join(dir, "up", c.file), c.up)
+		mustWrite(t, filepath.Join(dir, "me", c.file+".lm"), c.tpl)
+		cfg, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := filepath.Join(dir, "out")
+		if _, err := buildTree(t, cfg, out); err != nil {
+			t.Errorf("%s: %v", c.file, err)
+			continue
+		}
+		if got := readFile(t, filepath.Join(out, c.file)); got != c.want {
+			t.Errorf("%s: got\n%q\nwant\n%q", c.file, got, c.want)
+		}
+	}
+}

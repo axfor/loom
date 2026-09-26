@@ -262,22 +262,28 @@ func apply(c *lang.Config, t *lang.Template, stmts []lang.Stmt, tree ast.Tree, r
 				return fmt.Errorf("%s: move takes a target outside the node being moved", s.Rng)
 			}
 			body := append([]string{}, tree.Lines()[src[0]:src[1]]...)
-			// Trailing blank lines belong to the gap the node leaves behind, not to the node.
-			for len(body) > 0 && strings.TrimSpace(body[len(body)-1]) == "" {
-				body = body[:len(body)-1]
-			}
 			at := dst[1]
 			if s.Move.Side == "before" {
 				at = dst[0]
 			}
-			var repl []string
-			// No blank line before the very start of the file, and none where there is one already.
-			if at > 0 && !(at-1 < len(tree.Lines()) && strings.TrimSpace(tree.Lines()[at-1]) == "") {
-				repl = append(repl, "")
-			}
-			repl = append(repl, body...)
-			if !(at < len(tree.Lines()) && strings.TrimSpace(tree.Lines()[at]) == "") {
-				repl = append(repl, "")
+			repl := body
+			// A markdown section is set off by blank lines, so it is given one on each side where
+			// it lands. Nothing else is: a yaml key, a shell function or a line moves as exactly
+			// the lines it is, or the move would add bytes it promises not to.
+			if s.Kind == "heading" {
+				// Trailing blank lines belong to the gap the node leaves behind, not to the node.
+				for len(body) > 0 && strings.TrimSpace(body[len(body)-1]) == "" {
+					body = body[:len(body)-1]
+				}
+				repl = nil
+				// No blank line before the very start of the file, and none where there is one already.
+				if at > 0 && !(at-1 < len(tree.Lines()) && strings.TrimSpace(tree.Lines()[at-1]) == "") {
+					repl = append(repl, "")
+				}
+				repl = append(repl, body...)
+				if !(at < len(tree.Lines()) && strings.TrimSpace(tree.Lines()[at]) == "") {
+					repl = append(repl, "")
+				}
 			}
 			edits = append(edits, edit{at, at, repl, len(edits)})
 			edits = append(edits, edit{src[0], src[1], nil, len(edits)})
