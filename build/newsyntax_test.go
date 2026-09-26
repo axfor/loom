@@ -531,29 +531,31 @@ func TestCallsAndHasAreNotSearches(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tm, err := lang.LoadTemplate(c, filepath.Join(dir, "me", "w.yaml.lm"))
-	if err != nil {
-		t.Fatal(err)
+	// jobs and jobs.build both hold that key, and jobs.test does not. The report lists each key
+	// the group dropped, which is the proof of which ones `has` found; the inner one goes with
+	// the outer rather than colliding with it.
+	yamlDropped := func() string {
+		t.Helper()
+		yp, err := build.PlanBuild(c, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var keys []string
+		for _, l := range yp.Report.Dropped {
+			if strings.HasPrefix(l.Path, "w.yaml") {
+				keys = append(keys, strings.TrimPrefix(l.Path, "w.yaml § "))
+			}
+		}
+		return strings.Join(keys, " ")
 	}
-	// jobs and jobs.build both hold that key, and jobs.test does not — so the two that matched
-	// cover each other's lines, which is exactly what the overlap check is for. The spans it
-	// names are the proof of which keys `has` found.
-	_, err = build.Weave(c, tm)
-	if err == nil {
-		t.Fatal("dropping a key and the key inside it should collide")
-	}
-	if !strings.Contains(err.Error(), "upstream lines 2-3") {
-		t.Errorf("has found the wrong keys: %v", err)
+	if got := yamlDropped(); got != "jobs jobs.build" {
+		t.Errorf("has found the wrong keys: %q", got)
 	}
 
 	// Asked of one key instead of the group, only the ones that hold it answer.
 	mustWrite(t, filepath.Join(dir, "me", "w.yaml.lm"), "base.keys[has.\"jobs.test.needs\"].drop(reason: \"ours\")\nbase.append(self.extra)\n")
-	tm, err = lang.LoadTemplate(c, filepath.Join(dir, "me", "w.yaml.lm"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := build.Weave(c, tm); err == nil || !strings.Contains(err.Error(), "upstream lines 4-5") {
-		t.Errorf("has should have found jobs and jobs.test: %v", err)
+	if got := yamlDropped(); got != "jobs jobs.test" {
+		t.Errorf("has should have found jobs and jobs.test: %q", got)
 	}
 }
 
@@ -1661,5 +1663,25 @@ func TestAMoveAddsNothingOutsideMarkdown(t *testing.T) {
 		if got := readFile(t, filepath.Join(out, c.file)); got != c.want {
 			t.Errorf("%s: got\n%q\nwant\n%q", c.file, got, c.want)
 		}
+	}
+}
+
+// A group can pick a key and a key inside it. Dropping both wrote over the same lines twice and
+// the build refused its own group; the inner one goes with the outer.
+func TestAGroupOfNestedKeys(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\n")
+	mustWrite(t, filepath.Join(dir, "up", "ci.yaml"), "jobs:\n  build:\n    runs-on: ubuntu\n  test:\n    runs-on: macos\nname: ci\n")
+	mustWrite(t, filepath.Join(dir, "me", "ci.yaml.lm"), "base.keys[name ~ \"test\"].drop(reason: \"we do not test here\")\n")
+	cfg, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(dir, "out")
+	if _, err := buildTree(t, cfg, out); err != nil {
+		t.Fatalf("a key and its own child, dropped as a group: %v", err)
+	}
+	if got := readFile(t, filepath.Join(out, "ci.yaml")); got != "jobs:\n  build:\n    runs-on: ubuntu\nname: ci\n" {
+		t.Errorf("got\n%s", got)
 	}
 }

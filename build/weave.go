@@ -1075,6 +1075,12 @@ func targets(tree ast.Tree, s lang.Stmt) ([][2]int, error) {
 	}
 	out := make([][2]int, 0, len(found))
 	for _, n := range found {
+		// A key's lines hold the keys under it, so a group that picked both a key and one of
+		// its own would write over the same lines twice: what the first already covers is
+		// done to it with the first. (Sections end at the next heading and never nest this way.)
+		if k := len(out); k > 0 && n.Line >= out[k-1][0] && n.End <= out[k-1][1] {
+			continue
+		}
 		out = append(out, [2]int{n.Line, n.End})
 	}
 	if s.Axis != "" {
