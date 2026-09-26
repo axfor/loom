@@ -153,7 +153,7 @@ function completions(docPath, text, line, character) {
       return [];
     }
     if (ref.what === 'step') return stepItems(cx, ref.chain, ref.index, whole, false);
-    if (ref.what === 'pred') return predicateItems(whole);
+    if (ref.what === 'pred') return predicateItems(whole, groupKind(t, ref.of));
     if (ref.what === 'root' && ref.chain.argOf) return argItems(cx, ref.chain.argOf, whole, false);
     if (ref.what === 'root' && isFirstOnLine(t.toks, inside)) return [...statementItems(whole), ...paramItems(t, line, whole)];
     if (ref.what === 'root' && afterClose(t.toks, inside)) return elseItems(whole);
@@ -168,7 +168,7 @@ function completions(docPath, text, line, character) {
     const call = loom.enclosingCall(t, k, line);
     return call ? argItems(cx, call, empty, false) : [...statementItems(empty), ...paramItems(t, line, empty)];
   }
-  if (prev.t === '[' || prev.t === 'and' || prev.t === 'or') return predicateItems(empty);
+  if (prev.t === '[' || prev.t === 'and' || prev.t === 'or') return predicateItems(empty, groupKind(t, groupBefore(t, k)));
   if (prev.t === '}' && (k === 0 || t.toks[k - 1].t === 'nl')) return elseItems(empty);
   if (prev.t === '(' || prev.t === ',' || prev.t === '{') {
     const call = loom.enclosingCall(t, k, line);
@@ -324,6 +324,11 @@ function stepItems(cx, chain, index, range, quoted) {
       // the keys of the frontmatter: base.frontmatter.description
       out.push(...nodeItems(src, 'fmkey', null, write, range));
     } else if (r.node.kind === loom.DEFAULT_KIND[r.typ] && loom.isValueType(r.typ) && !r.view) {
+      // a key's siblings, as the compiler walks them: next and prev under the same parent
+      if (r.obj.layer === 'base') {
+        out.push(item('next', 'part', { detail: 'the next key under the same parent', markdown: markdownFor('next'), range, sortText: '3' }));
+        out.push(item('prev', 'part', { detail: 'the key before it under the same parent', markdown: markdownFor('prev'), range, sortText: '3' }));
+      }
       // below a key, the keys nested under it: base.jobs.build. They are named by the whole path,
       // so the item shows and inserts only the segment being added.
       const prefix = `${r.node.name}.`;
@@ -447,8 +452,38 @@ const PREDICATES = {
   has: ['has."$1"', 'a part by this name inside it'],
 };
 
-function predicateItems(range) {
-  return Object.entries(PREDICATES).map(([word, [insertText, detail]]) =>
+// PREDICATE_KINDS: the node kinds each field can be asked of, as selectFor in newinterp.go allows —
+// a field that cannot mean anything for a kind is refused there, so it is not offered here.
+const PREDICATE_KINDS = {
+  level: ['heading'],
+  value: ['key', 'path'],
+  calls: ['function'],
+  has: ['heading', 'key', 'path'],
+  empty: ['heading', 'function', 'marker', 'key', 'path'],
+};
+
+// groupBefore: the step ref of the group whose [ is open before token k.
+function groupBefore(t, k) {
+  let depth = 0;
+  for (let i = k; i >= 0; i--) {
+    if (t.toks[i].t === ']') depth++;
+    else if (t.toks[i].t === '[' && --depth < 0) {
+      const ref = i > 0 && loom.stepRef(t, t.toks[i - 1]);
+      return ref ? { chain: ref.chain, index: ref.index } : null;
+    }
+  }
+  return null;
+}
+
+// groupKind: the node kind a group picks from, or null when the walk cannot tell.
+function groupKind(t, of) {
+  if (!of) return null;
+  const r = loom.walk(t, of.chain, of.index + 1);
+  return r && r.node && r.node.group ? r.node.kind : null;
+}
+
+function predicateItems(range, kind) {
+  return Object.entries(PREDICATES).filter(([word]) => !kind || !PREDICATE_KINDS[word] || PREDICATE_KINDS[word].includes(kind)).map(([word, [insertText, detail]]) =>
     item(word, 'argument', { detail, markdown: markdownFor(word), insertText, snippet: true, range, sortText: '1' }));
 }
 
@@ -685,4 +720,4 @@ function settings(text, line, character) {
   return SETTINGS.map(([label, insertText, detail]) => item(label, 'keyword', { detail, insertText, snippet: true, range }));
 }
 
-module.exports = { completions, nodeText, nodeTextFor, written, projectTemplate };
+module.exports = { completions, nodeText, nodeTextFor, written, projectTemplate, PREDICATE_KINDS };

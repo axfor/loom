@@ -756,3 +756,34 @@ func TestEditorHelpExamplesParse(t *testing.T) {
 		}
 	}
 }
+
+// Completion offers inside [ ] only the fields the compiler takes for the group's kind. Its table
+// is a copy of the rules in selectFor, so every field is asked of every kind on both sides.
+func TestEditorOffersThePredicatesTheCompilerTakes(t *testing.T) {
+	cmd := exec.Command(node(t), "-e", `console.log(JSON.stringify(require("./lib/completion.js").PREDICATE_KINDS))`)
+	cmd.Dir = ext
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("reading the editor's predicate table: %v", err)
+	}
+	var offered map[string][]string
+	if err := json.Unmarshal(out, &offered); err != nil {
+		t.Fatal(err)
+	}
+	leaf := map[string]*oPred{
+		"level": {field: "level", cmp: "==", num: 2},
+		"value": {field: "value", cmp: "==", str: "x"},
+		"calls": {field: "calls", str: "x"},
+		"has":   {field: "has", str: "x"},
+		"empty": {field: "empty"},
+	}
+	for field, p := range leaf {
+		for _, kind := range []string{"heading", "function", "marker", "line", "key", "path"} {
+			_, err := selectFor(p, kind, Pos{}, "")
+			takes := err == nil
+			if editor := contains(offered[field], kind); editor != takes {
+				t.Errorf("%s on a %s: the compiler takes it %v, the editor offers it %v", field, kind, takes, editor)
+			}
+		}
+	}
+}

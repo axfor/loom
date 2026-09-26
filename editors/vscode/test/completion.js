@@ -337,7 +337,7 @@ const find = (items, label) => items.find((i) => i.label === label);
   // Inside a predicate: the fields it can ask about, and a snippet for how each is written.
   const { items } = at(md, 'base.sections[|]');
   const l = labels(items);
-  ok(['level', 'name', 'value', 'empty', 'calls', 'has'].every((x) => l.includes(x)), 'inside [ the predicate fields are offered', l);
+  ok(l.join(',') === 'level,name,empty,has', 'inside [ the fields a section can be asked about are offered', l);
   ok(find(items, 'level').insertText === 'level == ${1:2}', 'level inserts a comparison to fill in', find(items, 'level').insertText);
   const and = labels(at(md, 'base.sections[level == 2 && |]').items);
   ok(and.includes('name'), 'after && the next field is offered', and);
@@ -391,6 +391,22 @@ const find = (items, label) => items.find((i) => i.label === label);
   ok(labels(at(md, 'base.start(base.sections.project(`- {|`))').items).includes('anchor'), 'the one-line form takes fields too');
   ok(labels(at(md, block('plain |')).items).length === 0, 'without a {, the template is text');
   ok(labels(at(md, 'base.Overview.after(`{|`)').items).length === 0, 'outside a projection a literal is text');
+}
+
+// ── what the compiler takes, per kind ──
+{
+  // Inside [ ], only the fields that mean something for the group's kind.
+  const sec = labels(at(md, 'base.sections[|]').items);
+  ok(sec.includes('level') && sec.includes('has') && !sec.includes('calls') && !sec.includes('value'), 'sections take level and has, not calls or value', sec);
+  const shf = labels(at(sh, 'base.functions[|]').items);
+  ok(shf.includes('calls') && !shf.includes('level') && !shf.includes('has'), 'functions take calls, not level or has', shf);
+  const lines = labels(at(sh, 'base.lines[|]').items);
+  ok(lines.includes('name') && !lines.includes('empty'), 'lines take name, not empty — every line is empty', lines);
+  const keys = labels(at(toml, 'base.keys[|]').items);
+  ok(keys.includes('value') && keys.includes('empty') && !keys.includes('level'), 'keys take value and empty, not level', keys);
+  // A key's siblings, as the compiler steps to them.
+  const k = labels(at(toml, 'base.description.|').items);
+  ok(k.includes('next') && k.includes('prev'), 'a key offers next and prev', k);
 }
 
 // ── self written in the template: resource sections ──
