@@ -1507,3 +1507,32 @@ func TestTheReportSaysWhichWayEachQuestionWent(t *testing.T) {
 		}
 	}
 }
+
+// The report says what was done: a swap is not a move after its partner, and a split is not
+// "splitd".
+func TestTheReportNamesSwapsAndSplits(t *testing.T) {
+	for _, c := range []struct{ tpl, want string }{
+		{"base.Install.swap(base.Usage)\n", "traded places with Usage · bytes unchanged"},
+		{"base.Setup.split(base.Setup.\"Step B\")\n", "split at Step B · only that heading's level changed"},
+	} {
+		dir := t.TempDir()
+		mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n")
+		mustWrite(t, filepath.Join(dir, "up", "a.md"), "# T\n\n## Install\n\ni\n\n## Usage\n\nu\n\n## Setup\n\ns\n\n### Step B\n\nb\n")
+		mustWrite(t, filepath.Join(dir, "me", "a.md.lm"), c.tpl)
+		cfg, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		p, err := buildTree(t, cfg, filepath.Join(dir, "out"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for _, l := range p.Report.Moved {
+			got = append(got, l.Detail)
+		}
+		if !strings.Contains(strings.Join(got, "\n"), c.want) {
+			t.Errorf("%s  want %q, got %q", c.tpl, c.want, got)
+		}
+	}
+}

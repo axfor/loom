@@ -304,12 +304,18 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 		r.Dropped = append(r.Dropped, ReportLine{t.Target + " § " + realName(s), s.Reason})
 	}
 	for _, s := range moves {
-		r.Moved = append(r.Moved, ReportLine{t.Target + " § " + realName(s),
-			s.Move.Side + " " + moveName(s.Move) + " · bytes unchanged"})
+		detail := s.Move.Side + " " + moveName(s.Move) + " · bytes unchanged"
+		if s.Op == "swap" {
+			detail = "traded places with " + moveName(s.Move) + " · bytes unchanged"
+		}
+		r.Moved = append(r.Moved, ReportLine{t.Target + " § " + realName(s), detail})
 	}
 	for _, s := range levels {
-		r.Moved = append(r.Moved, ReportLine{t.Target + " § " + realName(s),
-			s.Op + "d · only the heading level changed"})
+		detail := s.Op + "d · only the heading level changed"
+		if s.Op == "split" {
+			detail = "split at " + moveName(s.Move) + " · only that heading's level changed"
+		}
+		r.Moved = append(r.Moved, ReportLine{t.Target + " § " + realName(s), detail})
 	}
 	switch {
 	case whole:
