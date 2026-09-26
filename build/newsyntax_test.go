@@ -457,13 +457,14 @@ func TestElseIfChain(t *testing.T) {
 		t.Errorf("only the first link should have written, got %d:\n%s", n, out)
 	}
 
-	// None holds and there is no else: nothing is written, and the report says which question it was.
+	// None holds and there is no else: nothing is written, and the report says how each question
+	// went — every link that did not run, not only the last.
 	p, _ := run("if base.has.Nope {\n\tbase.Setup.after(self.Ours)\n} else if base.has.Missing {\n\tbase.Other.after(self.Ours)\n}\nbase.Other.after(self.Ours)\n")
-	if len(p.Report.Skipped) != 1 {
-		t.Fatalf("the chain writing nothing should be reported once: %+v", p.Report.Skipped)
+	if len(p.Report.Skipped) != 2 {
+		t.Fatalf("each link that did not run is reported: %+v", p.Report.Skipped)
 	}
-	if !strings.Contains(p.Report.Skipped[0].Detail, "base.has.Missing") {
-		t.Errorf("the report should name the last question asked: %q", p.Report.Skipped[0].Detail)
+	if !strings.Contains(p.Report.Skipped[0].Detail, "base.has.Nope did not hold") || !strings.Contains(p.Report.Skipped[1].Detail, "base.has.Missing did not hold") {
+		t.Errorf("the report names each question, in order: %+v", p.Report.Skipped)
 	}
 }
 
@@ -1472,5 +1473,37 @@ func TestVariablesInSelfSections(t *testing.T) {
 	}
 	if _, err := build("other = 1\n"); err == nil || !strings.Contains(err.Error(), "a.md.lm:7") || !strings.Contains(err.Error(), "url") {
 		t.Errorf("an undefined variable is named where it is written, in the template: %v", err)
+	}
+}
+
+// The report says which way every question went. It said so only when the branch taken was
+// empty, so a template whose else ran — the then-branch's statements not written — reported
+// nothing skipped at all.
+func TestTheReportSaysWhichWayEachQuestionWent(t *testing.T) {
+	const tpl = "if base.has.Overview {\n    base.Overview.after(self.Ours)\n} else {\n    base.start(self.Ours)\n}\n"
+	for _, c := range []struct{ up, want string }{
+		{"# T\n\n## Overview\n\no\n", "a.md: else skipped (base.has.Overview held)"},
+		{"# T\n\n## Intro\n\ni\n", "a.md skipped (base.has.Overview did not hold)"},
+	} {
+		dir := t.TempDir()
+		mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n")
+		mustWrite(t, filepath.Join(dir, "up", "a.md"), c.up)
+		mustWrite(t, filepath.Join(dir, "me", "a.md"), "## Ours\n\no\n")
+		mustWrite(t, filepath.Join(dir, "me", "a.md.lm"), tpl)
+		cfg, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		p, err := buildTree(t, cfg, filepath.Join(dir, "out"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var lines []string
+		for _, l := range p.Report.Skipped {
+			lines = append(lines, l.Detail)
+		}
+		if !strings.Contains(strings.Join(lines, "\n"), c.want) {
+			t.Errorf("want %q in skipped, got %q", c.want, lines)
+		}
 	}
 }

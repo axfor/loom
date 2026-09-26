@@ -58,10 +58,17 @@ func (r *run) walk(c *lang.Config, t *lang.Template, tree ast.Tree, ss []lang.St
 			if !yes {
 				branch, taken = s.Else, "else"
 			}
-			if len(branch) == 0 {
+			// The branch not taken is statements that did not run, and which way a question went
+			// is the one thing a reader cannot see from the template: said whenever it held any.
+			if other := s.Else; !yes {
+				other = s.Kids
+				if len(other) > 0 {
+					r.skipped = append(r.skipped, ReportLine{lang.Rel(c, t.Path),
+						fmt.Sprintf("%s skipped (%s)", t.Target, describeCond(s.Cond, c.Loom, false))})
+				}
+			} else if len(other) > 0 {
 				r.skipped = append(r.skipped, ReportLine{lang.Rel(c, t.Path),
-					fmt.Sprintf("%s skipped (%s)", t.Target, describeCond(s.Cond, c.Loom))})
-				continue
+					fmt.Sprintf("%s: else skipped (%s)", t.Target, describeCond(s.Cond, c.Loom, true))})
 			}
 			_ = taken
 			if err := r.walk(c, t, tree, branch); err != nil {
@@ -185,21 +192,23 @@ func (r *run) format(refs []lang.Ref) string {
 	return fmt.Sprintf(refs[0].Literal, args...)
 }
 
-func describeCond(c *lang.Cond, loom string) string {
+// describeCond says what a question answered. held is the if's own answer, ! included; what is
+// said is the question underneath it, which is what a reader looks up.
+func describeCond(c *lang.Cond, loom string, held bool) string {
+	inner := held != c.Not
 	var what string
 	switch {
+	case c.Any:
+		if inner {
+			return "the predicate found something"
+		}
+		return "the predicate found nothing"
 	case c.Var != "":
 		what = c.Var
 	case c.Has != "":
 		what = "base.has." + lang.NameTextFor(c.Has, loom)
-	case c.Any:
-		what = "the predicate found nothing"
-		if c.Not {
-			return what + ", as asked"
-		}
-		return what
 	}
-	if c.Not {
+	if inner {
 		return what + " held"
 	}
 	return what + " did not hold"
