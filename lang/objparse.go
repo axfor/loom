@@ -1275,6 +1275,9 @@ func (in *interp) predicate(st oStep, kind string) (*Select, error) {
 			return nil, fmt.Errorf("%s: a predicate is match: \"...\", level: N, or empty", a.pos)
 		}
 	}
+	if kind == "line" && sel.Empty {
+		return nil, emptyLines(st.pos)
+	}
 	if sel.Match == "" && !sel.Empty && sel.Level == 0 {
 		return nil, fmt.Errorf("%s: %s needs a predicate, or it would select the whole file: %s(match: \"...\")", st.pos, st.name, st.name)
 	}

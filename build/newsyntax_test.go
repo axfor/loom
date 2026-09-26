@@ -1775,3 +1775,26 @@ func TestAProjectionOfAView(t *testing.T) {
 		}
 	}
 }
+
+// Predicates that cannot mean what they say are refused where they are written. lines[empty]
+// read as "the blank lines" and dropped every line of the file, since nothing sits under any
+// line and a blank line is not a node; has on a function could only ever answer no.
+func TestPredicatesThatCannotMeanWhatTheySay(t *testing.T) {
+	for _, c := range []struct{ file, up, tpl, want string }{
+		{"n.txt", "a\n\nb\n", "base.lines[empty].drop(reason: \"r\")\n", "every line is empty"},
+		{"n.txt", "a\n\nb\n", "base.lines(empty).drop(reason: \"r\")\n", "every line is empty"},
+		{"r.sh", "a() {\n  echo\n}\n", "base.functions[has.\"x\"].drop(reason: \"r\")\n", "holds no named parts"},
+	} {
+		dir := t.TempDir()
+		mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\n")
+		mustWrite(t, filepath.Join(dir, "up", c.file), c.up)
+		mustWrite(t, filepath.Join(dir, "me", c.file+".lm"), c.tpl)
+		cfg, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := buildTree(t, cfg, filepath.Join(dir, "out")); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s  want %q, got %v", c.tpl, c.want, err)
+		}
+	}
+}

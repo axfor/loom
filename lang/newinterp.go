@@ -247,7 +247,22 @@ func selectOf(p *oPred, kind string, at Pos) (*Select, error) {
 	if kind != "function" && usesCalls(p) {
 		return nil, fmt.Errorf("%s: `calls` is for shell functions; a %s calls nothing", at, kind)
 	}
+	if kind == "line" && p.uses("empty") {
+		return nil, emptyLines(at)
+	}
+	// has asks for a part inside by name: a section holds subsections, a key holds keys. A
+	// function, a banner or a line holds nothing named, so it could only ever answer no.
+	if (kind == "function" || kind == "marker" || kind == "line") && p.uses("has") {
+		return nil, fmt.Errorf("%s: has asks for a part of a node by its name, and a %s holds no named parts — ask what it calls, calls \"x\", or its name, name ~ \"...\"", at, kind)
+	}
 	return &Select{Kind: kind, Pred: p.node()}, nil
+}
+
+// emptyLines refuses empty for lines: a line holds nothing under it, so every line is empty, and a
+// blank line has no name and is not a node at all. lines[empty] reads as "the blank lines" and
+// would drop every line of the file.
+func emptyLines(at Pos) error {
+	return fmt.Errorf("%s: every line is empty — nothing sits under a line — and a blank line is not a node, so lines[empty] would be the whole file; pick lines by what they say: lines[name ~ \"^TODO\"]", at)
 }
 
 func usesLevel(p *oPred) bool { return p.uses("level") }
