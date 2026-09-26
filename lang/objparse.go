@@ -1285,19 +1285,20 @@ func (in *interp) predicate(st oStep, kind string) (*Select, error) {
 // one content source rooted at upstream: it copies none of what upstream says, only the shape,
 // so what it writes is new rather than duplicated.
 func (in *interp) projection(e *oExpr, pos Pos, typ string) (Ref, bool, error) {
-	if len(e.steps) != 2 || !e.steps[1].call || e.steps[1].name != "project" {
+	last := len(e.steps) - 1
+	if last < 1 || !e.steps[last].call || e.steps[last].name != "project" {
 		return Ref{}, false, nil
 	}
 	// The group is read as it is in the other spelling, base.start.project(...): a bare class is
 	// every node of the kind there, so it is here too.
-	a := e.steps[1].args
+	a := e.steps[last].args
 	one := len(a) == 1 && a[0].name == "" && (a[0].val.kind == vRaw || a[0].val.kind == vString)
 	tpl := ""
 	if one {
 		tpl = a[0].val.str
 	}
 	group := *e
-	group.steps = e.steps[:1]
+	group.steps = e.steps[:last]
 	ref, ok, err := in.projectionOf(&group, tpl, pos)
 	if err != nil || !ok {
 		return ref, ok, err
@@ -1305,7 +1306,7 @@ func (in *interp) projection(e *oExpr, pos Pos, typ string) (Ref, bool, error) {
 	// project(`...`) and project{ ``` ... ``` } are the same thing: the block form only puts the
 	// template on lines of its own.
 	if !one {
-		return Ref{}, false, fmt.Errorf("%s: project takes one template: project(`- {name}`)", e.steps[1].pos)
+		return Ref{}, false, fmt.Errorf("%s: project takes one template: project(`- {name}`)", e.steps[last].pos)
 	}
 	return ref, true, nil
 }
@@ -1580,11 +1581,26 @@ func placeOp(place string) (string, string) {
 // shape, and the template each node goes through.
 func (in *interp) projectionOf(e *oExpr, tpl string, at Pos) (Ref, bool, error) {
 	obj, ok := in.objects[e.root]
-	if !ok || obj.layer == "self" || len(e.steps) != 1 {
+	if !ok || obj.layer == "self" || len(e.steps) == 0 {
 		return Ref{}, false, nil
 	}
-	st := e.steps[0]
-	kind := classCalls[obj.typ][st.name]
+	// The group may be read inside a view — base.prompt.as(markdown).sections — and then it is
+	// the view's document that is projected, in the view's type.
+	typ, viewOf := obj.typ, ""
+	if len(e.steps) > 1 {
+		r := receiver{typ: obj.typ, pos: e.pos}
+		for _, st := range e.steps[:len(e.steps)-1] {
+			if err := in.select_(&r, st); err != nil {
+				return Ref{}, false, err
+			}
+		}
+		if r.viewOf == "" || r.node {
+			return Ref{}, false, nil
+		}
+		typ, viewOf = r.viewAs, r.viewOf
+	}
+	st := e.steps[len(e.steps)-1]
+	kind := classCalls[typ][st.name]
 	if kind == "" {
 		return Ref{}, false, nil
 	}
@@ -1604,7 +1620,7 @@ func (in *interp) projectionOf(e *oExpr, tpl string, at Pos) (Ref, bool, error) 
 	if err := checkFields(tpl, at); err != nil {
 		return Ref{}, false, err
 	}
-	return Ref{Layer: obj.layer, Kind: "project", Project: sel, Literal: tpl, IsLit: true, Rng: at}, true, nil
+	return Ref{Layer: obj.layer, Kind: "project", Project: sel, ProjectView: viewOf, ProjectAs: typ, Literal: tpl, IsLit: true, Rng: at}, true, nil
 }
 
 // fenceKind is the type a fence's tag names, or "" when it names none. A tag the language knows is

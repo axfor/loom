@@ -1748,3 +1748,30 @@ func TestAMoveInsideAView(t *testing.T) {
 		t.Errorf("a move across two views is refused: %v", err)
 	}
 }
+
+// A projection can read a view: the prompt's own sections, listed at its start. The group was
+// read from the file's document, where a toml file has no sections, and refused with an error
+// about upstream content that had nothing to do with it.
+func TestAProjectionOfAView(t *testing.T) {
+	for _, tpl := range []string{
+		"base.prompt.as(markdown).start(base.prompt.as(markdown).sections.project(`- {name}`))\n",
+		"base.prompt.as(markdown).start.project(base.prompt.as(markdown).sections, `- {name}`)\n",
+	} {
+		dir := t.TempDir()
+		mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n")
+		mustWrite(t, filepath.Join(dir, "up", "cmd.toml"), "description = \"d\"\nprompt = \"\"\"\n## Steps\n\ndo\n\n## Checks\n\nc\n\"\"\"\n")
+		mustWrite(t, filepath.Join(dir, "me", "cmd.toml.lm"), tpl)
+		cfg, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := filepath.Join(dir, "out")
+		if _, err := buildTree(t, cfg, out); err != nil {
+			t.Errorf("%s%v", tpl, err)
+			continue
+		}
+		if got := readFile(t, filepath.Join(out, "cmd.toml")); !strings.Contains(got, "- Steps\n- Checks") {
+			t.Errorf("%s: the prompt's sections are listed in it:\n%s", tpl, got)
+		}
+	}
+}

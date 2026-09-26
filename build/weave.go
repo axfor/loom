@@ -1279,6 +1279,16 @@ func project(c *lang.Config, t *lang.Template, r lang.Ref, rel string) (string, 
 	if tree == nil {
 		return "", fmt.Errorf("%s: %s cannot be projected from", r.Rng, t.Type)
 	}
+	// A projection of a view reads the key's value as the view's type.
+	if r.ProjectView != "" {
+		body, ok := tree.BodyOf(r.ProjectView)
+		if !ok {
+			return "", fmt.Errorf("%s: upstream has no key `%s` to project from", r.Rng, r.ProjectView)
+		}
+		if tree = ast.New(r.ProjectAs, body); tree == nil {
+			return "", fmt.Errorf("%s: %s cannot be projected from", r.Rng, r.ProjectAs)
+		}
+	}
 	found, err := selected(tree, r.Project)
 	if err != nil {
 		return "", fmt.Errorf("%s: %v", r.Rng, err)

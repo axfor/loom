@@ -23,7 +23,9 @@ type Ref struct {
 	// layer — the one content source that does come from upstream, because it reads the
 	// shape of it rather than copying what it says.
 	Project *Select
-	Rng     Pos
+	// ProjectView is the key whose value was projected, read as ProjectAs: base.prompt.as(markdown)
+	ProjectView, ProjectAs string
+	Rng                    Pos
 }
 
 func (r Ref) String() string {
