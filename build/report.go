@@ -470,6 +470,34 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 		}
 	}
 
+	// Every section of ours has to reach the product — in the branch the questions took, not just
+	// somewhere in the template. Being named by some statement was the only test, so a section
+	// placed only in an if's then-branch went missing whenever upstream sent the build down the
+	// else, and one written in a Self: section that nothing named was never woven at all.
+	// What is ours sits inside our marks, so that is where each is looked for, counted by name.
+	if m, ok := c.MarksFor(c.Weft, t.Type); ok && !whole && !merged && (t.Type == "markdown" || t.Type == "shell") {
+		woven := map[string]int{}
+		for _, n := range ast.Addressable(ast.New(t.Type, markedText(out, m)), kind) {
+			woven[n.Name]++
+		}
+		for _, src := range oursOf(c, t) {
+			need := map[string]int{}
+			var order []string
+			for _, n := range ast.Addressable(ast.New(t.Type, src.text), kind) {
+				if need[n.Name] == 0 {
+					order = append(order, n.Name)
+				}
+				need[n.Name]++
+			}
+			for _, name := range order {
+				if woven[name] < need[name] {
+					errs = append(errs, fmt.Errorf("%s: our %s %q (%s) is not in the product %s — a statement has to place it in the branch that runs; where a question can go either way, place it in each",
+						t.Path, nodeWord(kind), name, src.where, t.Target))
+				}
+			}
+		}
+	}
+
 	outTree := ast.New(t.Type, outText)
 	have := map[string]int{}
 	for _, n := range ast.Addressable(outTree, kind) {
@@ -612,6 +640,55 @@ func refName(r lang.Ref) string {
 }
 
 // stripMarked removes marked blocks (marks included); what remains is the upstream part.
+// markedText is what stripMarked takes out: our content, block by block.
+func markedText(s string, m lang.Marks) string {
+	var blocks []string
+	var cur []string
+	in := false
+	for _, l := range strings.Split(s, "\n") {
+		switch {
+		case l == m.Begin:
+			in, cur = true, nil
+		case l == m.End:
+			in = false
+			blocks = append(blocks, strings.Join(cur, "\n"))
+		case in:
+			cur = append(cur, l)
+		}
+	}
+	return strings.Join(blocks, "\n\n")
+}
+
+// ourSource is a document of ours a product is woven from: our file beside the template, or a
+// Self: document of the product's type written in it.
+type ourSource struct{ text, where string }
+
+func oursOf(c *lang.Config, t *lang.Template) []ourSource {
+	if len(t.Resources) > 0 {
+		var out []ourSource
+		for _, res := range t.Resources {
+			for _, d := range res.Docs {
+				if d.Kind != t.Type {
+					continue
+				}
+				where := "in Self:"
+				if res.Name != "" {
+					where = "in Self as " + res.Name + ":"
+				}
+				out = append(out, ourSource{d.Text, where})
+			}
+		}
+		return out
+	}
+	if c.Weft == "" {
+		return nil
+	}
+	if src, ok, _ := c.Read(c.Weft, weftRel(c, t, c.Weft, t.Target)); ok {
+		return []ourSource{{src, "in our file"}}
+	}
+	return nil
+}
+
 func stripMarked(s string, m lang.Marks) string {
 	var out []string
 	skip := false

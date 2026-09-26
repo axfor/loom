@@ -1374,3 +1374,68 @@ func TestAnchorCompletionWritesOurSectionsByTheVersion(t *testing.T) {
 		}
 	}
 }
+
+// A section of ours reaches the product in the branch that runs. Anchor completion put a section
+// beside its neighbour in one branch of an if only, and the check asked only whether some
+// statement named it — so when upstream sent the build down the other branch, the section was
+// gone and the build was green.
+func TestOurSectionsReachTheProductWhicheverBranchRuns(t *testing.T) {
+	const tpl = "if base.has.Overview {\n    base.Overview.after(self.Ours)\n} else {\n    base.start(self.Ours)\n}\n"
+	for _, up := range []string{"# T\n\n## Overview\n\no\n", "# T\n\n## Intro\n\ni\n"} {
+		dir := t.TempDir()
+		mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n")
+		mustWrite(t, filepath.Join(dir, "up", "a.md"), up)
+		mustWrite(t, filepath.Join(dir, "me", "a.md"), "## Ours\n\no\n\n## Next\n\nn\n")
+		mustWrite(t, filepath.Join(dir, "me", "a.md.lm"), tpl)
+		cfg, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := filepath.Join(dir, "out")
+		if _, err := buildTree(t, cfg, out); err != nil {
+			t.Fatalf("%v", err)
+		}
+		want := "if base.has.Overview {\n    base.Overview.after(self.Ours, \"Next\")\n} else {\n    base.start(self.Ours, \"Next\")\n}\n"
+		if got := readFile(t, filepath.Join(dir, "me", "a.md.lm")); got != want {
+			t.Errorf("Next follows Ours into both branches:\n%s", got)
+		}
+		if got := readFile(t, filepath.Join(out, "a.md")); !strings.Contains(got, "## Next") {
+			t.Errorf("whichever branch ran, Next is in the product:\n%s", got)
+		}
+	}
+
+	// Placed in one branch by hand, a section is missing when the other runs, and that is an error.
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n")
+	mustWrite(t, filepath.Join(dir, "up", "a.md"), "# T\n\n## Intro\n\ni\n")
+	mustWrite(t, filepath.Join(dir, "me", "a.md"), "## Ours\n\no\n\n## Next\n\nn\n")
+	mustWrite(t, filepath.Join(dir, "me", "a.md.lm"), "if base.has.Overview {\n    base.Overview.after(self.Ours, \"Next\")\n} else {\n    base.start(self.Ours)\n}\n")
+	cfg, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := buildTree(t, cfg, filepath.Join(dir, "out")); err == nil || !strings.Contains(err.Error(), `our section "Next" (in our file) is not in the product`) {
+		t.Errorf("a section the branch that ran does not place is an error: %v", err)
+	}
+
+	// A Self: section nothing names is ours as much as a section of our file is.
+	weave := func(tpl string) error {
+		dir := t.TempDir()
+		mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n")
+		mustWrite(t, filepath.Join(dir, "up", "a.md"), "# T\n\n## Overview\n\no\n")
+		mustWrite(t, filepath.Join(dir, "me", "a.md.lm"), tpl)
+		cfg, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = buildTree(t, cfg, filepath.Join(dir, "out"))
+		return err
+	}
+	err = weave("base.Overview.after(self.job)\n---\nSelf:\n    ```markdown\n    ## job\n\n    j\n\n    ## forgotten\n\n    f\n    ```\n")
+	if err == nil || !strings.Contains(err.Error(), `our section "forgotten" (in Self:) is not in the product`) {
+		t.Errorf("a Self: section nothing places is an error: %v", err)
+	}
+	if err := weave("base.Overview.after(self.job, self.forgotten)\n---\nSelf:\n    ```markdown\n    ## job\n\n    j\n\n    ## forgotten\n\n    f\n    ```\n"); err != nil {
+		t.Errorf("placed, it builds: %v", err)
+	}
+}

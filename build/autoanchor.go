@@ -87,20 +87,30 @@ func placeOurs(c *lang.Config, t *lang.Template) ([]anchorGap, []string, error) 
 	replaced := map[int]bool{}
 	// Both branches of an if count as placing what they mention: which one runs depends on
 	// upstream, and a section placed in either is one the author has already said where to put.
+	// Each statement keeps the branches it sits in, so a section that follows a neighbour placed
+	// in both branches is written into both — written into one, it went missing whenever upstream
+	// sent the build down the other.
 	var stmts []lang.Stmt
-	var flatten func([]lang.Stmt)
-	flatten = func(ss []lang.Stmt) {
+	var branch []string
+	ifs := 0
+	var flatten func([]lang.Stmt, string)
+	flatten = func(ss []lang.Stmt, in string) {
 		for _, s := range ss {
 			if s.Op == "if" {
-				flatten(s.Kids)
-				flatten(s.Else)
+				ifs++
+				id := fmt.Sprintf("%s/%d", in, ifs)
+				flatten(s.Kids, id+"t")
+				flatten(s.Else, id+"e")
 				continue
 			}
-			stmts = append(stmts, s)
+			stmts, branch = append(stmts, s), append(branch, in)
 		}
 	}
-	flatten(t.Stmts)
-	for _, s := range stmts {
+	flatten(t.Stmts, "")
+	// every place a section of ours is written, one per branch it is written in
+	placed := map[int][]lang.Ref{}
+	placedIn := map[int]map[string]bool{}
+	for i, s := range stmts {
 		switch s.Op {
 		case "after", "before", "replace", "append", "prepend":
 		default:
@@ -121,6 +131,13 @@ func placeOurs(c *lang.Config, t *lang.Template) ([]anchorGap, []string, error) 
 				if _, seen := refs[span[0]]; !seen {
 					refs[span[0]] = r
 					replaced[span[0]] = s.Op == "replace"
+				}
+				if placedIn[span[0]] == nil {
+					placedIn[span[0]] = map[string]bool{}
+				}
+				if !placedIn[span[0]][branch[i]] {
+					placedIn[span[0]][branch[i]] = true
+					placed[span[0]] = append(placed[span[0]], r)
 				}
 			}
 		}
@@ -151,10 +168,14 @@ func placeOurs(c *lang.Config, t *lang.Template) ([]anchorGap, []string, error) 
 		switch {
 		case k > 0 && !replaced[nodes[k-1].Line]:
 			prev := nodes[k-1]
-			gaps = append(gaps, anchorGap{args, labels, prev.Name, true, refs[prev.Line]})
+			for _, r := range placed[prev.Line] {
+				gaps = append(gaps, anchorGap{args, labels, prev.Name, true, r})
+			}
 		case k == 0 && j < len(nodes) && !replaced[nodes[j].Line]:
 			next := nodes[j]
-			gaps = append(gaps, anchorGap{args, labels, next.Name, false, refs[next.Line]})
+			for _, r := range placed[next.Line] {
+				gaps = append(gaps, anchorGap{args, labels, next.Name, false, r})
+			}
 		default:
 			missing = append(missing, labels...)
 		}
