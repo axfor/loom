@@ -227,12 +227,12 @@ const KEYWORDS = {
     examples: ['if base.has.Overview {\n    base.Overview.after(self.job)\n}', 'base.sections[has."Example"]'],
   },
   any: {
-    what: 'In an `if`: did the predicate find anything.',
-    signatures: [{ on: 'node', label: 'if base.sections[...].any', params: [] }],
+    what: 'In an `if`: does the group have anything in it — a predicate\'s, or a bare class for any node of the kind.',
+    signatures: [{ on: 'node', label: 'if base.sections[...].any  ·  if base.sections.any', params: [] }],
     examples: ['if base.sections[name ~ "^Step "].any {\n    base.sections[name ~ "^Step "].demote()\n}'],
   },
   count: {
-    what: 'In an `if`: the number of nodes the predicate found, which holds when it is not zero — the same question as `any`.',
+    what: 'In an `if`: the number of nodes in the group, which holds when it is not zero — the same question as `any`.',
     signatures: [{ on: 'node', label: 'if base.sections[...].count', params: [] }],
     examples: ['if base.sections[level == 2].count {\n    base.start.project(base.sections[level == 2], `- {name}`)\n}'],
   },

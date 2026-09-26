@@ -286,7 +286,7 @@ function stepItems(cx, chain, index, range, quoted) {
     if (quoted) return [];
     out.push(item('first', 'part', { detail: 'the first of the group', markdown: markdownFor('first'), range, sortText: '1' }));
     out.push(item('last', 'part', { detail: 'the last of the group', markdown: markdownFor('last'), range, sortText: '1' }));
-    for (const q of loom.QUESTIONS) out.push(item(q, 'part', { detail: q === 'any' ? 'if: did the predicate find anything' : 'if: how many it found; holds when not zero', markdown: markdownFor(q), range, sortText: '3' }));
+    for (const q of loom.QUESTIONS) out.push(item(q, 'part', { detail: q === 'any' ? 'if: does the group have anything in it' : 'if: how many are in it; holds when not zero', markdown: markdownFor(q), range, sortText: '3' }));
     if (chain.root.v === 'base' && !chain.argOf && !chain.inCall) out.push(...methodItems(r, range));
     return out;
   }
