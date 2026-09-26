@@ -883,7 +883,7 @@ func (in *interp) method(r receiver, st oStep) error {
 			if moveTo != nil {
 				return fmt.Errorf("%s: move takes one side, after: or before:", a.pos)
 			}
-			m, err := in.moveTarget(a.name, a.val, r.typ)
+			m, err := in.moveTarget(a.name, a.val, r.typ, r.viewOf)
 			if err != nil {
 				return err
 			}
@@ -1015,7 +1015,7 @@ func (in *interp) method(r receiver, st oStep) error {
 		if !r.node || len(pos) != 1 {
 			return fmt.Errorf("%s: swap takes the node to trade places with: base.X.swap(base.Y)", at)
 		}
-		other, err := in.moveTarget("after", pos[0].val, r.typ)
+		other, err := in.moveTarget("after", pos[0].val, r.typ, r.viewOf)
 		if err != nil {
 			return err
 		}
@@ -1056,7 +1056,7 @@ func (in *interp) method(r receiver, st oStep) error {
 			if r.typ != "markdown" || r.kind != "heading" {
 				return fmt.Errorf("%s: split cuts a section in two, so it applies to a markdown section", at)
 			}
-			cut, err := in.moveTarget("before", pos[0].val, r.typ)
+			cut, err := in.moveTarget("before", pos[0].val, r.typ, r.viewOf)
 			if err != nil {
 				return err
 			}
@@ -1067,7 +1067,7 @@ func (in *interp) method(r receiver, st oStep) error {
 		if pos[1].val.kind != vString {
 			return fmt.Errorf("%s: the second half needs a name: base.X.split(where, \"X, part two\")", at)
 		}
-		cut, err := in.moveTarget("before", pos[0].val, r.typ)
+		cut, err := in.moveTarget("before", pos[0].val, r.typ, r.viewOf)
 		if err != nil {
 			return err
 		}
@@ -1106,7 +1106,7 @@ func (in *interp) method(r receiver, st oStep) error {
 				side := e.steps[n-1].name
 				cp := *e
 				cp.steps = e.steps[:n-1]
-				m, err := in.moveTarget(side, oValue{kind: vExpr, expr: &cp, pos: pos[0].pos}, r.typ)
+				m, err := in.moveTarget(side, oValue{kind: vExpr, expr: &cp, pos: pos[0].pos}, r.typ, r.viewOf)
 				if err != nil {
 					return err
 				}
@@ -1193,7 +1193,7 @@ func (in *interp) method(r receiver, st oStep) error {
 // moveTarget resolves the node a move goes next to: `after: base.X`, or a path —
 // `after: base."A"."B"` for a markdown section, `after: base.jobs.test` for a key.
 // The target is in the same file as the node being moved, so it is named on the warp.
-func (in *interp) moveTarget(side string, v oValue, typ string) (*Move, error) {
+func (in *interp) moveTarget(side string, v oValue, typ, viewOf string) (*Move, error) {
 	if v.kind != vExpr {
 		return nil, fmt.Errorf("%s: move takes a node of this file: move(%s: base.X)", v.pos, side)
 	}
@@ -1211,13 +1211,28 @@ func (in *interp) moveTarget(side string, v oValue, typ string) (*Move, error) {
 	// The target is read exactly as the same path is where it starts a statement — names by
 	// their spelling, a kind such as line("…"), axes, first / last of a group — so
 	// base.Setup.children.first points at the same node in either place.
+	//
+	// Inside a view the target may be written from the view, base.Steps, or in full,
+	// base.prompt.as(markdown).Steps — then it has to be the same view.
 	r := receiver{typ: typ, pos: v.pos}
+	full := false
+	for _, st := range e.steps {
+		if st.call && st.name == "as" {
+			full = true
+		}
+	}
+	if full {
+		r = receiver{typ: obj.typ, pos: v.pos}
+	}
 	for _, st := range e.steps {
 		if err := in.select_(&r, st); err != nil {
 			return nil, err
 		}
 	}
-	if !r.node || r.many || r.place != "" || r.viewOf != "" {
+	if full && r.viewOf != viewOf {
+		return nil, fmt.Errorf("%s: a move goes next to a node of the same document — inside a view, a node of that view", v.pos)
+	}
+	if !r.node || r.many || r.place != "" {
 		return nil, fmt.Errorf("%s: a move goes next to one node of this file: move(%s: base.X)", v.pos, side)
 	}
 	return &Move{Side: side, Kind: r.kind, Anchor: r.anchor, Ident: r.ident, Within: r.within, Axis: r.axis, Select: r.sel, At: r.pos}, nil

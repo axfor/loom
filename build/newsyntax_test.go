@@ -1712,3 +1712,39 @@ func TestRestructuringInsideAView(t *testing.T) {
 		}
 	}
 }
+
+// Inside a view, where a move goes may be written from the view or in full. The full path was
+// read as markdown from the start — prompt taken for a heading — and refused with an error about
+// as() that had nothing to do with it.
+func TestAMoveInsideAView(t *testing.T) {
+	for _, target := range []string{"base.Steps", "base.prompt.as(markdown).Steps"} {
+		dir := t.TempDir()
+		mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\n")
+		mustWrite(t, filepath.Join(dir, "up", "cmd.toml"), "description = \"d\"\nprompt = \"\"\"\n## Steps\n\ndo\n\n## Sub\n\ns\n\"\"\"\n")
+		mustWrite(t, filepath.Join(dir, "me", "cmd.toml.lm"), "base.prompt.as(markdown).Sub.move(before: "+target+")\n")
+		cfg, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := filepath.Join(dir, "out")
+		if _, err := buildTree(t, cfg, out); err != nil {
+			t.Errorf("%s: %v", target, err)
+			continue
+		}
+		if got := readFile(t, filepath.Join(out, "cmd.toml")); strings.Index(got, "## Sub") > strings.Index(got, "## Steps") {
+			t.Errorf("%s: Sub moved before Steps:\n%s", target, got)
+		}
+	}
+	// A target in another document is refused in words about documents.
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\n")
+	mustWrite(t, filepath.Join(dir, "up", "cmd.toml"), "description = \"d\"\nprompt = \"\"\"\n## Steps\n\ndo\n\"\"\"\nnotes = \"\"\"\n## N\n\nn\n\"\"\"\n")
+	mustWrite(t, filepath.Join(dir, "me", "cmd.toml.lm"), "base.prompt.as(markdown).Steps.move(before: base.notes.as(markdown).N)\n")
+	cfg, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := buildTree(t, cfg, filepath.Join(dir, "out")); err == nil || !strings.Contains(err.Error(), "same document") {
+		t.Errorf("a move across two views is refused: %v", err)
+	}
+}
