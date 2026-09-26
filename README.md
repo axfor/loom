@@ -377,7 +377,7 @@ do. Each row was checked by running the build, not read off the code.
 | toml | by key | by key | the whole file, unless a value is written | — | yes |
 | yaml | by key | by key | the whole file, unless a value is written | — | yes |
 | json | by construction: a registry merge is upstream's entries plus ours | — | — (a registry is merged whole) | — | — |
-| text | by line — see below | **no** | the whole file | — | — (a move needs a plain node, and every line is a call) |
+| text | by line — see below | **no** | the whole file | — | yes: `base.line("x").move(before: base.line("y"))` |
 
 Anchor completion stops where order stops meaning anything: a section follows the section before
 it, and so does a function, but a toml key's neighbour says nothing about where a new key belongs.
