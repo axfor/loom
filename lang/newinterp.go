@@ -70,7 +70,20 @@ func (in *interp) node(n oNode) error {
 	}
 	in.vars[n.assign] = n.pos
 	in.used[n.assign] = false
+	if in.scopes == nil {
+		in.scopes = map[string]string{}
+	}
+	in.scopes[n.assign] = in.scope
 	added[0].Assign = n.assign
+	return nil
+}
+
+// readable refuses to read a result outside the if branch that caught it: it has one only when
+// that branch runs, so whether the read works would depend on upstream.
+func (in *interp) readable(name string, at Pos) error {
+	if where := in.scopes[name]; !strings.HasPrefix(in.scope, where) {
+		return fmt.Errorf("%s: `%s` is caught inside an if branch (%s), so it has a result only when that branch runs — read it inside that branch, or catch it before the if", at, name, in.vars[name])
+	}
 	return nil
 }
 
@@ -80,13 +93,19 @@ func (in *interp) ifStmt(n *oIf) error {
 		return err
 	}
 	in.branch++
+	in.ifs++
+	outer, id := in.scope, fmt.Sprintf("/%d", in.ifs)
+	in.scope = outer + id + "t"
 	then, err := in.nodes(n.then)
 	if err != nil {
 		in.branch--
+		in.scope = outer
 		return err
 	}
+	in.scope = outer + id + "e"
 	els, err := in.nodes(n.els)
 	in.branch--
+	in.scope = outer
 	if err != nil {
 		return err
 	}
@@ -103,6 +122,9 @@ func (in *interp) cond(e *oExpr, not bool) (*Cond, error) {
 	if len(e.steps) == 0 {
 		if _, ok := in.vars[e.root]; !ok {
 			return nil, fmt.Errorf("%s: `%s` is not a result caught earlier — write `ok = base....` first, or ask about the document: if base.has.Overview", e.pos, e.root)
+		}
+		if err := in.readable(e.root, e.pos); err != nil {
+			return nil, err
 		}
 		in.used[e.root] = true
 		c.Var = e.root
@@ -189,6 +211,9 @@ func (in *interp) errRefs(args []oArg) ([]Ref, error) {
 			name := a.val.expr.root
 			if _, ok := in.vars[name]; !ok {
 				return nil, fmt.Errorf("%s: `%s` is not a result caught earlier", a.pos, name)
+			}
+			if err := in.readable(name, a.pos); err != nil {
+				return nil, err
 			}
 			in.used[name] = true
 			out = append(out, Ref{Layer: "", Anchor: name, Rng: a.pos})

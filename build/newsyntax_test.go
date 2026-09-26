@@ -1823,3 +1823,22 @@ func TestCatchingAgainAfterReading(t *testing.T) {
 		t.Errorf("a result thrown away unread is refused: %v", err)
 	}
 }
+
+// A result caught inside an if branch exists only when that branch runs. Read outside it, the
+// build worked or failed depending on upstream, and the error said the catching statement "comes
+// later" — it came earlier, in a branch that had not run.
+func TestAResultIsReadInTheBranchThatCaughtIt(t *testing.T) {
+	weave := newTree(t, "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n", "# T\n\n## Overview\n\no\n", "")
+	for _, tpl := range []string{
+		"if base.has.Overview {\n    ok = base.Overview.after(`x`)\n}\nif !ok {\n    return err.format(\"%s\", ok)\n}\n",
+		"if base.has.Overview {\n    ok = base.Overview.after(`x`)\n} else {\n    if !ok {\n        return err.format(\"%s\", ok)\n    }\n}\n",
+	} {
+		if _, err := weave(tpl); err == nil || !strings.Contains(err.Error(), "caught inside an if branch") {
+			t.Errorf("read outside its branch:\n%s%v", tpl, err)
+		}
+	}
+	// Read in its own branch, or deeper, it stands.
+	if _, err := weave("if base.has.Overview {\n    ok = base.Overview.after(`x`)\n    if !ok {\n        return err.format(\"%s\", ok)\n    }\n}\n"); err != nil {
+		t.Errorf("read inside its branch: %v", err)
+	}
+}

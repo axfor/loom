@@ -597,6 +597,11 @@ type interp struct {
 	rebased bool
 	loom    string // the language version this tree declares
 	branch  int    // how many if branches deep: `return self` is a property of the whole template
+	// scope names the if branch being read, /1t/2e: a result caught in a branch exists only when
+	// that branch runs, so it is read there or below. scopes records where each name caught.
+	scope   string
+	ifs     int
+	scopes  map[string]string
 	objects map[string]object
 }
 

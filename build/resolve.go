@@ -144,7 +144,7 @@ func (r *run) ask(tree ast.Tree, c *lang.Cond) (bool, error) {
 	case c.Var != "":
 		why, ok := r.vars[c.Var]
 		if !ok {
-			return false, fmt.Errorf("%s: `%s` has no result yet — the statement that catches it comes later", c.Rng, c.Var)
+			return false, fmt.Errorf("%s: `%s` has no result — the statement that catches it did not run", c.Rng, c.Var)
 		}
 		yes = why == ""
 	case c.Has != "":
