@@ -136,6 +136,10 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 
 	var inserted []string
 	var drops, replaces, moves, levels, values, inserts []lang.Stmt
+	// A view's statements work in the view's own document, so they are not counted by name
+	// against the file's; but one that changes upstream's text inside the view still means the
+	// template is not insert-only.
+	viewChanged := false
 	var walk func(ss []lang.Stmt)
 	walk = func(ss []lang.Stmt) {
 		for _, s := range ss {
@@ -172,6 +176,12 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 				values = append(values, s)
 				inserted = append(inserted, s.SetKey+" ("+s.Mode+")")
 			case "in":
+				for _, k := range s.Kids {
+					switch k.Op {
+					case "drop", "replace", "move", "swap", "promote", "demote", "unwrap", "join", "split":
+						viewChanged = true
+					}
+				}
 				walk(s.Kids)
 			}
 		}
@@ -385,7 +395,7 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 	outText := out
 	if m, ok := c.MarksFor(c.Weft, t.Type); ok && c.Weft != "" && upOK {
 		outText = stripMarked(out, m)
-		insertOnly := !whole && !merged && len(drops)+len(replaces)+len(moves)+len(levels) == 0
+		insertOnly := !whole && !merged && len(drops)+len(replaces)+len(moves)+len(levels) == 0 && !viewChanged
 		if lang.HasValues(t.Type) && len(values) > 0 {
 			insertOnly = false
 		}

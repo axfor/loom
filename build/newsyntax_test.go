@@ -1685,3 +1685,30 @@ func TestAGroupOfNestedKeys(t *testing.T) {
 		t.Errorf("got\n%s", got)
 	}
 }
+
+// Inside a view a group is read from the view's document. The accounting read it from the file's,
+// found no sections in a toml file, forgot the statement, and then refused the template as an
+// insert-only one that had changed upstream's bytes.
+func TestRestructuringInsideAView(t *testing.T) {
+	for _, tpl := range []string{
+		"base.prompt.as(markdown).sections[level == 3].promote()\n",
+		"base.prompt.as(markdown).Steps.children.promote()\n",
+	} {
+		dir := t.TempDir()
+		mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\n")
+		mustWrite(t, filepath.Join(dir, "up", "cmd.toml"), "description = \"d\"\nprompt = \"\"\"\n## Steps\n\ndo\n\n### Sub\n\ns\n\"\"\"\n")
+		mustWrite(t, filepath.Join(dir, "me", "cmd.toml.lm"), tpl)
+		cfg, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := filepath.Join(dir, "out")
+		if _, err := buildTree(t, cfg, out); err != nil {
+			t.Errorf("%s%v", tpl, err)
+			continue
+		}
+		if got := readFile(t, filepath.Join(out, "cmd.toml")); !strings.Contains(got, "## Sub") {
+			t.Errorf("%s: Sub was promoted inside the prompt:\n%s", tpl, got)
+		}
+	}
+}
