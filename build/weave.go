@@ -776,7 +776,7 @@ func payload(c *lang.Config, t *lang.Template, r lang.Ref, rel string, nest *nes
 func refSource(c *lang.Config, t *lang.Template, r lang.Ref, rel string, nest *nestCtx) (string, *nestCtx, error) {
 	// self may be the template's own resource sections rather than a file of ours.
 	if r.Layer == "self" && r.File == "" && len(t.Resources) > 0 {
-		src, err := inlineDoc(t, r)
+		src, err := inlineDoc(c, t, r)
 		return src, nil, err
 	}
 	srcRel := weftRel(c, t, r.Layer, rel)
@@ -899,7 +899,7 @@ func applyValue(c *lang.Config, t *lang.Template, tree ast.Tree, s lang.Stmt) er
 		var src string
 		if s.SetRef.Layer == "self" && s.SetRef.File == "" && len(t.Resources) > 0 {
 			var err error
-			if src, err = inlineDoc(t, s.SetRef); err != nil {
+			if src, err = inlineDoc(c, t, s.SetRef); err != nil {
 				return err
 			}
 			if s.SetRef.ResKind != "" {
@@ -1252,7 +1252,19 @@ func project(c *lang.Config, t *lang.Template, r lang.Ref, rel string) (string, 
 // the section and the kind may be left out, and then the one document that holds the name is it —
 // nothing is guessed: none is an error that lists what there is, and two is an error that asks
 // which.
-func inlineDoc(t *lang.Template, r lang.Ref) (string, error) {
+// inlineDoc is the text of the resource document a reference names, with our variables expanded:
+// a Self: section is our content written in the template, and our content is expanded wherever
+// it is written — in our files, in literals, and here.
+func inlineDoc(c *lang.Config, t *lang.Template, r lang.Ref) (string, error) {
+	d, err := inlineDocOf(t, r)
+	if err != nil || c.Vars == nil {
+		return d.Text, err
+	}
+	b, err := c.Vars.Expand([]byte(d.Text), t.Path, d.Rng.Line+1, 1)
+	return string(b), err
+}
+
+func inlineDocOf(t *lang.Template, r lang.Ref) (lang.ResourceDoc, error) {
 	var docs []lang.ResourceDoc
 	var where, section []string
 	for _, res := range t.Resources {
@@ -1273,13 +1285,13 @@ func inlineDoc(t *lang.Template, r lang.Ref) (string, error) {
 		}
 	}
 	if len(docs) == 0 {
-		return "", fmt.Errorf("%s: no document of ours to take this from", r.Rng)
+		return lang.ResourceDoc{}, fmt.Errorf("%s: no document of ours to take this from", r.Rng)
 	}
 	if r.Anchor == "" || r.Kind == "body" || r.Kind == "all" {
 		if len(docs) > 1 {
-			return "", fmt.Errorf("%s: %d documents of ours could be meant (%s) — name the kind: self.%s...", r.Rng, len(docs), strings.Join(where, ", "), docs[0].Kind)
+			return lang.ResourceDoc{}, fmt.Errorf("%s: %d documents of ours could be meant (%s) — name the kind: self.%s...", r.Rng, len(docs), strings.Join(where, ", "), docs[0].Kind)
 		}
-		return docs[0].Text, nil
+		return docs[0], nil
 	}
 	var hits []int
 	for i, d := range docs {
@@ -1304,9 +1316,9 @@ func inlineDoc(t *lang.Template, r lang.Ref) (string, error) {
 	}
 	switch len(hits) {
 	case 1:
-		return docs[hits[0]].Text, nil
+		return docs[hits[0]], nil
 	case 0:
-		return "", fmt.Errorf("%s: none of our documents (%s) has %q", r.Rng, strings.Join(where, ", "), r.Anchor)
+		return lang.ResourceDoc{}, fmt.Errorf("%s: none of our documents (%s) has %q", r.Rng, strings.Join(where, ", "), r.Anchor)
 	}
 	var both []string
 	kinds, sections := map[string]bool{}, map[string]bool{}
@@ -1331,7 +1343,7 @@ func inlineDoc(t *lang.Template, r lang.Ref) (string, error) {
 			how += "; the one in Self: has no name to say — give it one: Self as main:"
 		}
 	}
-	return "", fmt.Errorf("%s: %q is in %s — %s", r.Rng, r.Anchor, strings.Join(both, " and "), how)
+	return lang.ResourceDoc{}, fmt.Errorf("%s: %q is in %s — %s", r.Rng, r.Anchor, strings.Join(both, " and "), how)
 }
 
 // locateQuiet answers only whether a reference is findable, with no error to report.

@@ -1439,3 +1439,38 @@ func TestOurSectionsReachTheProductWhicheverBranchRuns(t *testing.T) {
 		t.Errorf("placed, it builds: %v", err)
 	}
 }
+
+// A Self: section is our content written in the template, and our content is expanded wherever
+// it is written. It was not: {{@url}} reached the product as written, and lm.e warned that url was
+// never used.
+func TestVariablesInSelfSections(t *testing.T) {
+	build := func(vars string) (string, error) {
+		dir := t.TempDir()
+		mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n")
+		mustWrite(t, filepath.Join(dir, "lm.e"), vars)
+		mustWrite(t, filepath.Join(dir, "up", "a.md"), "# T\n\n## Overview\n\no\n")
+		mustWrite(t, filepath.Join(dir, "me", "a.md.lm"), "base.Overview.after(self.job)\n---\nSelf:\n    ```markdown\n    ## job\n\n    see {{@url}}\n    ```\n")
+		cfg, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Vars, err = lang.LoadVars(filepath.Join(dir, "lm.e")); err != nil {
+			t.Fatal(err)
+		}
+		out := filepath.Join(dir, "out")
+		if _, err := buildTree(t, cfg, out); err != nil {
+			return "", err
+		}
+		return readFile(t, filepath.Join(out, "a.md")), nil
+	}
+	got, err := build("url = https://x.example\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "see https://x.example") {
+		t.Errorf("the variable is expanded in the product:\n%s", got)
+	}
+	if _, err := build("other = 1\n"); err == nil || !strings.Contains(err.Error(), "a.md.lm:7") || !strings.Contains(err.Error(), "url") {
+		t.Errorf("an undefined variable is named where it is written, in the template: %v", err)
+	}
+}
