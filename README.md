@@ -753,16 +753,20 @@ it produces can reach the product.
 | `return err.format("...", ok)` | the build fails with our message |
 | `return` | stop here; what was written so far stands |
 
-Besides `has`, a question can ask whether a predicate found anything, `.any`, or how many,
-`.count` — which holds when the number is not zero. Both read the document and write nothing.
+Besides `has`, a question can ask whether a group has anything in it, `.any`, or how many,
+`.count` — which holds when the number is not zero: `base.sections[level == 2].any`, or
+`base.sections.any` for any section at all. Both read the document and write nothing.
 
 The report says which way each question went, because that is the one thing a reader cannot see
 from the template alone:
 
 ```
-skipped              1 places  a question decided against it
+skipped              2 places  a question decided against it
   me/SKILL.md.lm                               SKILL.md skipped (base.has.Nope did not hold)
+  me/other.md.lm                               other.md: else skipped (base.has.Overview held)
 ```
+
+Every branch that did not run is listed, then-branch or else, one line per question of a chain.
 
 ### Predicates
 
@@ -1050,6 +1054,10 @@ it, and the build refuses them rather than ignore them.
      byte-identical to upstream. For markdown that means the body, since `set` / `start` / `append`
      change the frontmatter on purpose; for a toml or yaml file a template that writes a value is
      not insert-only either, and is not held to this.
+   - **our sections**: every section (or function) of our file — or of the `Self:` documents of the
+     product's type — must be in the product, inside our marks, in the branch the questions took.
+     Named by some statement is not enough: a section placed only in an `if`'s then-branch is
+     missing whenever upstream sends the build down the else.
    - **our keys**: every key of our file must be in the product — a markdown file's frontmatter
      taken with `set` or put next to upstream's with `start` / `append`, a toml or yaml file's
      top-level keys the same — or the build fails. A frontmatter value over several lines (a list,
@@ -1098,7 +1106,8 @@ lm build -e inner.e    uses inner.e only
   but not defined is an error, reported at `file:line:col`.
 - Defined but unused variables are a warning.
 - `{{@@name}}` produces the literal text `{{@name}}`.
-- Only our layer is expanded: our files, and literals in templates. Upstream text is never changed.
+- Only our layer is expanded: our files, literals in templates, and `Self:` sections. Upstream text
+  is never changed.
 - Binary files (a NUL byte in the first 8000 bytes) are not expanded.
 
 ---
@@ -1117,6 +1126,13 @@ an order upstream never had; a key of ours that the product does not have is rep
 - after the nearest preceding section that the template does place, in the same statement
   (`base.Install.after("Install XSDD")` becomes `base.Install.after("Install XSDD", "Proxy settings")`);
 - or, if it comes first in our file, before the nearest following one.
+- Where that neighbour is placed in both branches of an `if`, the section is written into both, so
+  it is in the product whichever way the question goes.
+- In a `loom "2.0"` tree it is written on self, `self."Proxy settings"`, since a bare string there
+  is text.
+
+Sections written in a template's `Self:` sections are not completed: nothing of ours sits beside
+them to follow. One that no statement places is an error that names it.
 
 If the name is not unique in our file, a section path is written (`self."Example 2"."Phase 1"`).
 When a completed call gets a section path, or would pass 100 characters on one line, the whole call is
