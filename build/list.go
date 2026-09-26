@@ -138,7 +138,17 @@ func Describe(c *lang.Config, path string) (*Info, error) {
 				if s.Ident || len(s.Within) > 0 {
 					u.Anchor = real(baseTree(in), s.Kind, s.Within, s.Anchor, s.Ident)
 				}
-				i.Anchors = append(i.Anchors, u)
+				if s.Select != nil {
+					// a group names each node its predicate picks
+					if tree := baseTree(in); tree != nil {
+						found, _ := selected(tree, s.Select)
+						for _, f := range found {
+							i.Anchors = append(i.Anchors, Use{Kind: s.Kind, Anchor: f.Name, Where: s.Rng.String()})
+						}
+					}
+				} else {
+					i.Anchors = append(i.Anchors, u)
+				}
 				// where a move goes, what a swap trades with, where a split cuts
 				if m := s.Move; m != nil {
 					mu := Use{Kind: m.Kind, Anchor: m.Anchor, Where: m.At.String()}

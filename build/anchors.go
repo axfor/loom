@@ -24,6 +24,7 @@ type anchorUse struct {
 	within       []lang.Seg
 	ident        bool
 	rng          lang.Pos
+	sel          *lang.Select // a group: the nodes it picks are what it names
 }
 
 // anchorUses collects every anchor a template places something on, in upstream.
@@ -37,7 +38,7 @@ func anchorUses(t *lang.Template) []anchorUse {
 		for _, s := range ss {
 			switch s.Op {
 			case "after", "before", "replace", "drop", "unwrap", "join", "split", "move", "swap", "promote", "demote":
-				out = append(out, anchorUse{kind: s.Kind, anchor: s.Anchor, within: s.Within, ident: s.Ident, rng: s.Rng})
+				out = append(out, anchorUse{kind: s.Kind, anchor: s.Anchor, within: s.Within, ident: s.Ident, rng: s.Rng, sel: s.Select})
 				// Where a move goes, what a swap trades with, where a split cuts: a node of
 				// upstream's the template depends on as much as the one it changes.
 				if m := s.Move; m != nil {
@@ -83,6 +84,20 @@ func ListAnchors(c *lang.Config, w io.Writer) error {
 		tree := ast.New(t.Type, src)
 		fmt.Fprintln(w, t.Target)
 		for _, u := range uses {
+			// A group names the nodes its predicate picks, each one listed; one picking nothing
+			// is said to, rather than printed as a name with no letters in it.
+			if u.sel != nil {
+				found, _ := selected(tree, u.sel)
+				for _, f := range found {
+					fmt.Fprintf(w, "  %-40s %-9s upstream line %d, picked by a predicate\n", trunc(f.Name, 40), u.kind, f.Line+1)
+					n++
+				}
+				if len(found) == 0 {
+					fmt.Fprintf(w, "  %-40s %-9s ★ matched nothing\n", "(a predicate)", u.kind)
+					n++
+				}
+				continue
+			}
 			label := u.anchor
 			var where string
 			if span, name, err := locate(tree, u.kind, u.within, u.anchor, u.ident, lang.Stmt{Rng: u.rng}); err == nil {

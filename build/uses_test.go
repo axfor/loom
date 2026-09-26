@@ -103,3 +103,30 @@ func TestUsesIncludesTargetsAndQuestions(t *testing.T) {
 		t.Errorf("lm anchors lists both, found %d:\n%s", n, out.String())
 	}
 }
+
+// A group names the nodes its predicate picks. lm uses printed it as a name with no letters in
+// it; each node is listed now, so "what points at Setup" has the predicate that picks it.
+func TestUsesListsWhatAGroupPicks(t *testing.T) {
+	dir := t.TempDir()
+	w := func(rel, text string) { mustWrite(t, filepath.Join(dir, rel), text) }
+	w("loom.om", "base \"up\"\nself \"me\"\n")
+	w("up/doc.md", "# T\n\n## Usage\n\nu\n\n### Phase 1\n\np\n\n## Setup\n\ns\n")
+	w("me/doc.lm", "base.sections[has.\"Phase 1\"].demote()\nbase.sections[name == \"Setup\"].demote()\n")
+	c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := build.Uses(c, &out, ""); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "Setup  ← me/doc.lm:2") || !strings.Contains(got, "Usage  ← me/doc.lm:1") {
+		t.Errorf("each node a group picks is listed:\n%s", got)
+	}
+	for _, l := range strings.Split(got, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(l), "←") {
+			t.Errorf("a use with no name: %q", l)
+		}
+	}
+}
