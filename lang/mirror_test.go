@@ -62,6 +62,7 @@ func mirror(t *testing.T) map[string]any {
 			STATEMENT_WORDS: set(m.STATEMENT_WORDS),
 			DOCS: Object.keys(require("./lib/docs.js").KEYWORDS).sort(),
 			PROJECT_FIELDS: Object.keys(require("./lib/docs.js").PROJECT_FIELDS).sort(),
+			FENCE_KINDS: Object.fromEntries(["sh", "bash", "zsh", "yml", "md", "markdown", "shell", "toml", "yaml", "json", "text", "python", "js", ""].map((t) => [t, m.fenceKind(t)])),
 		}));`
 	cmd := exec.Command(node, "-e", dump)
 	cmd.Dir = ext
@@ -149,6 +150,18 @@ func TestEditorMirrorsTheTables(t *testing.T) {
 	list("STATEMENT_WORDS", []string{"if", "else", "fn", "return"})
 	// A projection template's fields: completion offers these, and the build refuses any other.
 	list("PROJECT_FIELDS", projectFields)
+	// A fence's tag names its type the same way on both sides, aliases included, or a Self:
+	// section of ```md reads as markdown to the build and as nothing to the editor.
+	var fence map[string]string
+	raw, _ = json.Marshal(js["FENCE_KINDS"])
+	if err := json.Unmarshal(raw, &fence); err != nil {
+		t.Fatal(err)
+	}
+	for tag, got := range fence {
+		if want := fenceKind(tag); got != want {
+			t.Errorf("fenceKind(%q): editor %q, compiler %q", tag, got, want)
+		}
+	}
 
 	// Every word of the language explains itself on hover. A method added to the compiler and not
 	// to the editor's docs is offered in completion with nothing to say about it.

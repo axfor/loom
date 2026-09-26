@@ -247,14 +247,16 @@ func readResources(rs []oResource) ([]Resource, error) {
 			if f.Tag == "" {
 				return nil, fmt.Errorf("%s: this fence has no language tag, so there is nothing to say what kind of document it is: ```markdown", f.Pos)
 			}
-			if !contains(typeWords(), f.Tag) {
+			// The same tags a content fence takes: md, yml, sh and bash name their types here too.
+			kind := fenceKind(f.Tag)
+			if kind == "" {
 				return nil, unknownIn(f.Tag, typeWords(), "kind", f.Pos)
 			}
-			if kinds[f.Tag] {
-				return nil, fmt.Errorf("%s: this section already holds a %s document — one of each kind, so `self.%s` means one thing", f.Pos, f.Tag, f.Tag)
+			if kinds[kind] {
+				return nil, fmt.Errorf("%s: this section already holds a %s document — one of each kind, so `self.%s` means one thing", f.Pos, kind, kind)
 			}
-			kinds[f.Tag] = true
-			res.Docs = append(res.Docs, ResourceDoc{Kind: f.Tag, Text: f.Text, Rng: f.Pos})
+			kinds[kind] = true
+			res.Docs = append(res.Docs, ResourceDoc{Kind: kind, Text: f.Text, Rng: f.Pos})
 		}
 		out = append(out, res)
 	}

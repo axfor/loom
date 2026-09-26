@@ -1059,6 +1059,7 @@ module.exports = {
   literalNames,
   resourceDocs,
   bindings,
+  fenceKind,
   lastBefore,
   stepRef,
   enclosingCall,
@@ -1116,10 +1117,18 @@ function resourceDocs(resources, r) {
 
 // fenceDoc reads one fence back out of the source: its language tag, its text with the common
 // indentation stripped, and the line its body starts on so a definition can point into it.
+// fenceKind mirrors objparse.go's: the tags a fence may carry and the type each names — md, yml,
+// sh and bash included. A tag with no type is "" (a label only).
+function fenceKind(tag) {
+  const alias = { sh: 'shell', bash: 'shell', zsh: 'shell', yml: 'yaml', md: 'markdown' }[tag];
+  return alias || (TYPES.has(tag) ? tag : '');
+}
+
 function fenceDoc(tok, text) {
   const lines = text.split('\n');
   const open = lines[tok.line] || '';
-  const tag = (open.trim().replace(/^`+/, '').trim()) || '';
+  const raw = (open.trim().replace(/^`+/, '').trim()) || '';
+  const tag = fenceKind(raw) || raw;
   const body = [];
   for (let k = tok.line + 1; k <= (tok.endLine ?? tok.line); k++) {
     if (/^\s*`{3,}\s*$/.test(lines[k] || '')) break;

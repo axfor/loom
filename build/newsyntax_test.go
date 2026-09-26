@@ -1856,3 +1856,12 @@ func TestAPredicateNameReadsByTheVersion(t *testing.T) {
 		t.Error("Loom 2: has.Set_Up is the name as written, and nothing holds it")
 	}
 }
+
+// A Self: section's fence takes the tags a content fence takes: md, yml, sh.
+func TestSelfSectionsTakeTagAliases(t *testing.T) {
+	weave := newTree(t, "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n", "# T\n\n## Overview\n\no\n", "")
+	got, err := weave("base.Overview.after(self.job)\n---\nSelf:\n    ```md\n    ## job\n    ```\n")
+	if err != nil || !strings.Contains(got, "## job") {
+		t.Errorf("```md is markdown in a Self: section too: %v\n%s", err, got)
+	}
+}
