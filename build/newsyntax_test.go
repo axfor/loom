@@ -1798,3 +1798,28 @@ func TestPredicatesThatCannotMeanWhatTheySay(t *testing.T) {
 		}
 	}
 }
+
+// A name catches again once its result has been read. A fn that caught a result could be called
+// only once — its second call caught into a name that already held the first — and the error
+// pointed at the same line twice.
+func TestCatchingAgainAfterReading(t *testing.T) {
+	weave := newTree(t, "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n", "# T\n\n## Overview\n\no\n\n## Usage\n\nu\n", "")
+	fn := "fn put(up) {\n    ok = up.after(`x`)\n    if !ok {\n        return err.format(\"no: %s\", ok)\n    }\n}\n"
+	got, err := weave(fn + "put(base.Overview)\nput(base.Usage)\n")
+	if err != nil {
+		t.Fatalf("a fn that catches a result, called twice: %v", err)
+	}
+	if strings.Count(got, "<!-- B -->\nx") != 2 {
+		t.Errorf("both calls wrote:\n%s", got)
+	}
+	// Each catch still has to be read: the second fails at its own place.
+	_, err = weave(fn + "put(base.Overview)\nput(base.Nope)\n")
+	if err == nil || !strings.Contains(err.Error(), "no: ") || !strings.Contains(err.Error(), "Nope") {
+		t.Errorf("the second call's failure is its own: %v", err)
+	}
+	// Catching over a result nothing read is still refused.
+	_, err = weave("ok = base.Overview.after(`x`)\nok = base.Usage.after(`y`)\nif !ok {\n    return err.format(\"%s\", ok)\n}\n")
+	if err == nil || !strings.Contains(err.Error(), "which nothing has read") {
+		t.Errorf("a result thrown away unread is refused: %v", err)
+	}
+}

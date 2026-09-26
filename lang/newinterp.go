@@ -62,10 +62,14 @@ func (in *interp) node(n oNode) error {
 	if len(added) != 1 {
 		return fmt.Errorf("%s: `%s = ...` catches the result of one statement, and this is %d", n.pos, n.assign, len(added))
 	}
-	if first, dup := in.vars[n.assign]; dup {
-		return fmt.Errorf("%s: `%s` already holds a result (from %s) — give this one its own name", n.pos, n.assign, first)
+	// A name may catch again once what it held has been read: that is what a fn called twice
+	// does, and what checking one write and then the next does. Catching over a result nothing
+	// read would throw that one away unseen.
+	if first, dup := in.vars[n.assign]; dup && !in.used[n.assign] {
+		return fmt.Errorf("%s: `%s` still holds the result caught at %s, which nothing has read — read it first (if !%s { ... }), or give this one its own name", n.pos, n.assign, first, n.assign)
 	}
 	in.vars[n.assign] = n.pos
+	in.used[n.assign] = false
 	added[0].Assign = n.assign
 	return nil
 }
