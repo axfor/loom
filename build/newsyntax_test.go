@@ -1618,3 +1618,19 @@ func TestAKeysNeighboursAreItsSiblings(t *testing.T) {
 		}
 	}
 }
+
+// A fn is inlined where it is called, so a return in its body ended the whole template: the
+// statements after the call silently did not run. It is refused; err.format, which fails the
+// build wherever it is written, may stand.
+func TestReturnInAFunction(t *testing.T) {
+	weave := newTree(t, "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n", "# T\n\n## Overview\n\no\n", "")
+	for _, body := range []string{"    return\n", "    if base.has.Overview {\n        return\n    }\n", "    return self // reason: r\n"} {
+		_, err := weave("fn stop() {\n" + body + "}\nstop()\nbase.Overview.after(`after`)\n")
+		if err == nil || !strings.Contains(err.Error(), "return in a fn would end the whole template") {
+			t.Errorf("refused:\n%s%v", body, err)
+		}
+	}
+	if _, err := weave("fn check() {\n    ok = base.Overview.after(`x`)\n    if !ok {\n        return err.format(\"no: %s\", ok)\n    }\n}\ncheck()\n"); err != nil {
+		t.Errorf("err.format in a fn stands: %v", err)
+	}
+}

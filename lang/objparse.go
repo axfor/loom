@@ -232,6 +232,12 @@ func parseObjects(file string, src []byte) ([]oImport, []oNode, []oResource, err
 			if _, dup := fns[name]; dup {
 				return nil, nil, nil, fmt.Errorf("%s: `%s` is defined twice", f.pos, name)
 			}
+			// A fn's body is inlined where it is called, so a return in it would end the whole
+			// template, not the fn — read one way and done another. return err.format(...)
+			// fails the build wherever it is written, so that one may stand.
+			if r := endsTemplate(f.body); r != nil {
+				return nil, nil, nil, fmt.Errorf("%s: return in a fn would end the whole template, not the fn, since a fn is inlined where it is called — put the return where the fn is called, or ask with if around what should not run", r.pos)
+			}
 			fns[name] = f
 			continue
 		}
@@ -309,6 +315,25 @@ func inlineFns(body []oNode, fns map[string]*oFn, stack []string) ([]oNode, erro
 		expanded = append(expanded, substNodes(inner, env)...)
 	}
 	return expanded, nil
+}
+
+// endsTemplate finds a return that would stop the template or replace it — anything but
+// err.format — in a body, its if branches included.
+func endsTemplate(ns []oNode) *oReturn {
+	for _, n := range ns {
+		if n.ret != nil && n.ret.errArg == nil {
+			return n.ret
+		}
+		if n.ifN != nil {
+			if r := endsTemplate(n.ifN.then); r != nil {
+				return r
+			}
+			if r := endsTemplate(n.ifN.els); r != nil {
+				return r
+			}
+		}
+	}
+	return nil
 }
 
 // callee reports which fn a node calls, or nil when it is an ordinary statement.
