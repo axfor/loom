@@ -62,6 +62,8 @@ type oPred struct {
 	str   string
 	num   int
 	pos   Pos
+	at    Pos  // where the string is written: lm sync rewrites a name there
+	ident bool // has.Usage_Tips, unquoted: read by the underscore rule in Loom 1
 }
 
 // ── parsing ──────────────────────────────────────────────────────────────────
@@ -336,7 +338,7 @@ func (p *oparser) predTerm() (*oPred, error) {
 		if s.Kind != KString && s.Kind != KIdent {
 			return nil, fmt.Errorf("%s: has names a part: has.\"Usage\" or has[\"Usage\"]", s.Pos)
 		}
-		n.str = s.Text
+		n.str, n.at, n.ident = s.Text, s.Pos, s.Kind == KIdent
 		if open.Kind == KLBracket {
 			if c := p.next(); c.Kind != KRBracket {
 				return nil, fmt.Errorf("%s: expected `]` to close has[ opened at %s", c.Pos, open.Pos)
@@ -375,7 +377,7 @@ func (p *oparser) predTerm() (*oPred, error) {
 		if s.Kind != KString {
 			return nil, fmt.Errorf("%s: %s is compared with a quoted string, got %s", s.Pos, t.Text, s)
 		}
-		n.str = s.Text
+		n.str, n.at = s.Text, s.Pos
 		return n, nil
 	}
 	return nil, unknownIn(t.Text, predFields, "predicate", t.Pos)

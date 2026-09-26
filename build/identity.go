@@ -116,11 +116,33 @@ func follow(t *lang.Template, rs []Rename, loom string) ([]string, error) {
 		kind, name string
 		ident      bool
 		at         lang.Pos
+		whole      bool // the whole name is one token: a predicate's has."X" or name == "X"
 	}
 	var uses []use
 	add := func(kind, name string, ident bool, at lang.Pos) {
 		if name != "" && at.Line > 0 {
-			uses = append(uses, use{kind, name, ident, at})
+			uses = append(uses, use{kind, name, ident, at, false})
+		}
+	}
+	// A predicate names nodes too: name == "Setup" picks one by its name, has."Usage" asks for
+	// one inside. A regular expression, name ~ "...", is a pattern, not a name, and is left alone.
+	var preds func(kind string, p *lang.Pred)
+	preds = func(kind string, p *lang.Pred) {
+		if p == nil {
+			return
+		}
+		if (p.Field == "name" && p.Cmp == "==") || p.Field == "has" {
+			if p.Str != "" && p.At.Line > 0 {
+				uses = append(uses, use{kind, p.Str, p.Ident, p.At, true})
+			}
+		}
+		for i := range p.Kids {
+			preds(kind, &p.Kids[i])
+		}
+	}
+	sel := func(s *lang.Select) {
+		if s != nil {
+			preds(s.Kind, s.Pred)
 		}
 	}
 	var walk func(ss []lang.Stmt)
@@ -137,9 +159,15 @@ func follow(t *lang.Template, rs []Rename, loom string) ([]string, error) {
 				for _, seg := range m.Within {
 					add("heading", seg.Name, seg.Ident, seg.At)
 				}
+				sel(m.Select)
 			}
 			if c := s.Cond; c != nil {
 				add(c.Kind, c.Has, c.HasIdent, c.HasAt)
+				sel(c.Sel)
+			}
+			sel(s.Select)
+			for _, r := range s.Srcs {
+				sel(r.Project)
 			}
 		}
 	}
@@ -182,6 +210,27 @@ func follow(t *lang.Template, rs []Rename, loom string) ([]string, error) {
 				continue
 			}
 			note := fmt.Sprintf("%s → %s", r.Old, r.New)
+			if u.whole {
+				// The name is all in one token, so the token takes the new name whole — a key's
+				// path with the renamed part replaced where a parent was renamed.
+				now := ""
+				switch {
+				case u.name == r.Old || (u.ident && identMatch(r.Old, u.name)):
+					now = r.New
+				case strings.HasPrefix(u.name, r.Old+"."):
+					now = r.New + u.name[len(r.Old):]
+				default:
+					continue
+				}
+				if k := at(u.at, 0); k >= 0 {
+					text := lang.Quote(now)
+					if toks[k].Kind == lang.KIdent {
+						text = lang.NameTextFor(now, loom)
+					}
+					rewrite(k, text, note)
+				}
+				continue
+			}
 			if !strings.Contains(r.Old, ".") && !strings.Contains(u.name, ".") {
 				// Loom 1 reads an unquoted name by the underscore rule, so Set_Up names "Set Up".
 				if u.name == r.Old || (u.ident && identMatch(r.Old, u.name)) {

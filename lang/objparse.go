@@ -827,7 +827,7 @@ func (in *interp) select_(r *receiver, st oStep) error {
 			if st.call && len(st.args) > 0 {
 				return fmt.Errorf("%s: a group takes a predicate in brackets or named arguments, not both", st.pos)
 			}
-			sel, err := selectOf(st.pred, kind, st.pos)
+			sel, err := selectFor(st.pred, kind, st.pos, in.loom)
 			if err != nil {
 				return err
 			}
@@ -1616,7 +1616,7 @@ func (in *interp) projectionOf(e *oExpr, tpl string, at Pos) (Ref, bool, error) 
 	var err error
 	switch {
 	case st.pred != nil:
-		sel, err = selectOf(st.pred, kind, st.pos)
+		sel, err = selectFor(st.pred, kind, st.pos, in.loom)
 	case !st.call:
 		sel = &Select{Kind: kind, All: true}
 	default:

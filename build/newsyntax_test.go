@@ -1842,3 +1842,17 @@ func TestAResultIsReadInTheBranchThatCaughtIt(t *testing.T) {
 		t.Errorf("read inside its branch: %v", err)
 	}
 }
+
+// An unquoted name in a predicate reads like every other: has.Set_Up finds "Set Up" in Loom 1,
+// as if base.has.Set_Up does, and is the name as written in Loom 2.
+func TestAPredicateNameReadsByTheVersion(t *testing.T) {
+	const up = "# T\n\n## Outer\n\no\n\n### Set Up\n\ns\n"
+	w1 := newTree(t, "base \"up\"\nself \"me\"\n", up, "")
+	if _, err := w1("base.sections[has.Set_Up].demote()\n"); err != nil {
+		t.Errorf("Loom 1: has.Set_Up finds \"Set Up\": %v", err)
+	}
+	w2 := newTree(t, "base \"up\"\nself \"me\"\nloom \"2.0\"\n", up, "")
+	if _, err := w2("base.sections[has.Set_Up].demote()\n"); err == nil {
+		t.Error("Loom 2: has.Set_Up is the name as written, and nothing holds it")
+	}
+}

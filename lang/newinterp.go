@@ -153,7 +153,7 @@ func (in *interp) cond(e *oExpr, not bool) (*Cond, error) {
 		var err error
 		switch {
 		case st.pred != nil:
-			sel, err = selectOf(st.pred, kind, st.pos)
+			sel, err = selectFor(st.pred, kind, st.pos, in.loom)
 		case st.call:
 			sel, err = in.predicate(st, kind)
 		default:
@@ -264,6 +264,12 @@ func readResources(rs []oResource) ([]Resource, error) {
 // selectOf turns a bracketed predicate into the selection the build runs. Match and Level are the
 // two the engine already had; the rest arrive with the tree of terms.
 func selectOf(p *oPred, kind string, at Pos) (*Select, error) {
+	return selectFor(p, kind, at, "")
+}
+
+// selectFor is selectOf for a tree that declares a version: from Loom 2 an unquoted has.Name is
+// the name as written, as every other name is.
+func selectFor(p *oPred, kind string, at Pos, loom string) (*Select, error) {
 	if p == nil {
 		return nil, fmt.Errorf("%s: a group needs a predicate, or it would select the whole file", at)
 	}
@@ -284,7 +290,11 @@ func selectOf(p *oPred, kind string, at Pos) (*Select, error) {
 	if (kind == "function" || kind == "marker" || kind == "line") && p.uses("has") {
 		return nil, fmt.Errorf("%s: has asks for a part of a node by its name, and a %s holds no named parts — ask what it calls, calls \"x\", or its name, name ~ \"...\"", at, kind)
 	}
-	return &Select{Kind: kind, Pred: p.node()}, nil
+	node := p.node()
+	if atLeast(loom, 2) {
+		node.literal()
+	}
+	return &Select{Kind: kind, Pred: node}, nil
 }
 
 // emptyLines refuses empty for lines: a line holds nothing under it, so every line is empty, and a
@@ -318,11 +328,19 @@ func (p *oPred) node() *Pred {
 	if p == nil {
 		return nil
 	}
-	out := &Pred{Op: p.op, Field: p.field, Cmp: p.cmp, Str: p.str, Num: p.num}
+	out := &Pred{Op: p.op, Field: p.field, Cmp: p.cmp, Str: p.str, Num: p.num, At: p.at, Ident: p.ident}
 	for i := range p.kids {
 		out.Kids = append(out.Kids, *p.kids[i].node())
 	}
 	return out
+}
+
+// literal drops the underscore rule from every term, for a Loom 2 tree.
+func (p *Pred) literal() {
+	p.Ident = false
+	for i := range p.Kids {
+		p.Kids[i].literal()
+	}
 }
 
 // kindType is the type whose default node kind this is, so a predicate can ask whether that type

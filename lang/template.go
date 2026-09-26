@@ -157,4 +157,6 @@ type Pred struct {
 	Cmp   string // == != < <= > >= ~
 	Str   string
 	Num   int
+	At    Pos  // where Str is written, for lm sync to follow a rename
+	Ident bool // an unquoted has.Name, matched by the underscore rule (Loom 1)
 }

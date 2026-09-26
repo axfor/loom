@@ -291,10 +291,11 @@ func match(tree ast.Tree, p *lang.Pred, n ast.Named) (bool, error) {
 		// A part this one holds, by name — not a word that happens to appear in its text. For
 		// markdown that is a heading below it; elsewhere a node whose lines fall inside this one.
 		for _, m := range ast.Addressable(tree, kindOf(tree, n)) {
-			if m.Line > n.Line && m.Line < n.End && m.Name == p.Str {
+			named := m.Name == p.Str || (p.Ident && identMatch(m.Name, p.Str))
+			if m.Line > n.Line && m.Line < n.End && named {
 				return true, nil
 			}
-			if n.Level > 0 && m.Level > n.Level && m.Line > n.Line && m.Name == p.Str {
+			if n.Level > 0 && m.Level > n.Level && m.Line > n.Line && named {
 				// A section ends at the next heading, so what is under it is the deeper
 				// headings that follow — they are nodes of their own.
 				if deeper(tree, n, m) {

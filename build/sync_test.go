@@ -319,3 +319,37 @@ func TestSyncRewritesTheNameNotTheWordAfterIt(t *testing.T) {
 		t.Errorf("the rename lands on the name:\n%s\nwant\n%s", got, want)
 	}
 }
+
+// A predicate names nodes too, and a rename follows it there: name == "Setup" and has."Phase 1"
+// were left naming what upstream no longer has, and the build stopped at "matched nothing".
+func TestSyncFollowsNamesInPredicates(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n")
+	mustWrite(t, filepath.Join(dir, "up", "a.md"), "# T\n\n## Usage\n\nu\n\n### Phase 1\n\np\n\n## Setup\n\ns\n\n## Set Up\n\nsu\n\n### Inner\n\ni\n")
+	mustWrite(t, filepath.Join(dir, "me", "a.md.lm"), "base.sections[has.\"Phase 1\"].demote()\nbase.sections[name == \"Setup\"].demote()\nbase.sections[has.Inner && name ~ \"^Set\"].demote()\n")
+	mustWrite(t, filepath.Join(dir, "up", "ci.yaml"), "jobs:\n  old:\n    runs-on: ubuntu\n")
+	mustWrite(t, filepath.Join(dir, "me", "ci.yaml.lm"), "base.keys[has.\"jobs.old.runs-on\"].drop(reason: \"r\")\n")
+	next := t.TempDir()
+	mustWrite(t, filepath.Join(next, "a.md"), "# T\n\n## Usage\n\nu\n\n### Stage 1\n\np\n\n## Getting Started\n\ns\n\n## Set Up\n\nsu\n\n### Core\n\ni\n")
+	mustWrite(t, filepath.Join(next, "ci.yaml"), "jobs:\n  new:\n    runs-on: ubuntu\n")
+	c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := buildTree(t, c, filepath.Join(dir, "out")); err != nil {
+		t.Fatalf("before: %v", err)
+	}
+	if _, err := build.Sync(c, next); err != nil {
+		t.Fatal(err)
+	}
+	want := "base.sections[has.\"Stage 1\"].demote()\nbase.sections[name == \"Getting Started\"].demote()\nbase.sections[has.Core && name ~ \"^Set\"].demote()\n"
+	if got := readFile(t, filepath.Join(dir, "me", "a.md.lm")); got != want {
+		t.Errorf("the predicates follow:\n%s\nwant\n%s", got, want)
+	}
+	if got := readFile(t, filepath.Join(dir, "me", "ci.yaml.lm")); got != "base.keys[has.\"jobs.new.runs-on\"].drop(reason: \"r\")\n" {
+		t.Errorf("a key's path in has follows a parent's rename:\n%s", got)
+	}
+	if _, err := buildTree(t, c, filepath.Join(dir, "out2")); err != nil {
+		t.Errorf("the followed tree builds: %v", err)
+	}
+}
