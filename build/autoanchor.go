@@ -142,7 +142,7 @@ func placeOurs(c *lang.Config, t *lang.Template) ([]anchorGap, []string, error) 
 		}
 		var labels, args []string
 		for i := k; i < j; i++ {
-			a, err := argFor(tree, nodes, i)
+			a, err := argFor(tree, nodes, i, c.Loom)
 			if err != nil {
 				return nil, nil, fmt.Errorf("%s: %v", t.Path, err)
 			}
@@ -165,8 +165,9 @@ func placeOurs(c *lang.Config, t *lang.Template) ([]anchorGap, []string, error) 
 
 // argFor is the template argument for section k. A name unique in the file is written as "name";
 // a repeated one gets parent headings added until it resolves uniquely: self."parent"."name".
-// What is written back must resolve to the same section, never to a guess.
-func argFor(tree ast.Tree, nodes []ast.Named, k int) (string, error) {
+// What is written back must resolve to the same section, never to a guess. From Loom 2 a bare
+// string is the text itself, so even a unique name is written on self: self."name".
+func argFor(tree ast.Tree, nodes []ast.Named, k int, loom string) (string, error) {
 	n := nodes[k]
 	same := 0
 	for _, m := range nodes {
@@ -175,6 +176,9 @@ func argFor(tree ast.Tree, nodes []ast.Named, k int) (string, error) {
 		}
 	}
 	if same == 1 {
+		if lang.AtLeast(loom, 2) {
+			return "self." + lang.Quote(n.Name), nil
+		}
 		return lang.Quote(n.Name), nil
 	}
 	var ancestors []ast.Named // nearest first
@@ -319,7 +323,9 @@ func fillGaps(path string, src []byte, gaps []anchorGap) ([]byte, []string, erro
 					continue
 				}
 				for _, na := range g.args {
-					path = path || strings.HasPrefix(na, "self.")
+					// a section path, self."A"."B", is long enough to want a line of its own; one
+					// name on self, as Loom 2 writes every name of ours, is not a path
+					path = path || strings.Contains(na, `"."`)
 				}
 				if g.after {
 					after = append(after, g.args...)

@@ -1344,3 +1344,33 @@ func TestASplitChecksTheHeadingItCutsAt(t *testing.T) {
 		t.Errorf("a split of a section also dropped is refused, in words: %v", err)
 	}
 }
+
+// Anchor completion writes what the tree reads. From Loom 2 a bare string is the text itself, so
+// a section of ours written back as "More Stuff" put those two words in the product instead of the
+// section — and the report called it a literal.
+func TestAnchorCompletionWritesOurSectionsByTheVersion(t *testing.T) {
+	for _, c := range []struct{ decl, want string }{
+		{"", "base.Overview.after(self.Ours, \"More Stuff\")\n"},
+		{"loom \"2.0\"\n", "base.Overview.after(self.Ours, self.\"More Stuff\")\n"},
+	} {
+		dir := t.TempDir()
+		mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n"+c.decl)
+		mustWrite(t, filepath.Join(dir, "up", "a.md"), "# T\n\n## Overview\n\no\n")
+		mustWrite(t, filepath.Join(dir, "me", "a.md"), "## Ours\n\no\n\n## More Stuff\n\nthe section itself\n")
+		mustWrite(t, filepath.Join(dir, "me", "a.md.lm"), "base.Overview.after(self.Ours)\n")
+		cfg, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := filepath.Join(dir, "out")
+		if _, err := buildTree(t, cfg, out); err != nil {
+			t.Fatalf("%q: %v", c.decl, err)
+		}
+		if got := readFile(t, filepath.Join(dir, "me", "a.md.lm")); got != c.want {
+			t.Errorf("%q: completed as\n  %s  want\n  %s", c.decl, got, c.want)
+		}
+		if got := readFile(t, filepath.Join(out, "a.md")); !strings.Contains(got, "## More Stuff\n\nthe section itself") {
+			t.Errorf("%q: the section itself is in the product, not its name:\n%s", c.decl, got)
+		}
+	}
+}

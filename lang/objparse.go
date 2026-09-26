@@ -1593,6 +1593,10 @@ func (in *interp) ident(st oStep) bool {
 	return !st.str && !atLeast(in.loom, 2)
 }
 
+// AtLeast reports whether a tree declaring loom is at that major version or newer: what the
+// build writes into templates has to read the way the tree reads.
+func AtLeast(loom string, major int) bool { return atLeast(loom, major) }
+
 // atLeast reports whether a declared version is that major or newer. An undeclared version is the
 // oldest: a tree that never said what it was written for is read the way it always was.
 func atLeast(loom string, major int) bool {
