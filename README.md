@@ -751,6 +751,11 @@ if !ok {
 The result carries why, with the file and position. `err.format` only formats the message: nothing
 it produces can reach the product.
 
+A name catches again once its result has been read — a function that catches, called twice, or
+one write checked and then the next — but not over a result nothing has read. A result caught
+inside an `if` branch exists only when that branch runs, so it is read there or deeper; read
+outside it, it is refused where it is written, rather than working or failing by upstream.
+
 | `return` | Means |
 |---|---|
 | `return self // reason: ...` | the product is our file — see [Returning our file](#returning-our-file) |
@@ -799,7 +804,10 @@ base.sections[empty].drop(reason: "upstream left the shells of sections it never
 `.first` and `.last` take one out of a group, and `has."Usage"` may also be written `has["Usage"]`.
 
 A line is a node too, named by what it says, so a predicate can pick lines the way it picks
-sections — a blank line has no name and nothing selects it.
+sections — a blank line has no name and nothing selects it. So `lines[empty]` is refused: nothing
+sits under any line, so every line would answer, and it reads as "the blank lines". Likewise `has`
+on a function, a banner or a line, which hold no named parts. An unquoted `has.Usage_Tips` reads by
+the tree's version like any other name.
 
 ```
 base.lines[name ~ "^TODO"].drop(reason: "ours tracks these")
@@ -900,7 +908,8 @@ Self:
     ```
 ````
 
-The fence's language tag is the kind. A section can hold one document of each kind — a toml
+The fence's language tag is the kind — the same tags a content fence takes, `md`, `yml`, `sh` and
+`bash` included. A section can hold one document of each kind — a toml
 command whose prompt is markdown, say:
 
 ````
@@ -1007,7 +1016,8 @@ ambiguous      1 names   a name vanished and could be several things — left fo
 
 It applies to every kind — a shell function and a yaml key are named by their authors too — and it
 follows the name everywhere the template writes it: a statement's own node, a parent in a path,
-where a `move` goes, what an `if` asks about. A name is matched the way the build reads it, so
+where a `move` goes, what an `if` asks about, and a predicate's `name == "X"` or `has."X"` — a
+regular expression is a pattern, not a name, and is left alone. A name is matched the way the build reads it, so
 `Set_Up` follows "Set Up" under 1.0, and it is written back the way the tree reads names. A key's
 dotted path has one segment rewritten, a parent's included. Only the name is edited, so what you
 review is one word per place, and each rename is reported once.
@@ -1040,7 +1050,9 @@ breaks it, quietly. The build fails when an entry of ours is missing from the pr
 same handler ends up registered twice.
 
 A registry is merged whole, so its template is that one statement: weaving statements have no part in
-it, and the build refuses them rather than ignore them.
+it, and the build refuses them rather than ignore them. Our registrations may also be written in the
+template's `Self:` section, as one json document; with no registry of ours anywhere, the merge is
+refused rather than handing back upstream's file under our name.
 
 ---
 
@@ -1264,8 +1276,9 @@ skills/testing/SKILL.md
   Overview                 ← mine/skills/testing/SKILL.lm:5:15, mine/skills/other.lm:2:20
 ```
 
-What breaks if this section moves, what depends on this file, which upstream nodes nothing names at
-all. Nothing is computed that the build did not already compute — resolving anchors is most of what
+A group names every node its predicate picks, and each is listed; so do where a `move` goes and
+what an `if` asks about. What breaks if this section moves, what depends on this file, which
+upstream nodes nothing names at all. Nothing is computed that the build did not already compute — resolving anchors is most of what
 a weave does, and the answer used to be thrown away.
 
 ---
