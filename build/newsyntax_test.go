@@ -1581,3 +1581,40 @@ func TestAQuestionReadsAGroupAsEverywhereElse(t *testing.T) {
 		}
 	}
 }
+
+// A key's next and prev are its siblings under the same parent. They were the next node in file
+// order, so base.jobs.build.next was build's own child, runs-on — and dropping it took the wrong
+// key with a reason given for another, and a green build.
+func TestAKeysNeighboursAreItsSiblings(t *testing.T) {
+	const up = "jobs:\n  build:\n    runs-on: ubuntu\n  test:\n    runs-on: macos\nname: ci\n"
+	for _, c := range []struct{ tpl, want, err string }{
+		{"base.jobs.build.next.drop(reason: \"r\")\n", "jobs:\n  build:\n    runs-on: ubuntu\nname: ci\n", ""},
+		{"base.jobs.test.prev.drop(reason: \"r\")\n", "jobs:\n  test:\n    runs-on: macos\nname: ci\n", ""},
+		{"base.jobs.test.next.drop(reason: \"r\")\n", "", "has no next at its own level"},
+		{"base.jobs.children.drop(reason: \"r\")\n", "", "named by its path"},
+	} {
+		dir := t.TempDir()
+		mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\n")
+		mustWrite(t, filepath.Join(dir, "up", "ci.yaml"), up)
+		mustWrite(t, filepath.Join(dir, "me", "ci.yaml.lm"), c.tpl)
+		cfg, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := filepath.Join(dir, "out")
+		_, err = buildTree(t, cfg, out)
+		if c.err != "" {
+			if err == nil || !strings.Contains(err.Error(), c.err) {
+				t.Errorf("%s  want an error with %q, got %v", c.tpl, c.err, err)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("%s%v", c.tpl, err)
+			continue
+		}
+		if got := readFile(t, filepath.Join(out, "ci.yaml")); got != c.want {
+			t.Errorf("%s  got\n%s  want\n%s", c.tpl, got, c.want)
+		}
+	}
+}

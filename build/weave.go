@@ -1133,12 +1133,30 @@ func walkAxis(tree ast.Tree, s lang.Stmt, name string) ([][2]int, error) {
 		return nil, fmt.Errorf("%s: %s %q is not one of this file's nodes, so there is nothing to step from", s.Rng, s.Kind, name)
 	}
 	nests := nodes[at].Level > 0
+	// A key nests too, by its path: jobs.build and jobs.test are siblings under jobs, and
+	// jobs.build.runs-on is below the first, not beside it. Taking the next node in file order
+	// stepped from jobs.build into its own child.
+	keyed := s.Kind == "key" || s.Kind == "path"
 	var out [][2]int
 	switch s.Axis {
 	case "next", "prev":
 		step := 1
 		if s.Axis == "prev" {
 			step = -1
+		}
+		if keyed {
+			parent, depth := pathParent(name)
+			for i := at + step; i >= 0 && i < len(nodes); i += step {
+				p, d := pathParent(nodes[i].Name)
+				if d > depth {
+					continue // below a key, not beside it
+				}
+				if p != parent {
+					break // out of the parent key: there is no sibling that way
+				}
+				return [][2]int{{nodes[i].Line, nodes[i].End}}, nil
+			}
+			return nil, fmt.Errorf("%s: %q has no %s at its own level", s.Rng, name, s.Axis)
 		}
 		for i := at + step; i >= 0 && i < len(nodes); i += step {
 			if nests && nodes[i].Level > nodes[at].Level {
@@ -1151,6 +1169,9 @@ func walkAxis(tree ast.Tree, s lang.Stmt, name string) ([][2]int, error) {
 		}
 		return nil, fmt.Errorf("%s: %q has no %s at its own level", s.Rng, name, s.Axis)
 	case "parent":
+		if keyed {
+			return nil, fmt.Errorf("%s: parent follows markdown's headings; a key is named by its path, so its parent is that path without the last segment", s.Rng)
+		}
 		if !nests {
 			return nil, fmt.Errorf("%s: a %s does not sit inside another, so it has no parent", s.Rng, s.Kind)
 		}
@@ -1161,6 +1182,9 @@ func walkAxis(tree ast.Tree, s lang.Stmt, name string) ([][2]int, error) {
 		}
 		return nil, fmt.Errorf("%s: %q is at the top level and has no parent", s.Rng, name)
 	case "children":
+		if keyed {
+			return nil, fmt.Errorf("%s: children follows markdown's headings; a key's are named by its path, base.jobs.build — or all of them at once, base.keys[name ~ \"^jobs\\.[^.]+$\"]", s.Rng)
+		}
 		if !nests {
 			return nil, fmt.Errorf("%s: a %s holds no nodes of its own, so it has no children", s.Rng, s.Kind)
 		}
@@ -1175,6 +1199,15 @@ func walkAxis(tree ast.Tree, s lang.Stmt, name string) ([][2]int, error) {
 		return out, nil
 	}
 	return nil, fmt.Errorf("%s: unknown axis %q", s.Rng, s.Axis)
+}
+
+// pathParent splits a key's dotted path into the path of the key it sits in, and how deep it is.
+func pathParent(name string) (string, int) {
+	i := strings.LastIndex(name, ".")
+	if i < 0 {
+		return "", 0
+	}
+	return name[:i], strings.Count(name, ".")
 }
 
 // selected is every node a predicate allows, in file order. It is the one place the
