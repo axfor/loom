@@ -142,7 +142,7 @@ type nestCtx struct {
 // earlier line numbers from being shifted by earlier insertions. But when two statements target the
 // same anchor, reverse order would flip their relative order — so equal positions are sorted in
 // reverse template order, and once applied they end up in template order again.
-func apply(c *lang.Config, t *lang.Template, stmts []lang.Stmt, tree ast.Tree, rel string, nest *nestCtx) error {
+func apply(c *lang.Config, t *lang.Template, stmts []lang.Stmt, tree ast.Tree, rel string, nest *nestCtx) (err error) {
 	var edits []edit
 	// origin is the statement each edit came from, by the edit's position: when two collide the
 	// author needs to be told which two lines of the template did it, not which upstream lines.
@@ -152,6 +152,14 @@ func apply(c *lang.Config, t *lang.Template, stmts []lang.Stmt, tree ast.Tree, r
 		plain = nest.typ == "text" || nest.typ == "json"
 	}
 	var cur *lang.Stmt
+	// A statement written in a function reports where its body is, but the name it failed on was
+	// passed by a call somewhere else: say where, or "Nope not found" points at a line with no
+	// Nope on it.
+	defer func() {
+		if err != nil && cur != nil && cur.At.Line > 0 && cur.At.Line != cur.Rng.Line {
+			err = fmt.Errorf("%w (the name comes from the call at %d:%d)", err, cur.At.Line, cur.At.Col)
+		}
+	}()
 	claim := func() {
 		for cur != nil && len(origin) < len(edits) {
 			origin = append(origin, *cur)
@@ -467,6 +475,7 @@ func apply(c *lang.Config, t *lang.Template, stmts []lang.Stmt, tree ast.Tree, r
 		}
 	}
 	claim()
+	cur = nil // what follows is about the edits together, not one statement
 	where := func(k int) string {
 		if k < len(origin) {
 			return origin[k].Rng.String()

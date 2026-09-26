@@ -1536,3 +1536,18 @@ func TestTheReportNamesSwapsAndSplits(t *testing.T) {
 		}
 	}
 }
+
+// A statement in a function fails on a name its call passed, and the error says where that call
+// is — the body's line has no such name on it.
+func TestAnErrorInAFunctionNamesTheCall(t *testing.T) {
+	weave := newTree(t, "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n", "# T\n\n## Overview\n\no\n", "## Ours\n\no\n")
+	_, err := weave("fn put(up) {\n    up.after(self.Ours)\n}\nput(base.Nope)\n")
+	if err == nil || !strings.Contains(err.Error(), "the call at 4:10") {
+		t.Errorf("the error names the call that passed Nope: %v", err)
+	}
+	// Outside a function the name is on the statement's own line, and nothing is added.
+	_, err = weave("base.Nope.after(self.Ours)\n")
+	if err == nil || strings.Contains(err.Error(), "the call at") {
+		t.Errorf("no call to name: %v", err)
+	}
+}
