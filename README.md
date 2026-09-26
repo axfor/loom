@@ -637,6 +637,10 @@ base.Troubleshooting.move(after: base.B)
 base."Quick Start".move(before: base.Install)
 ```
 
+A markdown section lands with a blank line on each side; anything else moves as exactly the lines
+it is. Inside a view the target is written from the view, `move(before: base.Steps)`, or in full,
+`move(before: base.prompt.as(markdown).Steps)`.
+
 `promote` and `demote` are the same kind of thing for heading level — when you wrap upstream's
 sections under one of your own, everything below has to shift a level:
 
@@ -821,7 +825,9 @@ base.Setup.prev                  the one before
 base."Step A".parent             the section this one sits in
 ```
 
-Only markdown nests, so `children` and `parent` are its alone.
+Only markdown nests by level, so `children` and `parent` are its alone. A yaml or json key nests
+by its path, and `next` and `prev` step to its siblings under the same parent — the next key in
+the file may be its own child.
 
 Axes chain, and each step is checked against what it lands on — `children` gives a group, so
 `first` may follow it; `next` wants one node, so it may not:
@@ -848,7 +854,8 @@ base.start.project(base.sections[level == 2]){
 
 `base.start.project(base.sections[level == 2], `- {name}`)` and
 `base.start(base.sections[level == 2].project(`- {name}`))` say the same thing on one line. A
-`{ }` block always puts its content on lines of its own.
+`{ }` block always puts its content on lines of its own. Inside a view a projection reads the
+view: `base.prompt.as(markdown).start(base.prompt.as(markdown).sections.project(`- {name}`))`.
 
 The fields a template can use are `{name}`, `{level}`, `{body}` and `{anchor}`. `{anchor}` is
 GitHub's link target for a heading — lower-cased, punctuation removed, spaces made hyphens, a
@@ -871,8 +878,10 @@ bilingual(base.Usage, self.usage)
 ```
 
 A parameter is whatever the call passes — an address of upstream's, content of ours — and each
-call is checked as if its statements were written there. A function returns nothing, one that is
-never called does nothing, and one that calls itself is refused.
+call is checked as if its statements were written there, and an error in one names the call it
+came from. A function returns nothing, one that is never called does nothing, and one that calls
+itself is refused. So is a `return` in its body: being inlined, it would end the whole template,
+not the function. `return err.format(...)`, which fails the build wherever it is written, may stand.
 
 ### Our content, written in the template
 
