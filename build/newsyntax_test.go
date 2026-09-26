@@ -1551,3 +1551,33 @@ func TestAnErrorInAFunctionNamesTheCall(t *testing.T) {
 		t.Errorf("no call to name: %v", err)
 	}
 }
+
+// A group is read the same way in a question as anywhere else: the bare class is every node of
+// the kind, and the argument spelling picks as the brackets do.
+func TestAQuestionReadsAGroupAsEverywhereElse(t *testing.T) {
+	for _, c := range []struct {
+		cond string
+		yes  bool
+	}{
+		{"base.sections.any", true},
+		{"base.sections(level: 2).any", true},
+		{"base.sections(match: \"^Nope\").count", false},
+		{"base.functions.any", false},
+	} {
+		weave := newTree(t, "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n", "# T\n\n## Overview\n\no\n", "")
+		got, err := weave("if " + c.cond + " {\n    base.Overview.after(`asked`)\n}\n")
+		if c.cond == "base.functions.any" {
+			if err == nil {
+				t.Errorf("markdown has no functions to ask about: %s", c.cond)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("%s: %v", c.cond, err)
+			continue
+		}
+		if strings.Contains(got, "asked") != c.yes {
+			t.Errorf("%s should hold: %v\n%s", c.cond, c.yes, got)
+		}
+	}
+}

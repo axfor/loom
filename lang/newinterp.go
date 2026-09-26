@@ -116,11 +116,23 @@ func (in *interp) cond(e *oExpr, not bool) (*Cond, error) {
 	}
 	// base.sections[...].any — does the predicate find anything
 	if len(e.steps) == 2 && (e.steps[1].name == "any" || e.steps[1].name == "count") && !e.steps[1].call {
-		kind := classCalls[obj.typ][e.steps[0].name]
-		if kind == "" || e.steps[0].pred == nil {
-			return nil, fmt.Errorf("%s: `.%s` asks whether a predicate found anything: if base.sections[level == 2].any", e.pos, e.steps[1].name)
+		st := e.steps[0]
+		kind := classCalls[obj.typ][st.name]
+		if kind == "" || st.str {
+			return nil, fmt.Errorf("%s: `.%s` asks whether a group has anything in it: if base.sections[level == 2].any", e.pos, e.steps[1].name)
 		}
-		sel, err := selectOf(e.steps[0].pred, kind, e.steps[0].pos)
+		// The group is read as it is everywhere else: a predicate in brackets, the same in
+		// arguments, or the bare class — every node of the kind.
+		var sel *Select
+		var err error
+		switch {
+		case st.pred != nil:
+			sel, err = selectOf(st.pred, kind, st.pos)
+		case st.call:
+			sel, err = in.predicate(st, kind)
+		default:
+			sel = &Select{Kind: kind, All: true}
+		}
 		if err != nil {
 			return nil, err
 		}
