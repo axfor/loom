@@ -25,6 +25,42 @@ import (
 // script names a handler: a file a registration calls.
 var script = regexp.MustCompile(`[A-Za-z0-9_.-]+\.(?:sh|bash|js|mjs|cjs|ts|py|rb|pl)\b`)
 
+// registryOurs is the registry of ours: the json document in the template's Self: sections, or
+// our file beside it. Neither is an error — merged with nothing, upstream's registry would come
+// out whole and every check of ours would pass against an empty object.
+func registryOurs(c *lang.Config, t *lang.Template) (string, error) {
+	if len(t.Resources) > 0 {
+		var docs []lang.ResourceDoc
+		for _, res := range t.Resources {
+			for _, d := range res.Docs {
+				if d.Kind == "json" {
+					docs = append(docs, d)
+				}
+			}
+		}
+		if len(docs) != 1 {
+			return "", fmt.Errorf("%s: a registry merges one json document of ours, and the Self: sections hold %d", t.Path, len(docs))
+		}
+		text := docs[0].Text
+		if c.Vars != nil {
+			b, err := c.Vars.Expand([]byte(text), t.Path, docs[0].Rng.Line+1, 1)
+			if err != nil {
+				return "", err
+			}
+			text = string(b)
+		}
+		return text, nil
+	}
+	src, ok, err := c.Read(c.Weft, t.Target)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", fmt.Errorf("%s: our layer has no %s to merge into upstream's", t.Path, t.Target)
+	}
+	return src, nil
+}
+
 func mergeRegistry(c *lang.Config, t *lang.Template) (string, error) {
 	from := t.From
 	if from == "" {
@@ -34,7 +70,7 @@ func mergeRegistry(c *lang.Config, t *lang.Template) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	wfSrc, _, err := c.Read(c.Weft, t.Target)
+	wfSrc, err := registryOurs(c, t)
 	if err != nil {
 		return "", err
 	}

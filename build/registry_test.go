@@ -107,3 +107,31 @@ func TestSameHandlerUnderTwoMatchers(t *testing.T) {
 		t.Errorf("upstream's registration of the same handler is replaced by ours:\n%s", got)
 	}
 }
+
+// Our registrations can be written in the template's Self: section. They were not read from
+// there: merged with nothing, upstream's registry came out whole, every check of ours passed
+// against an empty object, and our handler was simply not registered.
+func TestRegistryFromSelf(t *testing.T) {
+	c, dir := regRepo(t, map[string]string{
+		"up/hooks/hooks.json": `{"hooks":{"S":[{"hooks":[` + entry("up.sh") + `]}]}}`,
+		"me/hooks/hooks.lm":   "base.merge(self)\n---\nSelf:\n    ```json\n    {\"hooks\":{\"S\":[{\"hooks\":[" + entry("ours.sh") + "]}]}}\n    ```\n",
+	})
+	if _, err := buildTree(t, c, filepath.Join(dir, "out")); err != nil {
+		t.Fatal(err)
+	}
+	got := readFile(t, filepath.Join(dir, "out", "hooks", "hooks.json"))
+	if !strings.Contains(got, "ours.sh") || !strings.Contains(got, "up.sh") {
+		t.Errorf("both registrations are in the product:\n%s", got)
+	}
+}
+
+// With no registry of ours anywhere, a merge is a mistake, not upstream's file under our name.
+func TestRegistryWithNothingOfOurs(t *testing.T) {
+	c, dir := regRepo(t, map[string]string{
+		"up/hooks/hooks.json": `{"hooks":{}}`,
+		"me/hooks/hooks.lm":   "base.merge(self)\n",
+	})
+	if _, err := buildTree(t, c, filepath.Join(dir, "out")); err == nil || !strings.Contains(err.Error(), "no hooks/hooks.json to merge") {
+		t.Errorf("nothing of ours to merge is an error: %v", err)
+	}
+}
