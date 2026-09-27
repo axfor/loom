@@ -12,7 +12,7 @@ package lang
 //	manifest  ".build-manifest"
 //
 // The layers are called base and self, the same words a template uses for the upstream file
-// and our file: `base "upstream"` is where every `base` comes from.
+// and our file: `up "upstream"` is where every `up` comes from (base is its old name).
 //
 // Upstream files are not all taken by default: an upstream repo often holds things that
 // only serve its own development (eval fixtures, CI config), and carrying them into the
@@ -183,7 +183,7 @@ func parseSettings(path string, src []byte) (*Config, error) {
 		}
 	}
 	if c.Warp == "" {
-		return nil, fmt.Errorf("%s: upstream location not set — add a line base \"<upstream dir>\"", path)
+		return nil, fmt.Errorf("%s: upstream location not set — add a line up \"<upstream dir>\"", path)
 	}
 	if len(marks) > 0 {
 		me, ok := c.Layers["self"]

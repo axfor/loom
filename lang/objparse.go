@@ -245,6 +245,9 @@ func parseObjects(file string, src []byte) ([]oImport, []oNode, []oResource, err
 			if r := endsTemplate(f.body); r != nil {
 				return nil, nil, nil, fmt.Errorf("%s: return in a fn would end the whole template, not the fn, since a fn is inlined where it is called — put the return where the fn is called, or ask with if around what should not run", r.pos)
 			}
+			if isUp(name) || name == "self" {
+				return nil, nil, nil, fmt.Errorf("%s: a fn cannot be called %s — that is the name of a file, and %s(...) would read two ways", f.pos, name, name)
+			}
 			fns[name] = f
 			continue
 		}
@@ -643,6 +646,11 @@ func ParseTemplateFor(file, target string, src []byte, resolve Resolver, loom st
 			if !isIdent(name) {
 				return nil, fmt.Errorf("%s: name `%s` taken from the path is not a valid object name — give it one: import name %q", im.pos, name, im.spec)
 			}
+			// A file of ours that happens to be called up.md would otherwise point up at it:
+			// only a name written out moves up, base or self.
+			if isUp(name) || name == "self" {
+				return nil, fmt.Errorf("%s: the file's name, %s, is the name of a file every template already has — give it another: import ours %q (import up %q points up at a moved upstream file)", im.pos, name, im.spec, im.spec)
+			}
 		}
 		if name == "self" {
 			return nil, fmt.Errorf("%s: self is this file and cannot be redirected", im.pos)
@@ -786,7 +794,7 @@ func (in *interp) select_(r *receiver, st oStep) error {
 		}
 		// A frontmatter key is a node of its own: base.frontmatter.description
 		if r.kind == "frontmatter" && !st.call {
-			r.kind, r.anchor, r.ident, r.pos = "fmkey", st.name, false, st.pos
+			r.kind, r.anchor, r.ident, r.pos = "fmkey", st.name, in.ident(st), st.pos
 			return nil
 		}
 		// An axis walks from here to a node the document itself relates to this one.
@@ -814,7 +822,8 @@ func (in *interp) select_(r *receiver, st oStep) error {
 		// Key path: base.jobs.test — yaml and json address a nested key by the dotted path of
 		// its parents, so a name below a key extends that path instead of starting a new lookup.
 		if !st.call && hasValues(r.typ) && r.kind == defaultKind[r.typ] && r.viewOf == "" {
-			r.anchor, r.ident, r.pos = r.anchor+"."+st.name, false, st.pos
+			// every segment is matched by its words, as long as none of them is quoted
+			r.anchor, r.ident, r.pos = r.anchor+"."+st.name, r.ident && in.ident(st), st.pos
 			return nil
 		}
 		// Section path: base."Example 2"."Phase 1" — look for the child within the parent's whole section
@@ -954,7 +963,7 @@ func (in *interp) method(r receiver, st oStep) error {
 				// upstream's, which is what append says. One word each way, the same meaning.
 				mode = "append"
 			}
-			out = append(out, Stmt{Op: "value", Mode: mode, Kind: r.kind, SetKey: r.anchor, SetRef: v, Rng: at})
+			out = append(out, Stmt{Op: "value", Mode: mode, Kind: r.kind, SetKey: r.anchor, SetIdent: r.ident, SetRef: v, Rng: at})
 			break
 		}
 		srcs, err := in.contents(pos, r.typ, r.viewOf != "")
@@ -1170,7 +1179,7 @@ func (in *interp) method(r receiver, st oStep) error {
 		if err != nil {
 			return err
 		}
-		out = append(out, Stmt{Op: "value", Mode: "set", Kind: r.kind, SetKey: r.anchor, SetRef: v, Rng: at})
+		out = append(out, Stmt{Op: "value", Mode: "set", Kind: r.kind, SetKey: r.anchor, SetIdent: r.ident, SetRef: v, Rng: at})
 	case "merge":
 		if r.node || r.viewOf != "" {
 			return fmt.Errorf("%s: merge applies to the whole file: up.merge(self)", at)
@@ -1391,7 +1400,7 @@ func (in *interp) contents(args []oArg, typ string, inView bool) ([]Ref, error) 
 				ref.Kind = "all"
 			case len(e.steps) == 2 && !e.steps[0].str && !e.steps[0].call && e.steps[0].name == "frontmatter" && !e.steps[1].call:
 				// a frontmatter key of ours: self.frontmatter.description
-				ref.Kind, ref.Anchor = "fmkey", e.steps[1].name
+				ref.Kind, ref.Anchor, ref.Ident = "fmkey", e.steps[1].name, in.ident(e.steps[1])
 			case len(e.steps) > 1:
 				// Section path: self."Example 2"."Phase 1"
 				kt := obj.typ

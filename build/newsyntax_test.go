@@ -1910,3 +1910,79 @@ func TestUpIsTheUpstreamFile(t *testing.T) {
 		t.Errorf("a parameter called up is refused: %v", err)
 	}
 }
+
+// Every place a key is named reads it by its words: a nested segment, a trailing part of a path, a
+// value statement on either side, a frontmatter key. They had not — a value statement took the
+// exact key and, where two shared the words, silently the one spelt the same, while a drop of
+// the same name was refused as ambiguous.
+func TestKeysAreMatchedByTheirWordsEverywhere(t *testing.T) {
+	build := func(files map[string]string, om string) (string, string, error) {
+		dir := t.TempDir()
+		mustWrite(t, filepath.Join(dir, "loom.om"), "up \"up\"\nself \"me\"\n"+om)
+		var product string
+		for p, s := range files {
+			mustWrite(t, filepath.Join(dir, p), s)
+			if strings.HasPrefix(p, "up/") {
+				product = strings.TrimPrefix(p, "up/")
+			}
+		}
+		c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := filepath.Join(dir, "out")
+		if _, err := buildTree(t, c, out); err != nil {
+			return "", "", err
+		}
+		tpl := ""
+		for p := range files {
+			if strings.HasSuffix(p, ".lm") {
+				tpl = readFile(t, filepath.Join(dir, p))
+			}
+		}
+		return readFile(t, filepath.Join(out, product)), tpl, nil
+	}
+	for _, c := range []struct {
+		name  string
+		files map[string]string
+		want  string
+	}{
+		{"nested segment", map[string]string{"up/ci.yaml": "jobs:\n  build_job:\n    runs-on: x\n", "me/ci.yaml.lm": "up.jobs.buildJob.drop(reason: \"r\")\n"}, "jobs:\n"},
+		{"trailing part", map[string]string{"up/ci.yaml": "jobs:\n  build:\n    steps: x\n    runs-on: y\n", "me/ci.yaml.lm": "up.steps.drop(reason: \"r\")\n"}, "jobs:\n  build:\n    runs-on: y\n"},
+		{"value statement", map[string]string{"up/c.toml": "my_key = \"a\"\n", "me/c.toml": "my_key = \"ours\"\n", "me/c.toml.lm": "up.myKey.set(self.myKey)\n"}, "my_key = \"ours\"\n"},
+		{"frontmatter key", map[string]string{"up/a.md": "---\nargument-hint: x\n---\n\n## A\n\na\n", "me/a.md": "---\nargument-hint: ours\n---\n", "me/a.md.lm": "up.frontmatter.argumentHint.set(self.frontmatter.argumentHint)\n"}, "argument-hint: ours"},
+	} {
+		got, _, err := build(c.files, "")
+		if err != nil {
+			t.Errorf("%s: %v", c.name, err)
+			continue
+		}
+		if !strings.Contains(got, c.want) {
+			t.Errorf("%s: got\n%s", c.name, got)
+		}
+	}
+	// Two keys with the words: the value statement is refused, as the drop is.
+	if _, _, err := build(map[string]string{"up/c.toml": "my_key = \"a\"\nmyKey = \"b\"\n", "me/c.toml": "myKey = \"ours\"\n", "me/c.toml.lm": "up.myKey.set(self.myKey)\n"}, ""); err == nil || !strings.Contains(err.Error(), "matches") {
+		t.Errorf("a value statement whose key two share is refused: %v", err)
+	}
+	// And the keys setting writes such a key quoted, so what it writes builds.
+	_, tpl, err := build(map[string]string{"up/c.toml": "my_key = \"a\"\nmyKey = \"b\"\n", "me/c.toml": "myKey = \"ours\"\n", "me/c.toml.lm": ""}, "keys start\n")
+	if err != nil || tpl != "up.\"myKey\".start(self.\"myKey\")\n" {
+		t.Errorf("the key two share is written quoted: %v\n%s", err, tpl)
+	}
+}
+
+// up, base and self name files, so nothing else may take the names: a file of ours called up.md
+// imported without a name, a fn, a caught result.
+func TestTheFileNamesAreNotForOtherThings(t *testing.T) {
+	weave := newTree(t, "up \"up\"\nself \"me\"\n", "# T\n\n## Overview\n\no\n", "## Ours\n\no\n")
+	for _, c := range []struct{ tpl, want string }{
+		{"import \"./up\"\nup.Overview.after(self.Ours)\n", "give it another"},
+		{"fn up() {\n    up.Overview.after(`x`)\n}\nup()\n", "a fn cannot be called up"},
+		{"up = up.Overview.after(`x`)\nif !up {\n    return err.format(\"%s\", up)\n}\n", "a result cannot be caught in up"},
+	} {
+		if _, err := weave(c.tpl); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s  want %q, got %v", c.tpl, c.want, err)
+		}
+	}
+}

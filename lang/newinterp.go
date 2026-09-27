@@ -62,6 +62,11 @@ func (in *interp) node(n oNode) error {
 	if len(added) != 1 {
 		return fmt.Errorf("%s: `%s = ...` catches the result of one statement, and this is %d", n.pos, n.assign, len(added))
 	}
+	// up, base and self name files; a result caught in one would make if !up a question about
+	// a file or a result, depending on what was read first.
+	if isUp(n.assign) || n.assign == "self" {
+		return fmt.Errorf("%s: a result cannot be caught in %s — that is the name of a file; call it ok, or what it holds", n.pos, n.assign)
+	}
 	// A name may catch again once what it held has been read: that is what a fn called twice
 	// does, and what checking one write and then the next does. Catching over a result nothing
 	// read would throw that one away unseen.

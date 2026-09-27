@@ -56,6 +56,8 @@ type Stmt struct {
 	Layer  string  // frontmatter: layer to take the whole block from
 	File   string  // frontmatter: file it comes from; empty = product path
 	SetKey string  // value: key to write
+	// SetIdent: SetKey was written unquoted, so it names the key with its words
+	SetIdent bool
 	SetRef Ref     // value: where our value comes from (a key of ours, or a literal)
 	Mode   string  // value: set / start / append
 	Reason string  // replace / drop: why the upstream content is changed

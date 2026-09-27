@@ -462,9 +462,20 @@ func completeAnchors(c *lang.Config, t *lang.Template, write bool, r *Report) (*
 			return t, fmt.Errorf("%s: our %s has no statement — lm build writes one, since loom.om says `%s %s`",
 				t.Path, quoteAll(keys), part, mode)
 		}
+		// A key written unquoted names every key with its words, so one whose words another key
+		// shares — upstream or ours — is written quoted, or the statement just written would not build.
+		kind := "key"
+		if part == "frontmatter" {
+			kind = "fmkey"
+		}
+		upSrc, _, _ := c.Read(c.Warp, t.BasePath)
+		ourSrc, _, _ := c.Read(c.Weft, weftRel(c, t, c.Weft, t.Target))
 		var add []string
 		for _, k := range keys {
 			path := lang.NameTextFor(k, c.Loom)
+			if !strings.HasPrefix(path, `"`) && (sharesWords(kind, keyNames(kind, t.Type, upSrc), path) || sharesWords(kind, keyNames(kind, t.Type, ourSrc), path)) {
+				path = lang.Quote(k)
+			}
 			if part == "frontmatter" {
 				path = "frontmatter." + path
 			}
@@ -544,15 +555,15 @@ func frontmatterGaps(c *lang.Config, t *lang.Template) []string {
 		return nil
 	}
 	upTree := ast.NewMarkdown(up)
-	done := map[string]bool{}
+	var done said
 	for _, s := range t.Stmts {
 		if s.Op == "value" {
-			done[s.SetKey] = true
+			done.add(s.SetKey, s.SetIdent)
 		}
 	}
 	var out []string
 	for _, n := range ast.Addressable(ast.New("yaml", fm), "key") {
-		if done[n.Name] || strings.Contains(n.Name, ".") {
+		if done.names("fmkey", n.Name) || strings.Contains(n.Name, ".") {
 			continue
 		}
 		// A key upstream does not have is simply added by the product; there is nothing to
@@ -595,17 +606,17 @@ func keyGaps(c *lang.Config, t *lang.Template) []string {
 	// Every key any statement already speaks for, in any of the three ways it can: as a value to
 	// write, as the key a view is opened on, or as the node an edit names. Counting only the first
 	// writes a second statement for a key a view already handles, and then the two fight.
-	done := map[string]bool{}
+	var done said
 	var walk func([]lang.Stmt)
 	walk = func(ss []lang.Stmt) {
 		for _, s := range ss {
 			switch {
 			case s.Op == "value":
-				done[s.SetKey] = true
+				done.add(s.SetKey, s.SetIdent)
 			case s.Op == "in":
-				done[s.Key] = true
+				done.add(s.Key, false)
 			case s.Kind == "key" && s.Anchor != "":
-				done[s.Anchor] = true
+				done.add(s.Anchor, s.Ident)
 			}
 			walk(s.Kids)
 		}
@@ -616,7 +627,7 @@ func keyGaps(c *lang.Config, t *lang.Template) []string {
 		// A key upstream does not have is simply added by the product; there is nothing to
 		// reconcile and nothing for the setting to decide. Nested keys are left alone: what to do
 		// with a table is not what to do with a value.
-		if done[n.Name] || strings.Contains(n.Name, ".") {
+		if done.names("key", n.Name) || strings.Contains(n.Name, ".") {
 			continue
 		}
 		if _, there := upTree.BodyOf(n.Name); !there {
@@ -625,4 +636,38 @@ func keyGaps(c *lang.Config, t *lang.Template) []string {
 		out = append(out, n.Name)
 	}
 	return out
+}
+
+// said is the keys statements already speak for: by name, or by their words when written unquoted.
+type said []struct {
+	name  string
+	ident bool
+}
+
+func (d *said) add(name string, ident bool) {
+	*d = append(*d, struct {
+		name  string
+		ident bool
+	}{name, ident})
+}
+
+// names reports whether some statement speaks for the key called name.
+func (d said) names(kind, name string) bool {
+	for _, s := range d {
+		if s.name == name || (s.ident && nameMatch(kind, name, s.name)) {
+			return true
+		}
+	}
+	return false
+}
+
+// sharesWords reports whether a name written unquoted would match more than one of these keys.
+func sharesWords(kind string, keys []string, written string) bool {
+	n := 0
+	for _, k := range keys {
+		if nameMatch(kind, k, written) {
+			n++
+		}
+	}
+	return n > 1
 }

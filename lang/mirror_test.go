@@ -62,7 +62,7 @@ func mirror(t *testing.T) map[string]any {
 			STATEMENT_WORDS: set(m.STATEMENT_WORDS),
 			DOCS: Object.keys(require("./lib/docs.js").KEYWORDS).sort(),
 			PROJECT_FIELDS: Object.keys(require("./lib/docs.js").PROJECT_FIELDS).sort(),
-			WORDS: Object.fromEntries(["Foo Bar", "Foo_Bar", "fooBar", "FooBar", "foo-bar", "HTTPServer", "v2Setup", "Step 1", "Step1", "已有中文", "a  b", " lead", "How it compares?", "ÀbcDéf"].map((n) => [n, m.words(n)])),
+			WORDS: Object.fromEntries(["Foo Bar", "Foo_Bar", "fooBar", "FooBar", "foo-bar", "HTTPServer", "v2Setup", "Step 1", "Step1", "已有中文", "a  b", " lead", "How it compares?", "ÀbcDéf", "İstanbul", "ΣΊΣΥΦΟΣ"].map((n) => [n, m.words(n)])),
 			FENCE_KINDS: Object.fromEntries(["sh", "bash", "zsh", "yml", "md", "markdown", "shell", "toml", "yaml", "json", "text", "python", "js", ""].map((t) => [t, m.fenceKind(t)])),
 		}));`
 	cmd := exec.Command(node, "-e", dump)

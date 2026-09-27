@@ -634,7 +634,7 @@ func resolveIdent(tree ast.Tree, kind, ident string, at lang.Pos) (string, error
 	var hits []string
 	seen := map[string]bool{}
 	for _, n := range names {
-		if identMatch(n.Name, ident) && !seen[n.Name] {
+		if nameMatch(kind, n.Name, ident) && !seen[n.Name] {
 			seen[n.Name] = true
 			hits = append(hits, n.Name)
 		}
@@ -664,6 +664,26 @@ func resolveIdent(tree ast.Tree, kind, ident string, at lang.Pos) (string, error
 // name is resolved, never a pick.
 func identMatch(name, ident string) bool {
 	return lang.Words(name) == lang.Words(ident)
+}
+
+// nameMatch is identMatch for a node of this kind. A key is named by its dotted path, and a
+// trailing part of the path is enough, as it is when the name is quoted: steps finds
+// jobs.build.steps. Each segment is compared by its words.
+func nameMatch(kind, name, ident string) bool {
+	if kind != "key" && kind != "path" {
+		return identMatch(name, ident)
+	}
+	have, want := strings.Split(name, "."), strings.Split(ident, ".")
+	if len(want) > len(have) {
+		return false
+	}
+	have = have[len(have)-len(want):]
+	for i := range want {
+		if !identMatch(have[i], want[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 func nearestName(tree ast.Tree, kind, want string) string {
@@ -885,10 +905,66 @@ func unquote(v string) (string, bool) {
 // Upstream's value is read from upstream's file, not from the product being built, so it is still
 // there after set(self.frontmatter) replaced the block. Joining is idempotent: a value that already
 // contains the other half is not doubled.
+// wordKey resolves a key written unquoted to the one key among names with its words — the same
+// rule a node's name follows, trailing parts of a path included. None leaves it as written, for
+// the error that follows to name; two is an error here.
+func wordKey(kind string, names []string, key string, ident bool, at lang.Pos) (string, error) {
+	if !ident {
+		return key, nil
+	}
+	var hits []string
+	seen := map[string]bool{}
+	for _, n := range names {
+		if nameMatch(kind, n, key) && !seen[n] {
+			seen[n] = true
+			hits = append(hits, n)
+		}
+	}
+	switch len(hits) {
+	case 0:
+		return key, nil
+	case 1:
+		return hits[0], nil
+	}
+	var q []string
+	for _, h := range hits {
+		q = append(q, fmt.Sprintf("%q", h))
+	}
+	return "", fmt.Errorf("%s: %s matches %s — use the string form to say which one", at, key, strings.Join(q, " and "))
+}
+
+// keyNames lists the keys a value statement can name in a document: the frontmatter's for a
+// frontmatter key, every key by its path otherwise.
+func keyNames(kind, typ, src string) []string {
+	if kind == "fmkey" {
+		return ourKeys("markdown", src)
+	}
+	var out []string
+	if tree := ast.New(typ, src); tree != nil {
+		for _, n := range ast.Addressable(tree, kind) {
+			out = append(out, n.Name)
+		}
+	}
+	return out
+}
+
 func applyValue(c *lang.Config, t *lang.Template, tree ast.Tree, s lang.Stmt) error {
 	typ := t.Type
 	if s.Kind == "fmkey" {
 		typ = "markdown"
+	}
+	// A key written unquoted names the key with its words, on both sides, as a node's name does.
+	{
+		from := t.From
+		if from == "" {
+			from = c.Warp
+		}
+		up, _, _ := c.Read(from, t.BasePath)
+		key, err := wordKey(s.Kind, keyNames(s.Kind, typ, up), s.SetKey, s.SetIdent, s.Rng)
+		if err != nil {
+			return err
+		}
+		s.SetKey = key
 	}
 	quoted := false
 	ours := s.SetRef.Literal
@@ -921,7 +997,11 @@ func applyValue(c *lang.Config, t *lang.Template, tree ast.Tree, s lang.Stmt) er
 				return fmt.Errorf("%s: layer %s has no %s", s.Rng, s.SetRef.Layer, rel)
 			}
 		}
-		v, ok := keyValue(srcTyp, src, s.SetRef.Anchor)
+		anchor, err := wordKey(s.SetRef.Kind, keyNames(s.SetRef.Kind, srcTyp, src), s.SetRef.Anchor, s.SetRef.Ident, s.SetRef.Rng)
+		if err != nil {
+			return err
+		}
+		v, ok := keyValue(srcTyp, src, anchor)
 		if !ok {
 			return fmt.Errorf("%s: our %s has no key %q", s.Rng, rel, s.SetRef.Anchor)
 		}
