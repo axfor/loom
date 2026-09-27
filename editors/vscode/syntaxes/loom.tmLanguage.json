@@ -78,8 +78,8 @@
       }
     },
     "import": {
-      "comment": "import \"/path\" · import name \"/path\" · import base \"/path\" (base points at another upstream file)",
-      "match": "^\\s*(import)\\b(?:\\s+(?:(base)\\b|([\\p{L}_][\\p{L}\\p{N}_]*)))?",
+      "comment": "import \"/path\" · import name \"/path\" · import up \"/path\" (up points at another upstream file; base is its old name)",
+      "match": "^\\s*(import)\\b(?:\\s+(?:(up|base)\\b|([\\p{L}_][\\p{L}\\p{N}_]*)))?",
       "captures": {
         "1": {
           "name": "keyword.control.import.loom"
@@ -94,7 +94,7 @@
     },
     "unknown-statement": {
       "comment": "A statement starts with an object (`base.`, `self.`, an imported name), a word of the language (`import`, `if`, `return`, `fn`, `Self`), or a name catching a result. A bare word at the start of a line is a typo; build would reject it too. Settings live in loom.om, which is its own language, so `take` or `output` here is a mistake like any other.",
-      "match": "^\\s*(?!(?:import|base|self|if|else|return|fn|Self)\\b)([\\p{L}_][\\p{L}\\p{N}_]*)\\b(?!\\s*[.:(=])",
+      "match": "^\\s*(?!(?:import|up|base|self|if|else|return|fn|Self)\\b)([\\p{L}_][\\p{L}\\p{N}_]*)\\b(?!\\s*[.:(=])",
       "captures": {
         "1": {
           "name": "invalid.illegal.unknown-statement.loom"
@@ -294,7 +294,7 @@
     "object": {
       "patterns": [
         {
-          "match": "\\b(base|self)\\b",
+          "match": "\\b(up|base|self)\\b",
           "name": "variable.language.loom"
         },
         {

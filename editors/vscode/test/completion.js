@@ -148,11 +148,11 @@ const find = (items, label) => items.find((i) => i.label === label);
 // ── statements, comments, literals ──
 {
   const l = labels(at(md, 'base.Overview.after("x")\n|').items);
-  ok(l.join(',') === 'base,import,if,if / else if,fn,return,Self', 'a new line offers the objects and the words that start a statement', l);
+  ok(l.join(',') === 'up,import,if,if / else if,fn,return,Self', 'a new line offers the objects and the words that start a statement', l);
   const l2 = labels(at(md, 'base.Overview.after{\n    "x"\n}\n|').items);
-  ok(l2.join(',') === 'base,import,if,if / else if,fn,return,Self', 'after a closed block: a new statement', l2);
+  ok(l2.join(',') === 'up,import,if,if / else if,fn,return,Self', 'after a closed block: a new statement', l2);
   const l3 = labels(at(md, 'base.Overview.after(\n|').items);
-  ok(l3.join(',') === 'base,import,if,if / else if,fn,return,Self', '( does not continue on the next line', l3);
+  ok(l3.join(',') === 'up,import,if,if / else if,fn,return,Self', '( does not continue on the next line', l3);
   const l4 = labels(at(md, '// base.|').items);
   ok(l4.length === 0, 'nothing is offered in a comment', l4);
   const l5 = labels(at(md, 'base.start(`\nbase.|\n`)').items);
@@ -362,18 +362,34 @@ const find = (items, label) => items.find((i) => i.label === label);
   ok(it.markdown && it.markdown.includes('**Examples**'), 'a keyword comes with its help', it.markdown);
 }
 
+// ── up, and base its old name ──
+{
+  // up is the upstream file; base still works, and is marked as the old name.
+  const upItems = labels(at(md, 'up.|').items);
+  ok(upItems.includes('Overview') && upItems.includes('after') === false && upItems.includes('start'), 'up. completes like base. did', upItems);
+  const baseItems = labels(at(md, 'base.|').items);
+  ok(baseItems.includes('Overview'), 'base. still completes', baseItems);
+  const om = at(path.join(root, 'loom.om'), '|').items;
+  ok(find(om, 'up') && find(om, 'base') && find(om, 'base').deprecated && !find(om, 'up').deprecated, 'in loom.om, up is offered and base is marked deprecated', om.map((i) => [i.label, i.deprecated]));
+  const { deprecations } = require('../lib/diagnostics');
+  const marks = deprecations(md, 'base.Overview.after("x")\nup.base.drop(reason: "r")\nimport base "/old"\nup.Overview.before("y")\n');
+  ok(marks.map((m) => `${m.line}:${m.s}`).join(' ') === '0:0 2:7', 'base is marked where it names the upstream file, not where it names a node', marks);
+  const omMarks = deprecations(path.join(root, 'loom.om'), 'base "upstream"\nself "mine"\n');
+  ok(omMarks.length === 1 && omMarks[0].line === 0, 'the base setting is marked in loom.om', omMarks);
+}
+
 // ── a function's parameters ──
 {
-  const body = (call, cursor) => ['fn both(up, ours) {', `    ${cursor}`, '}', call].join('\n');
-  const one = labels(at(md, body('both(base."Example 2", self.x)', 'up.|')).items);
+  const body = (call, cursor) => ['fn both(at, ours) {', `    ${cursor}`, '}', call].join('\n');
+  const one = labels(at(md, body('both(base."Example 2", self.x)', 'at.|')).items);
   ok(one.includes('Phase 1') && one.includes('after') && one.includes('children'), 'a parameter completes as what the call passes', one);
-  const two = labels(at(md, body('both(base."Example 2", self.x)\nboth(base.Overview, self.x)', 'up.|')).items);
+  const two = labels(at(md, body('both(base."Example 2", self.x)\nboth(base.Overview, self.x)', 'at.|')).items);
   ok(two.includes('after') && !two.includes('Phase 1'), 'with two calls, only what holds at both is offered', two);
-  ok(labels(at(md, body('', 'up.|')).items).length === 0, 'a parameter nobody passes offers nothing');
+  ok(labels(at(md, body('', 'at.|')).items).length === 0, 'a parameter nobody passes offers nothing');
   const names = at(md, body('both(base.Overview, self.x)', '|')).items;
-  ok(find(names, 'up') && find(names, 'ours') && find(names, 'up').detail.includes('base.Overview'), 'inside the body, the parameters are offered with what is passed', labels(names));
-  ok(!labels(at(md, 'base.|\nfn both(up) {\n}').items).includes('up'), 'outside the body, no parameters');
-  const arg = labels(at(md, body('both(base.Overview, self.x)', 'up.after(|)')).items);
+  ok(find(names, 'at') && find(names, 'ours') && find(names, 'at').detail.includes('base.Overview'), 'inside the body, the parameters are offered with what is passed', labels(names));
+  ok(!labels(at(md, 'base.|\nfn both(at) {\n}').items).includes('at'), 'outside the body, no parameters');
+  const arg = labels(at(md, body('both(base.Overview, self.x)', 'at.after(|)')).items);
   ok(arg.includes('ours'), 'a content argument offers the parameters too', arg);
   const moved = labels(at(md, 'base.Overview.move(base.|)').items);
   ok(moved.includes('Example 1') && !moved.includes('after'), 'move( takes an address: names, no methods', moved);

@@ -8,7 +8,7 @@ const { definition } = require('./lib/definition');
 const { completions } = require('./lib/completion');
 const { findLm, productName, upstreamFile, weave } = require('./lib/preview');
 const { hover } = require('./lib/hover');
-const { commandFor, diagnose } = require('./lib/diagnostics');
+const { commandFor, deprecations, diagnose } = require('./lib/diagnostics');
 const { filePatch, treePatch, treeRoot } = require('./lib/patch');
 const { signature } = require('./lib/signature');
 
@@ -199,7 +199,13 @@ class Linter {
       const diagnostic = new vscode.Diagnostic(new vscode.Range(start, end), d.message, SEVERITY[d.severity]);
       diagnostic.source = 'lm';
       return diagnostic;
-    }));
+    }).concat(deprecations(doc.uri.fsPath, doc.getText()).map((d) => {
+      // base still builds: a hint, struck through as VS Code shows anything deprecated
+      const diagnostic = new vscode.Diagnostic(new vscode.Range(d.line, d.s, d.line, d.e), d.message, vscode.DiagnosticSeverity.Hint);
+      diagnostic.tags = [vscode.DiagnosticTag.Deprecated];
+      diagnostic.source = 'loom';
+      return diagnostic;
+    })));
   }
 
   forget(doc) {
@@ -230,6 +236,7 @@ function asItem(it) {
   if (it.sortText) c.sortText = it.sortText;
   c.range = new vscode.Range(it.range.line, it.range.s, it.range.line, it.range.e);
   if (it.retrigger) c.command = { command: 'editor.action.triggerSuggest', title: 'Suggest' };
+  if (it.deprecated) c.tags = [vscode.CompletionItemTag.Deprecated];
   return c;
 }
 

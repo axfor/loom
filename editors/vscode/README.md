@@ -6,7 +6,7 @@ Syntax highlighting, diagnostics, completion, a live preview, a patch against up
 
 | File | What gets highlighted |
 |---|---|
-| `*.lm` (templates and the `loom.om` settings file) | The objects `base` / `self` / imported names, nodes, methods, `as(type)`, node kinds, `reason:`, strings and backtick literals, `//` comments, settings; misspelled methods, argument names and words at the start of a line are marked red |
+| `*.lm` (templates and the `loom.om` settings file) | The objects `up` / `self` / imported names, nodes, methods, `as(type)`, node kinds, `reason:`, strings and backtick literals, `//` comments, settings; misspelled methods, argument names and words at the start of a line are marked red |
 | `*.e` (variables files) | `name = value`, `#` comments at the start of a line; malformed lines are marked red |
 | `{{@name}}` in sources | Highlighted in markdown / shell / json / toml / yaml / js / ts / python / go / html / css and more; `{{@@name}}` (a literal) is marked differently |
 
@@ -41,7 +41,7 @@ content between its marks — and follows as you type, saved or not. It is woven
 changes on disk, since upstream and our files feed the product too. A compile error shows in the preview with its
 `file:line:column`.
 
-The review button next to it opens VS Code's diff editor instead: upstream's file on the left (where `import base` points,
+The review button next to it opens VS Code's diff editor instead: upstream's file on the left (where `import up` points,
 when it does) and the woven product on the right, following your edits the same way — what the template changes about
 upstream, the way a code review shows it.
 
@@ -79,7 +79,7 @@ diff --loom upstream/doc.md ../dist/doc.md
 ```
 
 Both sides are named by `loom.om`, relative to the tree root, the way git writes paths relative to
-the repository: the left is the file in the `base` layer, which you can open, and the right is where
+the repository: the left is the file in the `up` layer, which you can open, and the right is where
 `output` says `lm build` writes the product — or the product's own path when no output is set.
 
 Where Review puts the two files side by side, this is the same comparison as a patch: only the
@@ -87,7 +87,7 @@ changed lines with their context, compact enough to take in at a glance and plai
 into a review. **Loom · Show Patch Against Upstream: Whole Tree** in the command palette runs it
 over every template of the tree at once, with a `git diff --stat` summary in front.
 
-**A merge template says so, and that is where the view earns its place.** For `base.merge(self)` on
+**A merge template says so, and that is where the view earns its place.** For `up.merge(self)` on
 a script or a `.js` file, our file *is* the product: the patch is the edits we carry, the ones
 `lm sync` re-applies to each new upstream with a three-way merge. They exist nowhere in the
 repository as a file — the difference is the only place they live, and this is where you read it.
@@ -119,10 +119,10 @@ when an anchor is missing or ambiguous, and this is where it says so before the 
 Every diagnostic carries lm's own message, so a fix comes with it:
 
 ```
-base.Overview.drop()
+up.Overview.drop()
               ~~~~~~  drop changes upstream content and needs a reason: drop(reason: "...")
 
-base.Overview.aftr("Ours")
+up.Overview.aftr("Ours")
               ~~~~  no method `aftr` — did you mean after?
 ```
 
@@ -146,27 +146,27 @@ Suggestions open after `.`, `"`, `/` and `(`, or with Ctrl-Space:
 
 | Where | Offered |
 |---|---|
-| Start of a line | `base`, `import`, `if`, `if / else if`, `fn`, `return`, `Self` (in `loom.om`: the settings) |
-| `base.` / `self.` / an imported name followed by `.` | The file's sections (keys, functions), then `frontmatter` / `body`, the groups (`sections`, `functions`, `keys`, `lines`…), `has`, node kinds such as `section("...")`, and on `base` the methods that apply to the whole file |
-| `base.Install.` | The methods the compiler accepts on that node: `after` / `before` / `replace` / `drop` / `move` / `wrap` / `swap`, and on a markdown section `promote` / `demote` / `unwrap` / `split` / `join` |
-| `base.frontmatter.` / `base.frontmatter.description.` | The frontmatter's keys and `set` / a key's `set` / `start` / `append` / `end` (on a toml key also `as`) |
-| `base."Example 2".` | The axes (`children` / `next` / `prev` / `parent`), the subsections of that section, then its methods |
-| `base.sections[` / after `&&` or `\|\|` in a predicate | The fields a predicate asks about: `level` / `name` / `value` / `empty` / `calls` / `has` |
-| `base.sections[level == 2].` | `first` / `last`, `any` / `count` for an `if`, and what a group takes: `drop`, and for sections `promote` / `demote` / `unwrap` |
-| `base.start.` / `base.Install.after.` | `project` — a place takes nothing else |
-| `if base.has.` | Upstream's names, and nothing else |
+| Start of a line | `up`, `import`, `if`, `if / else if`, `fn`, `return`, `Self` (in `loom.om`: the settings) |
+| `up.` / `self.` / an imported name followed by `.` | The file's sections (keys, functions), then `frontmatter` / `body`, the groups (`sections`, `functions`, `keys`, `lines`…), `has`, node kinds such as `section("...")`, and on `up` the methods that apply to the whole file |
+| `up.Install.` | The methods the compiler accepts on that node: `after` / `before` / `replace` / `drop` / `move` / `wrap` / `swap`, and on a markdown section `promote` / `demote` / `unwrap` / `split` / `join` |
+| `up.frontmatter.` / `up.frontmatter.description.` | The frontmatter's keys and `set` / a key's `set` / `start` / `append` / `end` (on a toml key also `as`) |
+| `up."Example 2".` | The axes (`children` / `next` / `prev` / `parent`), the subsections of that section, then its methods |
+| `up.sections[` / after `&&` or `\|\|` in a predicate | The fields a predicate asks about: `level` / `name` / `value` / `empty` / `calls` / `has` |
+| `up.sections[level == 2].` | `first` / `last`, `any` / `count` for an `if`, and what a group takes: `drop`, and for sections `promote` / `demote` / `unwrap` |
+| `up.start.` / `up.Install.after.` | `project` — a place takes nothing else |
+| `if up.has.` | Upstream's names, and nothing else |
 | `after(` / `after("` and the other content methods | Our sections, then `self` and imported names; `reason:` in `replace`. In a tree that declares `loom "2.0"` a bare string is text, so our sections are offered as `self."Name"` |
-| `move(` / `swap(` / `split(` | `base.`, and for `move` also `after:` / `before:` |
+| `move(` / `swap(` / `split(` | `up.`, and for `move` also `after:` / `before:` |
 | `self.` in a template with `Self:` sections | The section names (`Self as notes:`), the kinds written there, then the parts; a part two documents share is offered with its section (`notes."tip"`), never bare |
 | `} ` after an if block | `else`, `else if` |
-| Inside a `fn` body | Its parameters, with what the first call passes (`up — base.Overview`) |
+| Inside a `fn` body | Its parameters, with what the first call passes (`up — up.Overview`) |
 | `up.` where `up` is a parameter | What holds at every call of the function: the names and methods of what each call passes, only those all of them have |
 | `{` in a projection's template | The fields it writes for each node: `name` / `level` / `body` / `anchor` |
 | `drop(` | `reason:` |
-| `base.frontmatter.description.start(` | Our keys, the same key first: `self.frontmatter.description` (in toml, `self.description`) |
+| `up.frontmatter.description.start(` | Our keys, the same key first: `self.frontmatter.description` (in toml, `self.description`) |
 | `section("` / `function("` / `marker("` / `key("` | That kind of node in the file being changed |
 | `as(` | The types |
-| `import "/` / `import "./` | Directories and files of our layer (`import base` lists upstream); the extension is left out when no other file has that name |
+| `import "/` / `import "./` | Directories and files of our layer (`import up` lists upstream); the extension is left out when no other file has that name |
 
 What a suggestion inserts is always something the compiler resolves to that node:
 
@@ -175,11 +175,18 @@ What a suggestion inserts is always something the compiler resolves to that node
 - Each suggestion shows where the node is (`## Install · mine/README.md:12`) and the first lines of it.
 - Picking a method inserts its arguments (`drop(reason: "")`) and opens the next suggestions.
 
+## `base`, the old name for `up`
+
+`up` is the upstream file; `base` is its old name and still builds. The editor strikes `base`
+through where it names the upstream file — in a template and as the setting in `loom.om` — with a
+hint to write `up`, offers `up` in completion, and marks the `base` setting as deprecated there. A
+node that happens to be called base, `up.base`, is a name and is left alone.
+
 ## Hover
 
 Hover a keyword — `after`, `merge`, `drop`, `as`, `section`, `import`, `reason:`, `if`, `fn`, `return`, `Self`, a group such as `sections`, an axis such as `children`, a predicate field such as `level`, a projection field such as `{anchor}`, and the rest — for its typed signature
-(`base.<key>.start(value: Value)`), what it does, what each parameter type accepts, and examples; completion shows the same
-next to each suggestion. Keywords do not jump anywhere. Hover `base`, `self` or an imported name to see which file it stands for, and a function's parameter to see what each call passes for it.
+(`up.<key>.start(value: Value)`), what it does, what each parameter type accepts, and examples; completion shows the same
+next to each suggestion. Keywords do not jump anywhere. Hover `up`, `self` or an imported name to see which file it stands for, and a function's parameter to see what each call passes for it.
 
 ## Signature help
 
@@ -194,17 +201,17 @@ In a template, Cmd-click a name (Ctrl-click on Windows / Linux), or press F12:
 | Cursor on | Jumps to |
 |---|---|
 | The path or `cmd` in `import cmd "/.claude/commands/ship"` | That file in our layer (the extension may be omitted; same rules as the compiler) |
-| `base` / `self` / an imported name | The file it stands for: `base` is the upstream file at the same path (or wherever `import base "..."` points it), `self` is ours |
-| `base.Install`, `base."How it compares"`, `base.Usage_Tips`, `base.usageTips` | That section of the upstream file — an unquoted name by its words, whatever separates them and whatever their case; one matching two leads nowhere |
-| `Overview` in `if base.has.Overview` | That section upstream |
+| `up` / `self` / an imported name | The file it stands for: `up` is the upstream file at the same path (or wherever `import up "..."` points it), `self` is ours |
+| `up.Install`, `up."How it compares"`, `up.Usage_Tips`, `up.usageTips` | That section of the upstream file — an unquoted name by its words, whatever separates them and whatever their case; one matching two leads nowhere |
+| `Overview` in `if up.has.Overview` | That section upstream |
 | A call such as `bilingual(...)` | Its `fn` declaration in the template |
 | `ok` in `if !ok` or `err.format("...", ok)` | The `ok = ...` line that caught it |
 | A parameter, or a name after one (`up`, `up.Setup`) inside a `fn` | Where the argument each call passes leads — when every call leads to the same place; when they differ, nowhere, rather than a guess at which call was meant |
 | `self.job`, `self.notes.tip`, `self.json.ddd` in a template with `Self:` sections | That part inside the fence; `notes` → its `Self as notes:` line, `json` → the fence. A part two documents share leads nowhere, as the compiler refuses it |
-| `"Phase 1"` in `base."Example 2"."Phase 1"` | That subsection under that parent |
+| `"Phase 1"` in `up."Example 2"."Phase 1"` | That subsection under that parent |
 | `"Install XSDD"` inside a method | That section of our file |
 | `self.frontmatter`, `cmd.body` | Where that part starts |
-| `description` in `base.frontmatter.description` / `self.frontmatter.description` | That frontmatter key upstream / in our file |
+| `description` in `up.frontmatter.description` / `self.frontmatter.description` | That frontmatter key upstream / in our file |
 | The name in `marker("...")`, `key("...")`, `function("...")` | The matching comment banner, key or function |
 
 Only objects and names lead to a file; keywords show their help on hover instead. Holding Cmd (Ctrl) over a name underlines the whole token, so a string with spaces is one link, and shows the first lines of

@@ -333,24 +333,24 @@ check(sh, shText, 1, 'boot', ['mine/run.sh', 0]);
   const me = 'mine/skills/testing/SKILL.md';
   const up = 'upstream/skills/testing/SKILL.md';
   const one = [
-    'fn both(up, ours) {',           // 0
-    '    up.after(ours)',            // 1
+    'fn both(at, ours) {',           // 0
+    '    at.after(ours)',            // 1
     '}',                             // 2
     'both(base.Overview, self.Überblick)', // 3
   ].join('\n');
-  check(f, one, 1, 'up', [up, 5]);
+  check(f, one, 1, 'at', [up, 5]);
   check(f, one, 1, 'ours', [me, 5]);
-  check(f, one, 0, 'up', [up, 5]);
+  check(f, one, 0, 'at', [up, 5]);
   const two = one + '\nboth(base.Usage_Tips, self.Überblick)';
-  // two calls, two sections: which one `up` is depends on the call, so it leads nowhere
-  check(f, two, 1, 'up', null);
+  // two calls, two sections: which one `at` is depends on the call, so it leads nowhere
+  check(f, two, 1, 'at', null);
   // both calls pass the same content, so `ours` still leads to it
   check(f, two, 1, 'ours', [me, 5]);
   // a parameter passed on from another function's parameter binds one level up
   const nested = ['fn inner(a) {', '    a.after(self.Überblick)', '}', 'fn outer(x) {', '    inner(x)', '}', 'outer(base.Overview)'].join('\n');
   check(f, nested, 1, 'a', [up, 5]);
   // nothing calls it: the parameter stands for nothing
-  check(f, 'fn lone(up) {\n    up.after(self.Überblick)\n}', 1, 'up', null);
+  check(f, 'fn lone(at) {\n    at.after(self.Überblick)\n}', 1, 'at', null);
   // an address inside parentheses is read as one: move, swap, split and project take them
   check(f, 'base.Overview.move(base.Usage_Tips.after)', 0, 'Usage_Tips', [up, 17]);
   check(f, 'base.Overview.swap(base.Usage_Tips)', 0, 'Usage_Tips', [up, 17]);

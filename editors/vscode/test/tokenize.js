@@ -226,7 +226,7 @@ function expectNot(grammar, line, text, scope) {
   expect(lm, 'if base.has.Overview {', 'if', 'keyword.control.loom');
   expect(lm, 'return err.format("%s", ok)', 'return', 'keyword.control.loom');
   expect(lm, 'return err.format("%s", ok)', 'err', 'keyword.control.loom');
-  expect(lm, 'fn part(up, ours) {', 'fn', 'keyword.control.loom');
+  expect(lm, 'fn part(at, ours) {', 'fn', 'keyword.control.loom');
   expect(lm, 'Self as notes:', 'Self', 'keyword.control.loom');
   expect(lm, 'base.sections[level == 2].demote()', 'level', 'support.function.predicate.loom');
   expect(lm, 'base.sections[level == 2].demote()', '==', 'keyword.operator.loom');

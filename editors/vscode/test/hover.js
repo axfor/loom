@@ -67,7 +67,7 @@ const after = at(4, 'after');
 ok(after.markdown.includes('after(...content: Content)') && after.markdown.includes('**Parameters**') && after.markdown.includes('a section of our file'),
   'a method shows its typed signature and what each type accepts', after.markdown);
 const start = at(3, 'append');
-ok(start.markdown.includes('base.append(...content: Content)') && start.markdown.includes('base.<key>.append(value: Value)'),
+ok(start.markdown.includes('up.append(...content: Content)') && start.markdown.includes('up.<key>.append(value: Value)'),
   'a method with two receivers shows both signatures', start.markdown);
 
 // The added syntax: every word the compiler reads as a word, not a name, explains itself.
@@ -80,8 +80,8 @@ ok(start.markdown.includes('base.append(...content: Content)') && start.markdown
     '} else {',                                                    // 4
     '    return err.format("no main: %s", ok)',                    // 5
     '}',                                                           // 6
-    'fn twice(up, ours) {',                                        // 7
-    '    up.after(ours)',                                          // 8
+    'fn twice(at, ours) {',                                        // 7
+    '    at.after(ours)',                                          // 8
     '}',                                                           // 9
     'base.main.move(base.main.after)',                             // 10
     'return self // reason: ours',                                 // 11
@@ -103,9 +103,9 @@ ok(start.markdown.includes('base.append(...content: Content)') && start.markdown
     ok(h && h.markdown.includes('**Examples**'), `${word} on line ${line}: explained`, h && h.markdown.slice(0, 60));
   }
   // A place word hanging off a node is the place, and says so.
-  ok(on(10, 'after').markdown.includes('base.<node>.after  ·'), 'a bare after reads as a place', on(10, 'after').markdown.slice(0, 120));
+  ok(on(10, 'after').markdown.includes('up.<node>.after  ·'), 'a bare after reads as a place', on(10, 'after').markdown.slice(0, 120));
   ok(on(0, 'main') === null, 'a node name is not a keyword');
-  const up = on(8, 'up');
+  const up = on(8, 'at');
   ok(up && up.markdown.includes('parameter of `fn twice`') && up.markdown.includes('Nothing calls'), 'a parameter nobody passes says so', up);
 }
 {
@@ -127,10 +127,10 @@ ok(start.markdown.includes('base.append(...content: Content)') && start.markdown
 
 // A parameter says what each call passes; a template field says what the build writes.
 {
-  const src = ['fn both(up, ours) {', '    up.after(ours)', '}', 'both(base.main, self.main)', 'both(base.main, `echo`)',
+  const src = ['fn both(at, ours) {', '    at.after(ours)', '}', 'both(base.main, self.main)', 'both(base.main, `echo`)',
     'base.start.project(base.functions){', '    ```shell', '    # {name} at {level}', '    ```', '}'].join('\n');
   const l = src.split('\n');
-  const h = hover(tpl, src, 1, l[1].indexOf('up'));
+  const h = hover(tpl, src, 1, l[1].indexOf('at'));
   ok(h && h.markdown.includes('line 4: `base.main`') && h.markdown.includes('line 5: `base.main`'), 'a parameter lists what each call passes', h && h.markdown);
   const o = hover(tpl, src, 1, l[1].indexOf('ours'));
   ok(o && o.markdown.includes('line 4: `self.main`') && o.markdown.includes('a literal'), 'content passed is listed too', o && o.markdown);

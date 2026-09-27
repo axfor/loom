@@ -67,7 +67,8 @@ const SNIPPETS = {
 
 const SETTINGS = [
   ['loom', 'loom "$1"', 'the language version this tree is written against'],
-  ['base', 'base "$1"', 'the upstream layer directory'],
+  ['up', 'up "$1"', 'the upstream layer directory'],
+  ['base', 'base "$1"', 'the old name for up — write up "..."', true],
   ['self', 'self "$1"', 'our layer directory'],
   ['templates', 'templates "$1"', 'where templates live (default: next to our files)'],
   ['output', 'output "$1"', 'the product directory'],
@@ -279,13 +280,13 @@ function stepItems(cx, chain, index, range, quoted) {
   const r = loom.walk(cx.t, chain, index);
   if (!r || r.bad || r.method || r.asked) return [];
   const out = [];
-  if (r.place) return chain.root.v === 'base' && !quoted && !chain.inCall ? methodItems(r, range) : [];
+  if (r.place) return loom.isUp(chain.root.v) && !quoted && !chain.inCall ? methodItems(r, range) : [];
   if (r.many) {
     if (quoted) return [];
     out.push(item('first', 'part', { detail: 'the first of the group', markdown: markdownFor('first'), range, sortText: '1' }));
     out.push(item('last', 'part', { detail: 'the last of the group', markdown: markdownFor('last'), range, sortText: '1' }));
     for (const q of loom.QUESTIONS) out.push(item(q, 'part', { detail: q === 'any' ? 'if: does the group have anything in it' : 'if: how many are in it; holds when not zero', markdown: markdownFor(q), range, sortText: '3' }));
-    if (chain.root.v === 'base' && !chain.argOf && !chain.inCall) out.push(...methodItems(r, range));
+    if (loom.isUp(chain.root.v) && !chain.argOf && !chain.inCall) out.push(...methodItems(r, range));
     return out;
   }
   // self written in this file: the section and kind names still to be said, then the parts of
@@ -363,10 +364,10 @@ function stepItems(cx, chain, index, range, quoted) {
   if (r.has) return out;
   if (!r.node) {
     // a group is something to change, or to ask about; content comes one node at a time
-    for (const [word, kind] of chain.root.v === 'base' ? Object.entries(loom.CLASS_CALLS[r.typ] || {}) : []) {
+    for (const [word, kind] of loom.isUp(chain.root.v) ? Object.entries(loom.CLASS_CALLS[r.typ] || {}) : []) {
       out.push(item(word, 'part', { detail: `every ${kind}; [ ... ] picks some`, markdown: markdownFor(word), range, sortText: '3' }));
     }
-    if (chain.root.v === 'base') out.push(item('has', 'part', { detail: 'if: does upstream have a part by this name', markdown: markdownFor('has'), insertText: 'has.', retrigger: true, range, sortText: '4' }));
+    if (loom.isUp(chain.root.v)) out.push(item('has', 'part', { detail: 'if: does upstream have a part by this name', markdown: markdownFor('has'), insertText: 'has.', retrigger: true, range, sortText: '4' }));
     if (r.typ === 'markdown' && !r.view) out.push(item('frontmatter', 'part', { detail: 'the frontmatter', markdown: markdownFor('frontmatter'), range, sortText: '1' }));
     if (r.obj.layer === 'self' && r.typ === 'markdown') out.push(item('body', 'part', { detail: 'everything after the frontmatter', markdown: markdownFor('body'), range, sortText: '1' }));
     for (const call of Object.keys(loom.KIND_CALLS[r.typ] || {})) {
@@ -374,7 +375,7 @@ function stepItems(cx, chain, index, range, quoted) {
     }
   }
   // an argument of a function call is an address; nothing is done to it there
-  if (chain.root.v === 'base' && !chain.argOf && !chain.inCall) out.push(...methodItems(r, range));
+  if (loom.isUp(chain.root.v) && !chain.argOf && !chain.inCall) out.push(...methodItems(r, range));
   return out;
 }
 
@@ -609,9 +610,9 @@ function argItems(cx, argOf, range, quoted) {
   // where a node goes, or what it trades places with: a node of upstream
   if (st.name === 'move' || st.name === 'swap' || st.name === 'split') {
     if (quoted) return [];
-    const out = [item('base', 'object', { detail: 'a node of upstream', insertText: 'base.', retrigger: true, range, sortText: '1' })];
+    const out = [item('up', 'object', { detail: 'a node of upstream', insertText: 'up.', retrigger: true, range, sortText: '1' })];
     if (st.name === 'move') {
-      for (const side of ['after', 'before']) out.push(item(`${side}:`, 'argument', { detail: `${side} this node`, insertText: `${side}: base.`, retrigger: true, range, sortText: '0' }));
+      for (const side of ['after', 'before']) out.push(item(`${side}:`, 'argument', { detail: `${side} this node`, insertText: `${side}: up.`, retrigger: true, range, sortText: '0' }));
     }
     return out;
   }
@@ -654,7 +655,7 @@ function argItems(cx, argOf, range, quoted) {
 
 function pathItems(cx, imp, tok) {
   const typed = imp.spec.v.slice(0, cx.character - tok.s - 1);
-  const layer = imp.name && imp.name.v === 'base' ? 'base' : 'self';
+  const layer = imp.name && loom.isUp(imp.name.v) ? 'base' : 'self';
   const start = tok.s + 1;
   const end = tok.closed ? tok.e - 1 : tok.e;
   if (!/^(\/|\.\/|\.\.\/)/.test(typed)) {
@@ -710,7 +711,7 @@ function written(chain) {
 
 function statementItems(range) {
   return [
-    item('base', 'object', { detail: 'the upstream file at this path; the only object a statement changes', insertText: 'base.', retrigger: true, range }),
+    item('up', 'object', { detail: 'the upstream file at this path; the only object a statement changes', insertText: 'up.', retrigger: true, range }),
     item('import', 'keyword', { detail: 'import [name] "path": another file of our layer', markdown: markdownFor('import'), insertText: 'import "$1"', snippet: true, retrigger: true, range }),
     item('if', 'keyword', { detail: 'ask the document something, and write only if it holds', markdown: markdownFor('if'), insertText: 'if base.has.${1:Name} {\n\t$0\n}', snippet: true, range }),
     item('if / else if', 'keyword', { detail: 'a chain of questions: the first that holds decides', insertText: 'if base.has.${1:One} {\n\t$2\n} else if base.has.${3:Two} {\n\t$0\n}', snippet: true, range }),
@@ -725,7 +726,7 @@ function settings(text, line, character) {
   const m = /^(\s*)([A-Za-z]*)$/.exec(typed);
   if (!m) return [];
   const range = { line, s: m[1].length, e: m[1].length + m[2].length };
-  return SETTINGS.map(([label, insertText, detail]) => item(label, 'keyword', { detail, insertText, snippet: true, range }));
+  return SETTINGS.map(([label, insertText, detail, deprecated]) => item(label, 'keyword', { detail, insertText, snippet: true, range, deprecated, sortText: deprecated ? '9' : '0' }));
 }
 
 module.exports = { completions, nodeText, nodeTextFor, written, projectTemplate, PREDICATE_KINDS };

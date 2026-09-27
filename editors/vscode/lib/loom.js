@@ -87,6 +87,11 @@ function readText(p) {
 
 // findConfig walks up from the template to the nearest loom.om and reads the three
 // settings that decide where files live.
+// isUp: the upstream file's name — up, or base, its old name.
+function isUp(name) {
+  return name === 'up' || name === 'base';
+}
+
 function findConfig(from) {
   let dir = path.dirname(from);
   for (;;) {
@@ -94,8 +99,9 @@ function findConfig(from) {
     if (isFile(p)) {
       const cfg = { root: dir, base: null, self: null, templates: null, output: null, loom: null };
       for (const line of fs.readFileSync(p, 'utf8').split('\n')) {
-        const m = /^\s*(base|self|templates|output|loom)\s+"((?:[^"\\]|\\.)*)"/.exec(line);
-        if (m) cfg[m[1]] = unquote(m[2]);
+        const m = /^\s*(up|base|self|templates|output|loom)\s+"((?:[^"\\]|\\.)*)"/.exec(line);
+        // up names the upstream layer; base is its old name
+        if (m) cfg[m[1] === 'up' ? 'base' : m[1]] = unquote(m[2]);
       }
       // without a templates setting, templates live next to our files in the self layer
       if (cfg.templates == null) cfg.templates = cfg.self != null ? cfg.self : 'templates';
@@ -497,7 +503,7 @@ function parse(toks) {
       // rest. Inside parentheses base is an argument like any other: move(base.Y.after),
       // swap(base.Y), project(base.sections[...]).
       const lineStart = toks[i - 1] && toks[i - 1].t === 'nl';
-      if (t.t === 'eof' || (close === ')' && t.t === 'nl') || (close === '}' && lineStart && t.t === 'id' && (t.v === 'base' || t.v === 'import'))) return;
+      if (t.t === 'eof' || (close === ')' && t.t === 'nl') || (close === '}' && lineStart && t.t === 'id' && (isUp(t.v) || t.v === 'import'))) return;
       const step = argOf.chain.steps[argOf.index];
       if (t.t === 'id' && peek(1).t === ':') {
         i += 2;
@@ -553,7 +559,9 @@ function open(docPath, text) {
   const toks = lex(text);
   const { refs, imports, fns, calls } = parse(toks);
   const objects = {
-    base: { layer: 'base', file: path.join(layerDir(cfg, 'base'), target), typ: typeOf(target) },
+    up: { layer: 'base', file: path.join(layerDir(cfg, 'base'), target), typ: typeOf(target) },
+    // base is up's old name: the same file, marked so the editor can say so
+    base: { layer: 'base', file: path.join(layerDir(cfg, 'base'), target), typ: typeOf(target), deprecated: true },
     self: { layer: 'self', file: cfg.self == null ? null : path.join(layerDir(cfg, 'self'), target), typ: typeOf(target) },
   };
   // Resource sections: everything after the line of dashes is our content, written here. They
@@ -564,10 +572,15 @@ function open(docPath, text) {
   const importFile = new Map();
   for (const imp of imports) {
     const name = imp.name ? imp.name.v : path.posix.basename(imp.spec.v).replace(/\.[^.]*$/, '');
-    const layer = name === 'base' ? 'base' : 'self';
+    const layer = isUp(name) ? 'base' : 'self';
     const file = resolveImport(cfg, layer, imp.spec.v, target);
     importFile.set(imp, file);
     if (name !== 'self' && file) objects[name] = { layer, file, typ: typeOf(file) };
+    // import up "/old/name" points both names at the file upstream moved
+    if (isUp(name) && file) {
+      objects.up = { layer, file, typ: typeOf(file) };
+      objects.base = { layer, file, typ: typeOf(file), deprecated: true };
+    }
   }
   return { cfg, target, docPath, toks, refs, imports, importFile, objects, resources, fns, calls };
 }
@@ -772,7 +785,7 @@ function enclosingCall(t, k, line) {
       if (c.t === '(' && c.line !== line) return null; // (...) stays on one line
       const ref = i > 0 && stepRef(t, toks[i - 1]);
       return ref ? { chain: ref.chain, index: ref.index, open: i } : null;
-    } else if (c.t === 'id' && (c.v === 'base' || c.v === 'import') && c.line !== line && (i === 0 || toks[i - 1].t === 'nl')) {
+    } else if (c.t === 'id' && (isUp(c.v) || c.v === 'import') && c.line !== line && (i === 0 || toks[i - 1].t === 'nl')) {
       return null; // an earlier statement starts here and none of its blocks is open
     }
   }
@@ -1084,6 +1097,7 @@ module.exports = {
   literalNames,
   resourceDocs,
   bindings,
+  isUp,
   fenceKind,
   lastBefore,
   stepRef,

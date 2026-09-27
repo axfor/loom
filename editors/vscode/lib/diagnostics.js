@@ -150,4 +150,30 @@ function diagnose(lm, file, text, timeoutMs = 10000) {
   });
 }
 
-module.exports = { commandFor, diagnose, inTree, isSettings, isVars, lineOf, parse };
+// deprecations finds `base` where it names the upstream file or its setting — up's old name. It
+// still builds, so this is a hint, not an error: the editor strikes it through and says to write up.
+// A node that happens to be called base, up.base or up."base", is a name and is left alone.
+function deprecations(file, text) {
+  const out = [];
+  const message = 'base is the old name for up — it still works; write up';
+  if (isSettings(file)) {
+    text.split('\n').forEach((l, line) => {
+      const m = /^(\s*)base\b/.exec(l);
+      if (m) out.push({ line, s: m[1].length, e: m[1].length + 4, message: 'base is the old name for up — write up "..."' });
+    });
+    return out;
+  }
+  const toks = loom.lex(text);
+  toks.forEach((t, k) => {
+    if (t.t !== 'id' || t.v !== 'base') return;
+    const prev = toks[k - 1];
+    const next = toks[k + 1];
+    if (prev && prev.t === '.') return; // a node called base
+    const root = next && (next.t === '.' || next.t === '=');
+    const imported = prev && prev.t === 'id' && prev.v === 'import';
+    if (root || imported) out.push({ line: t.line, s: t.s, e: t.e, message });
+  });
+  return out;
+}
+
+module.exports = { commandFor, deprecations, diagnose, inTree, isSettings, isVars, lineOf, parse };
