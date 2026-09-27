@@ -668,7 +668,7 @@ function walk(t, chain, upto) {
       }
       // a frontmatter key: base.frontmatter.description
       if (r.node.kind === 'frontmatter' && !st.call) {
-        r.node = { kind: 'fmkey', name: st.name, ident: false };
+        r.node = { kind: 'fmkey', name: st.name, ident: ident(st) };
         continue;
       }
       // an axis: base.X.children, base.sections[...].first — first and last pick from a group,
@@ -692,7 +692,8 @@ function walk(t, chain, upto) {
       // its own. Without this the editor stopped at the first segment, and go-to-definition on
       // the rest of the path did nothing.
       if (!st.call && isValueType(r.typ) && r.node.kind === DEFAULT_KIND[r.typ] && !r.view) {
-        r.node = { kind: r.node.kind, name: `${r.node.name}.${st.name}`, ident: false };
+        // each segment by its words, as long as none of them is quoted
+        r.node = { kind: r.node.kind, name: `${r.node.name}.${st.name}`, ident: r.node.ident && ident(st) };
         continue;
       }
       // a section path: base."Example 2"."Phase 1"
@@ -825,13 +826,23 @@ function words(s) {
       const next = rs[i + 1] || '';
       if (isLower(prev) || isDigit(prev) || (isUpper(prev) && next && isLower(next))) gap();
     }
-    out.push(r.toLowerCase());
+    // one code point, as Go's unicode.ToLower gives: İ is i, not i and a combining dot
+    out.push([...r.toLowerCase()][0]);
   });
   return out.join('').trim();
 }
 
 function identMatch(name, ident) {
   return words(name) === words(ident);
+}
+
+// nameMatch mirrors weave.go's: a key's trailing segments, each by its words.
+function nameMatch(kind, name, ident) {
+  if (kind !== 'key' && kind !== 'path') return identMatch(name, ident);
+  const have = name.split('.');
+  const want = ident.split('.');
+  if (want.length > have.length) return false;
+  return want.every((w, i) => identMatch(have[have.length - want.length + i], w));
 }
 
 function frontmatterEnd(lines) {
@@ -1056,9 +1067,16 @@ function findNode(text, node, view, typ) {
       });
       return hits.length === 1 ? { line: hits[0] + offset, end: hits[0] + 1 + offset, s: 0, e: lines[hits[0]].length } : null;
     }
-    case 'path': {
-      const n = nodesOf(lines.join('\n'), 'path').find((m) => m.name === node.name);
-      return n ? shift(n, JSON.stringify(node.name.split('.').pop())) : null;
+    case 'path':
+    case 'key': {
+      // A key is named by its path, and a trailing part of it is enough; unquoted, each segment
+      // is matched by its words (weave.go's nameMatch). One key, or none.
+      const all = nodesOf(lines.join('\n'), node.kind, typ);
+      const hits = [...new Set(all.filter((m) => (node.ident ? nameMatch(node.kind, m.name, node.name) : m.name === node.name || m.name.endsWith(`.${node.name}`))).map((m) => m.name))];
+      if (hits.length !== 1) return null;
+      const n = all.find((m) => m.name === hits[0]);
+      const label = node.kind === 'path' ? JSON.stringify(n.name.split('.').pop()) : n.name;
+      return shift(n, label);
     }
     default: {
       const n = pick(nodesOf(lines.join('\n'), node.kind, typ), node.name, node.ident);
@@ -1103,6 +1121,7 @@ module.exports = {
   stepRef,
   enclosingCall,
   identMatch,
+  nameMatch,
   words,
   headings,
   nodesOf,

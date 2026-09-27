@@ -356,6 +356,17 @@ check(sh, shText, 1, 'boot', ['mine/run.sh', 0]);
   check(f, 'base.Overview.swap(base.Usage_Tips)', 0, 'Usage_Tips', [up, 17]);
 }
 
+// A key is found by its words in every segment, and a trailing part of its path is enough.
+{
+  write('upstream/wf/ci.yaml', 'jobs:\n  build_job:\n    steps: x\n');
+  const f = path.join(root, 't/wf/ci.yaml.lm');
+  check(f, 'up.jobs.buildJob.drop(reason: "r")', 0, 'buildJob', ['upstream/wf/ci.yaml', 1]);
+  check(f, 'up.steps.drop(reason: "r")', 0, 'steps', ['upstream/wf/ci.yaml', 2]);
+  check(f, 'up.JOBS.build_job.steps.drop(reason: "r")', 0, 'steps', ['upstream/wf/ci.yaml', 2]);
+  // a frontmatter key by its words too
+  check(doc, 'up.frontmatter.Description.set(self.frontmatter.description)', 0, 'Description', ['upstream/skills/testing/SKILL.md', 2]);
+}
+
 fs.rmSync(root, { recursive: true, force: true });
 console.log(`loom definition: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
