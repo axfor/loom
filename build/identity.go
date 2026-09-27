@@ -99,7 +99,26 @@ func body(tree ast.Tree, n ast.Named) string {
 
 // follow rewrites the anchors of one template so they point at upstream's new names. It edits the
 // name where it is written and nothing else, so the diff a person reviews is one word per rename.
-func follow(t *lang.Template, rs []Rename, loom string) ([]string, error) {
+func follow(t *lang.Template, rs []Rename, loom, now string) ([]string, error) {
+	// A new name is written unquoted where that reads back as it alone: an unquoted name matches
+	// every node with its words, so where the new upstream has another, it is quoted instead.
+	upNow := ast.New(t.Type, now)
+	nameFor := func(kind, name string) string {
+		text := lang.NameTextFor(name, loom)
+		if upNow == nil || strings.HasPrefix(text, `"`) {
+			return text
+		}
+		hits := map[string]bool{}
+		for _, n := range ast.Addressable(upNow, kind) {
+			if identMatch(n.Name, text) {
+				hits[n.Name] = true
+			}
+		}
+		if len(hits) > 1 {
+			return lang.Quote(name)
+		}
+		return text
+	}
 	src, err := os.ReadFile(t.Path)
 	if err != nil {
 		return nil, err
@@ -213,19 +232,19 @@ func follow(t *lang.Template, rs []Rename, loom string) ([]string, error) {
 			if u.whole {
 				// The name is all in one token, so the token takes the new name whole — a key's
 				// path with the renamed part replaced where a parent was renamed.
-				now := ""
+				renamed := ""
 				switch {
 				case u.name == r.Old || (u.ident && identMatch(r.Old, u.name)):
-					now = r.New
+					renamed = r.New
 				case strings.HasPrefix(u.name, r.Old+"."):
-					now = r.New + u.name[len(r.Old):]
+					renamed = r.New + u.name[len(r.Old):]
 				default:
 					continue
 				}
 				if k := at(u.at, 0); k >= 0 {
-					text := lang.Quote(now)
+					text := lang.Quote(renamed)
 					if toks[k].Kind == lang.KIdent {
-						text = lang.NameTextFor(now, loom)
+						text = nameFor(u.kind, renamed)
 					}
 					rewrite(k, text, note)
 				}
@@ -234,7 +253,7 @@ func follow(t *lang.Template, rs []Rename, loom string) ([]string, error) {
 			if !strings.Contains(r.Old, ".") && !strings.Contains(u.name, ".") {
 				// Loom 1 reads an unquoted name by the underscore rule, so Set_Up names "Set Up".
 				if u.name == r.Old || (u.ident && identMatch(r.Old, u.name)) {
-					rewrite(at(u.at, 0), lang.NameTextFor(r.New, loom), note)
+					rewrite(at(u.at, 0), nameFor(u.kind, r.New), note)
 				}
 				continue
 			}

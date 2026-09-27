@@ -935,12 +935,13 @@ func TestBareStringDependsOnTheVersion(t *testing.T) {
 	}
 }
 
-// A dotted name matches the name, one character for one character, from Loom 2. Before that an
-// underscore stood for a space; a tree written then still means what it meant.
-func TestDottedNameDependsOnTheVersion(t *testing.T) {
+// An unquoted name is matched by its words, in every version and every segment of a path:
+// How_Skills_Work, howSkillsWork and HowSkillsWork all name "How Skills Work", as long as nothing
+// else has the same words. Two that do is an error where the name is written, never a pick.
+func TestAnUnquotedNameIsMatchedByItsWords(t *testing.T) {
 	dir := t.TempDir()
-	mustWrite(t, filepath.Join(dir, "up", "f.md"), "# T\n\n## How Skills Work\n\nu\n\n## Other\n\no\n")
-	mustWrite(t, filepath.Join(dir, "me", "f.md"), "## Ours\n\no\n")
+	mustWrite(t, filepath.Join(dir, "up", "f.md"), "# T\n\n## How Skills Work\n\n### Step One\n\nu\n\n## Other\n\no\n")
+	mustWrite(t, filepath.Join(dir, "me", "f.md"), "## Our Part\n\n### Sub Part\n\no\n")
 	weave := func(decl, tpl string) error {
 		mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n"+decl)
 		mustWrite(t, filepath.Join(dir, "me", "f.md.lm"), tpl)
@@ -955,36 +956,29 @@ func TestDottedNameDependsOnTheVersion(t *testing.T) {
 		_, err = build.Weave(c, tm)
 		return err
 	}
-	const under = "base.How_Skills_Work.after(self.Ours)\n"
-	const quoted = "base.\"How Skills Work\".after(self.Ours)\n"
-
-	if err := weave("", under); err != nil {
-		t.Errorf("a tree that declares nothing keeps the underscore rule: %v", err)
-	}
-	if err := weave("loom \"1.0\"\n", under); err != nil {
-		t.Errorf("Loom 1 keeps the underscore rule: %v", err)
-	}
-	if err := weave("loom \"2.0\"\n", under); err == nil {
-		t.Error("Loom 2 should look for the name as written")
-	}
-	if err := weave("loom \"2.0\"\n", quoted); err != nil {
-		t.Errorf("Loom 2 takes the name in quotes: %v", err)
-	}
-
-	// Every segment of a path is a name, not only the first: below a section, and on our side.
-	mustWrite(t, filepath.Join(dir, "up", "f.md"), "# T\n\n## How Skills Work\n\n### Step One\n\nu\n\n## Other\n\no\n")
-	mustWrite(t, filepath.Join(dir, "me", "f.md"), "## Our Part\n\n### Sub Part\n\no\n")
-	for _, tpl := range []string{
-		"base.\"How Skills Work\".Step_One.after(self.\"Our Part\")\n",
-		"base.Other.after(self.Our_Part)\n",
-		"base.Other.after(self.\"Our Part\".Sub_Part)\n",
-	} {
-		if err := weave("", tpl); err != nil {
-			t.Errorf("Loom 1 reads every segment by the underscore rule: %s%v", tpl, err)
+	for _, decl := range []string{"", "loom \"1.0\"\n", "loom \"2.0\"\n"} {
+		for _, tpl := range []string{
+			"base.How_Skills_Work.after(self.Our_Part)\n",
+			"base.howSkillsWork.after(self.ourPart)\n",
+			"base.HowSkillsWork.stepOne.after(self.\"Our Part\".subPart)\n",
+			"base.\"How Skills Work\".Step_One.after(self.Our_Part.Sub_Part)\n",
+		} {
+			if err := weave(decl, tpl); err != nil {
+				t.Errorf("%q %s%v", decl, tpl, err)
+			}
 		}
-		if err := weave("loom \"2.0\"\n", tpl); err == nil {
-			t.Errorf("Loom 2 looks for every segment as written, and there is no such name: %s", tpl)
-		}
+	}
+	// A quoted name is exactly what it says.
+	if err := weave("", "base.\"how skills work\".after(self.Our_Part)\n"); err == nil {
+		t.Error("a quoted name is matched exactly, case and all")
+	}
+	// Two nodes with the same words: the unquoted name is refused, and the quoted form says which.
+	mustWrite(t, filepath.Join(dir, "up", "f.md"), "# T\n\n## Foo Bar\n\nf\n\n## fooBar\n\ng\n")
+	if err := weave("", "base.fooBar.after(self.Our_Part)\n"); err == nil || !strings.Contains(err.Error(), "matches") {
+		t.Errorf("two nodes with the words of fooBar are an error: %v", err)
+	}
+	if err := weave("", "base.\"fooBar\".after(self.Our_Part)\n"); err != nil {
+		t.Errorf("the quoted form picks one: %v", err)
 	}
 }
 
@@ -1156,8 +1150,8 @@ func TestEveryPathIsReadTheSameWay(t *testing.T) {
 			t.Errorf("Loom 1 reads every segment by the underscore rule: %s%v", c.tpl, err)
 		}
 		weave2 := newTree(t, "base \"up\"\nself \"me\"\nloom \"2.0\"\n", up, "")
-		if _, err := weave2(c.tpl); err == nil {
-			t.Errorf("Loom 2 reads every segment as written, and there is no How_It: %s", c.tpl)
+		if _, err := weave2(c.tpl); err != nil {
+			t.Errorf("Loom 2 matches every segment by its words too: %s%v", c.tpl, err)
 		}
 	}
 
@@ -1843,17 +1837,17 @@ func TestAResultIsReadInTheBranchThatCaughtIt(t *testing.T) {
 	}
 }
 
-// An unquoted name in a predicate reads like every other: has.Set_Up finds "Set Up" in Loom 1,
-// as if base.has.Set_Up does, and is the name as written in Loom 2.
-func TestAPredicateNameReadsByTheVersion(t *testing.T) {
+// An unquoted name in a predicate reads like every other: has.Set_Up and has.setUp find "Set Up",
+// as base.has.Set_Up does, in either version.
+func TestAPredicateNameReadsByItsWords(t *testing.T) {
 	const up = "# T\n\n## Outer\n\no\n\n### Set Up\n\ns\n"
-	w1 := newTree(t, "base \"up\"\nself \"me\"\n", up, "")
-	if _, err := w1("base.sections[has.Set_Up].demote()\n"); err != nil {
-		t.Errorf("Loom 1: has.Set_Up finds \"Set Up\": %v", err)
-	}
-	w2 := newTree(t, "base \"up\"\nself \"me\"\nloom \"2.0\"\n", up, "")
-	if _, err := w2("base.sections[has.Set_Up].demote()\n"); err == nil {
-		t.Error("Loom 2: has.Set_Up is the name as written, and nothing holds it")
+	for _, decl := range []string{"", "loom \"2.0\"\n"} {
+		w := newTree(t, "base \"up\"\nself \"me\"\n"+decl, up, "")
+		for _, tpl := range []string{"base.sections[has.Set_Up].demote()\n", "base.sections[has.setUp].demote()\n"} {
+			if _, err := w(tpl); err != nil {
+				t.Errorf("%q %s%v", decl, tpl, err)
+			}
+		}
 	}
 }
 

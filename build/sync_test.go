@@ -217,13 +217,12 @@ func TestSyncReportsAFileUpstreamRemoved(t *testing.T) {
 	}
 }
 
-// A rename followed into a template is written the way the tree reads names. Loom 2 takes an
-// unquoted name as written, so the underscore form Loom 1 writes would point at a heading called
-// "New_Name" — a template sync itself had just broken.
+// A rename followed into a template is written so the build reads it back as the new name.
 func TestSyncWritesTheNameByTheVersion(t *testing.T) {
+	// Matched by its words in every version, a name is written back the same way in every version.
 	for _, c := range []struct{ decl, want string }{
 		{"", "base.New_Name.after(self.Ours)\n"},
-		{"loom \"2.0\"\n", "base.\"New Name\".after(self.Ours)\n"},
+		{"loom \"2.0\"\n", "base.New_Name.after(self.Ours)\n"},
 	} {
 		dir := t.TempDir()
 		mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n"+c.decl)
@@ -351,5 +350,30 @@ func TestSyncFollowsNamesInPredicates(t *testing.T) {
 	}
 	if _, err := buildTree(t, c, filepath.Join(dir, "out2")); err != nil {
 		t.Errorf("the followed tree builds: %v", err)
+	}
+}
+
+// An unquoted name matches every node with its words, so a rename is written unquoted only where
+// that reads back as the new name alone; where upstream also has "getting-started", it is quoted.
+func TestSyncQuotesANameItsWordsWouldShare(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n")
+	mustWrite(t, filepath.Join(dir, "up", "a.md"), "# T\n\n## Setup\n\ns\n\n## getting-started\n\ng\n")
+	mustWrite(t, filepath.Join(dir, "me", "a.md"), "## Ours\n\no\n")
+	mustWrite(t, filepath.Join(dir, "me", "a.md.lm"), "base.Setup.after(self.Ours)\n")
+	next := t.TempDir()
+	mustWrite(t, filepath.Join(next, "a.md"), "# T\n\n## Getting Started\n\ns\n\n## getting-started\n\ng\n")
+	c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := build.Sync(c, next); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, filepath.Join(dir, "me", "a.md.lm")); got != "base.\"Getting Started\".after(self.Ours)\n" {
+		t.Errorf("written quoted, since Getting_Started would also name getting-started:\n%s", got)
+	}
+	if _, err := buildTree(t, c, filepath.Join(dir, "out")); err != nil {
+		t.Errorf("and it builds: %v", err)
 	}
 }

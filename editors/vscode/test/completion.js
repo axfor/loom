@@ -393,6 +393,23 @@ const find = (items, label) => items.find((i) => i.label === label);
   ok(labels(at(md, 'base.Overview.after(`{|`)').items).length === 0, 'outside a projection a literal is text');
 }
 
+// ── names matched by their words ──
+{
+  // An unquoted name finds a node by its words, so one another node shares is offered quoted.
+  const d = path.join(root, 'words');
+  write('words/loom.om', 'base "up"\nself "me"\n');
+  write('words/up/a.md', '## Foo Bar\n\nf\n\n## fooBar\n\ng\n\n## Plain Name\n\np\n');
+  const f = path.join(d, 'me/a.md.lm');
+  const items = at(f, 'base.|').items;
+  ok(find(items, 'Foo Bar').insertText === '"Foo Bar"' && find(items, 'fooBar').insertText === '"fooBar"', 'two names with the same words are both offered quoted', items.map((i) => i.insertText));
+  ok(find(items, 'Plain Name').insertText === 'Plain_Name', 'a name nothing shares is offered bare', find(items, 'Plain Name').insertText);
+  // and go to definition finds a node by its words, as the build does
+  const def = definition(f, 'base.plainName.drop(reason: "r")', 0, 6);
+  ok(def && def.line === 8, 'plainName leads to "Plain Name"', def);
+  const two = definition(f, 'base.fooBar.drop(reason: "r")', 0, 6);
+  ok(two && two.line === 0 && two.e === 0, 'fooBar matching two leads to the file, not a guess', two);
+}
+
 // ── what the compiler takes, per kind ──
 {
   // Inside [ ], only the fields that mean something for the group's kind.
@@ -438,14 +455,14 @@ const find = (items, label) => items.find((i) => i.label === label);
   write('v2/me/a.md', '## Our Part\n\no\n');
   const f = path.join(v2, 'me/a.md.lm');
   const items = at(f, 'base.|').items;
-  ok(find(items, 'How it compares').insertText === '"How it compares"', 'Loom 2: a name with a space is quoted, not underscored', find(items, 'How it compares').insertText);
+  ok(find(items, 'How it compares').insertText === 'How_it_compares', 'Loom 2 matches an unquoted name by its words too, so it is written the same', find(items, 'How it compares').insertText);
   ok(find(items, 'Plain').insertText === 'Plain', 'Loom 2: an identifier is written as it is', find(items, 'Plain').insertText);
   const args = at(f, 'base.Plain.after(|)').items;
   ok(find(args, 'Our Part') && find(args, 'Our Part').insertText === 'self."Our Part"', 'Loom 2: our section is named on self, since a bare string is text', find(args, 'Our Part'));
   ok(labels(at(f, 'base.Plain.after("Our|")').items).length === 0, 'Loom 2: inside a string there is nothing to complete');
   const src = 'base.How_it_compares.after(self.x)\nbase."How it compares".after("Our Part")';
   const under = definition(f, src, 0, 6);
-  ok(under && under.line === 0 && under.s === 0 && under.e === 0, 'Loom 2: How_it_compares is not "How it compares" — the file, not the heading', under);
+  ok(under && under.line === 0 && under.e > 0, 'Loom 2: How_it_compares names "How it compares" by its words', under);
   const quoted = definition(f, src, 1, 7);
   ok(quoted && quoted.line === 0 && quoted.e > 0, 'Loom 2: the quoted name is the heading', quoted);
   ok(definition(f, src, 1, src.split('\n')[1].indexOf('Our Part')) === null, 'Loom 2: a bare string is text and leads nowhere');

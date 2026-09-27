@@ -658,22 +658,12 @@ func resolveIdent(tree ast.Tree, kind, ident string, at lang.Pos) (string, error
 	return "", fmt.Errorf("%s: %s matches %s — use the string form to say which one", at, ident, strings.Join(qs, " and "))
 }
 
-// identMatch reports whether name matches ident: an _ in ident matches a space or an underscore,
-// and every other character must be equal.
+// identMatch reports whether a name written unquoted, ident, names the node called name: the two
+// are the same words, whatever separates them and whatever their case — Foo_Bar, fooBar, FooBar
+// and foo_bar all name "Foo Bar" or "foo-bar". More than one node answering is an error where the
+// name is resolved, never a pick.
 func identMatch(name, ident string) bool {
-	rn, ri := []rune(name), []rune(ident)
-	if len(rn) != len(ri) {
-		return false
-	}
-	for k := range rn {
-		if ri[k] == '_' && (rn[k] == ' ' || rn[k] == '_') {
-			continue
-		}
-		if rn[k] != ri[k] {
-			return false
-		}
-	}
-	return true
+	return lang.Words(name) == lang.Words(ident)
 }
 
 func nearestName(tree ast.Tree, kind, want string) string {

@@ -170,7 +170,7 @@ Suggestions open after `.`, `"`, `/` and `(`, or with Ctrl-Space:
 
 What a suggestion inserts is always something the compiler resolves to that node:
 
-- A name with spaces or punctuation is inserted as a string; picking it inside a string replaces the whole string, quotes included. An upstream name with spaces is written with underscores (`How_it_compares`) the way the compiler writes it — except in a tree that declares `loom "2.0"`, where a name is taken as written and is quoted instead.
+- A name with spaces or punctuation is inserted as a string; picking it inside a string replaces the whole string, quotes included. An upstream name with spaces is written with underscores (`How_it_compares`) the way the compiler writes it, since an unquoted name is matched by its words; a name whose words another node shares ("Foo Bar" beside "fooBar") is inserted quoted, as the build would refuse it bare.
 - A name that appears more than once comes with the parent headings that tell it apart: `"Example 1"."Phase 1"` after a dot, `self."例 1"."Phase 1"` as an argument. A name no path can tell apart is not offered.
 - Each suggestion shows where the node is (`## Install · mine/README.md:12`) and the first lines of it.
 - Picking a method inserts its arguments (`drop(reason: "")`) and opens the next suggestions.
@@ -195,7 +195,7 @@ In a template, Cmd-click a name (Ctrl-click on Windows / Linux), or press F12:
 |---|---|
 | The path or `cmd` in `import cmd "/.claude/commands/ship"` | That file in our layer (the extension may be omitted; same rules as the compiler) |
 | `base` / `self` / an imported name | The file it stands for: `base` is the upstream file at the same path (or wherever `import base "..."` points it), `self` is ours |
-| `base.Install`, `base."How it compares"`, `base.Usage_Tips` | That section of the upstream file (`_` matches a space, except under `loom "2.0"`) |
+| `base.Install`, `base."How it compares"`, `base.Usage_Tips`, `base.usageTips` | That section of the upstream file — an unquoted name by its words, whatever separates them and whatever their case; one matching two leads nowhere |
 | `Overview` in `if base.has.Overview` | That section upstream |
 | A call such as `bilingual(...)` | Its `fn` declaration in the template |
 | `ok` in `if !ok` or `err.format("...", ok)` | The `ok = ...` line that caught it |

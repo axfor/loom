@@ -587,7 +587,8 @@ function walk(t, chain, upto) {
     return Object.assign(all[0], { alts: all.slice(1) });
   }
   const r = { obj, typ: obj.typ, node: null, view: null, method: null, bad: false };
-  const ident = (st) => !st.str && !literalNames(t);
+  // an unquoted name is matched by its words, in every version
+  const ident = (st) => !st.str;
   // self written in this file's resource sections: a step may name the section, and a step may
   // name the kind — both optional, in that order, as objparse.go reads them. What follows is an
   // address inside those documents, of the kind named or else of the product's own type.
@@ -789,11 +790,35 @@ const RE_TOML_KEY = new RegExp(`^([A-Za-z_][A-Za-z0-9_-]*)${WS}*=${WS}*(.*)$`, '
 const RE_FUNC = new RegExp(`^([A-Za-z_][A-Za-z0-9_]*)${WS}*\\(\\)${WS}*\\{`, 'u');
 const RE_BANNER = new RegExp(`^${WS}*#${WS}*[─=—-]{2,}`, 'u');
 
+// words mirrors lang.Words: a name as the lower-case words it is made of, split at _, -,
+// whitespace and where camelCase starts a word. An unquoted name matches the node with the same
+// words — Foo_Bar, fooBar and FooBar all name "Foo Bar" — and more than one match is an error.
+function words(s) {
+  const rs = [...s];
+  const out = [];
+  const isUpper = (c) => c !== c.toLowerCase() && c === c.toUpperCase();
+  const isLower = (c) => c !== c.toUpperCase() && c === c.toLowerCase();
+  const isDigit = (c) => /\p{Nd}/u.test(c);
+  const gap = () => {
+    if (out.length && out[out.length - 1] !== ' ') out.push(' ');
+  };
+  rs.forEach((r, i) => {
+    if (r === '_' || r === '-' || /\s/u.test(r)) {
+      gap();
+      return;
+    }
+    if (isUpper(r) && i > 0) {
+      const prev = rs[i - 1];
+      const next = rs[i + 1] || '';
+      if (isLower(prev) || isDigit(prev) || (isUpper(prev) && next && isLower(next))) gap();
+    }
+    out.push(r.toLowerCase());
+  });
+  return out.join('').trim();
+}
+
 function identMatch(name, ident) {
-  const a = [...name];
-  const b = [...ident];
-  if (a.length !== b.length) return false;
-  return a.every((ch, k) => ch === b[k] || (b[k] === '_' && ch === ' '));
+  return words(name) === words(ident);
 }
 
 function frontmatterEnd(lines) {
@@ -1064,6 +1089,7 @@ module.exports = {
   stepRef,
   enclosingCall,
   identMatch,
+  words,
   headings,
   nodesOf,
   readResources,

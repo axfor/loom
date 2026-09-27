@@ -268,7 +268,7 @@ manifest  ".build-manifest"
 | `frontmatter` | what the build should do with a frontmatter key of ours that upstream also has: `set`, `start` or `append`. Say it once and the build writes the statement into each template that needs it, the way it completes anchors. Leave it out and an unaccounted key is an error, as before — whether ours replaces upstream's value or goes before it changes what the product says, and nothing decides that for you |
 | `body` | where our body goes when *none* of its sections can follow an upstream one — our headings share nothing with upstream's, most often because they are a translation. Anchor completion says so and stops today; with `start` or `append` the tree has answered once, and `base.append(self.body)` is written into the template. Where even one section of ours has a neighbour, the neighbour rule still decides: this answers having no neighbour, it does not switch that rule off |
 | `keys` | the same, one level out: the top-level keys of a toml or yaml file. A key a statement already speaks for is left alone, including one opened as a view; a key upstream does not have is added to the file rather than written into upstream's, so the setting does not cover it |
-| `loom` | the language version this tree is written for; an lm that speaks an older one refuses it and says to update. Leaving it out is allowed and keeps the 1.0 meaning. `"2.0"` reads every name as written and a bare string as text — see [What a version changes](#what-a-version-changes) |
+| `loom` | the language version this tree is written for; an lm that speaks an older one refuses it and says to update. Leaving it out is allowed and keeps the 1.0 meaning. `"2.0"` reads a bare string as text — see [What a version changes](#what-a-version-changes) |
 | `base` | upstream directory (required); in a template, `base` is the file at the product's path in it |
 | `self` | our layer's directory; in a template, `self` is the file at the product's path in it |
 | `templates` | template directory; without it, templates live next to our files in `self` |
@@ -397,15 +397,20 @@ is unambiguous: `base.steps` finds `jobs.build.steps` as long as nothing else en
 ### String form and identifier form
 
 ```
-base."How it compares"     // string form: always works
-base.How_it_compares       // identifier form: _ matches a space or an underscore
+base."How it compares"     // string form: exactly this name, case and all
+base.How_it_compares       // identifier form: any name with the same words
+base.howItCompares         // the same words, so the same name
 ```
 
-- If an identifier matches more than one name (both `A B` and `A_B` exist), it is an error: use the
-  string form.
+- An identifier is matched by its **words**: split at `_`, `-`, spaces and where camelCase starts a
+  word, and compared without case. `Foo_Bar`, `fooBar`, `FooBar` and `foo_bar` all name "Foo Bar"
+  or "foo-bar". It is the same in every version, in every segment of a path and wherever a path is
+  written — a statement, where a `move` goes, what an `if` or a predicate asks about.
+- If an identifier matches more than one name ("Foo Bar" and "fooBar" both exist), the build stops
+  where it is written, naming both: use the string form. Nothing is picked.
 - A name with punctuation can only be written in string form.
-- In a tree that declares `loom "2.0"` there is no underscore rule: `base.How_it_compares` is a
-  heading called exactly that, in every segment of a path and wherever a path is written.
+- Where the build writes a name into a template — anchor completion, `lm sync` — it writes the
+  identifier form only where that matches the one name, and the string form otherwise.
 - After a dot, a name followed by `(` or `{` is a method. The words of the language come before a
   name: a group (`sections`, `functions`, `markers`, `lines`, `keys`, `values`), an axis
   (`children`, `next`, `prev`, `parent`, `first`, `last`), a place (`after`, `before`, `start`,
@@ -606,17 +611,14 @@ whoever reads it, and says nothing to check; `sh` and `bash` do name a type, so 
 
 ### What a version changes
 
-`loom "2.0"` changes two things a tree already written could not have changed under it:
+`loom "2.0"` changes one thing a tree already written could not have changed under it:
 
 | Written | 1.0, or undeclared | 2.0 |
 |---|---|---|
-| `base.How_Skills_Work` | an underscore stands for a space, so this finds "How Skills Work" | the name as written |
 | `after("X")` | our section called X | the text itself |
 
-The first holds for every segment of a path and wherever a path is written — a statement, where a
-`move` goes, what an `if` asks — and what the build writes into templates follows it: anchor
-completion and `lm sync` write `"How Skills Work"` into a 2.0 tree, where `How_Skills_Work` would
-name something else.
+Anchor completion follows it: in a 2.0 tree it writes our sections on self, `self."X"`. Unquoted
+names are matched by their words in both versions.
 
 Everything else is an addition, and additions do not raise the version: a tree that declares 1.0,
 or declares nothing, builds exactly as it did.
@@ -806,8 +808,8 @@ base.sections[empty].drop(reason: "upstream left the shells of sections it never
 A line is a node too, named by what it says, so a predicate can pick lines the way it picks
 sections — a blank line has no name and nothing selects it. So `lines[empty]` is refused: nothing
 sits under any line, so every line would answer, and it reads as "the blank lines". Likewise `has`
-on a function, a banner or a line, which hold no named parts. An unquoted `has.Usage_Tips` reads by
-the tree's version like any other name.
+on a function, a banner or a line, which hold no named parts. An unquoted `has.Usage_Tips` is matched by its words
+like any other name.
 
 ```
 base.lines[name ~ "^TODO"].drop(reason: "ours tracks these")
@@ -1018,7 +1020,7 @@ It applies to every kind — a shell function and a yaml key are named by their 
 follows the name everywhere the template writes it: a statement's own node, a parent in a path,
 where a `move` goes, what an `if` asks about, and a predicate's `name == "X"` or `has."X"` — a
 regular expression is a pattern, not a name, and is left alone. A name is matched the way the build reads it, so
-`Set_Up` follows "Set Up" under 1.0, and it is written back the way the tree reads names. A key's
+`Set_Up` follows "Set Up", and it is written back quoted where its words would name more than one. A key's
 dotted path has one segment rewritten, a parent's included. Only the name is edited, so what you
 review is one word per place, and each rename is reported once.
 

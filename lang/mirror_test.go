@@ -62,6 +62,7 @@ func mirror(t *testing.T) map[string]any {
 			STATEMENT_WORDS: set(m.STATEMENT_WORDS),
 			DOCS: Object.keys(require("./lib/docs.js").KEYWORDS).sort(),
 			PROJECT_FIELDS: Object.keys(require("./lib/docs.js").PROJECT_FIELDS).sort(),
+			WORDS: Object.fromEntries(["Foo Bar", "Foo_Bar", "fooBar", "FooBar", "foo-bar", "HTTPServer", "v2Setup", "Step 1", "Step1", "已有中文", "a  b", " lead", "How it compares?", "ÀbcDéf"].map((n) => [n, m.words(n)])),
 			FENCE_KINDS: Object.fromEntries(["sh", "bash", "zsh", "yml", "md", "markdown", "shell", "toml", "yaml", "json", "text", "python", "js", ""].map((t) => [t, m.fenceKind(t)])),
 		}));`
 	cmd := exec.Command(node, "-e", dump)
@@ -150,6 +151,18 @@ func TestEditorMirrorsTheTables(t *testing.T) {
 	list("STATEMENT_WORDS", []string{"if", "else", "fn", "return"})
 	// A projection template's fields: completion offers these, and the build refuses any other.
 	list("PROJECT_FIELDS", projectFields)
+	// An unquoted name finds a node by its words; the editor that jumps to it has to split words the
+	// same way, or it lands on a heading the build says is not the one.
+	var split map[string]string
+	raw, _ = json.Marshal(js["WORDS"])
+	if err := json.Unmarshal(raw, &split); err != nil {
+		t.Fatal(err)
+	}
+	for name, got := range split {
+		if want := Words(name); got != want {
+			t.Errorf("words(%q): editor %q, compiler %q", name, got, want)
+		}
+	}
 	// A fence's tag names its type the same way on both sides, aliases included, or a Self:
 	// section of ```md reads as markdown to the build and as nothing to the editor.
 	var fence map[string]string

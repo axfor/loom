@@ -1649,12 +1649,10 @@ func fenceKind(tag string) string {
 	return ""
 }
 
-// ident says whether a name is read by the underscore rule: an unquoted name in Loom 1, where
-// How_Skills_Work finds "How Skills Work". From Loom 2 every name is the name as written, in every
-// segment of a path and on either side — a rule that held for the first segment only would be two
-// rules, and the second one nobody could see.
+// ident says whether a name is matched by its words — written unquoted, in either version. A
+// quoted name is the name exactly as written.
 func (in *interp) ident(st oStep) bool {
-	return !st.str && !atLeast(in.loom, 2)
+	return !st.str
 }
 
 // AtLeast reports whether a tree declaring loom is at that major version or newer: what the

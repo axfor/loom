@@ -292,11 +292,7 @@ func selectFor(p *oPred, kind string, at Pos, loom string) (*Select, error) {
 	if (kind == "function" || kind == "marker" || kind == "line") && p.uses("has") {
 		return nil, fmt.Errorf("%s: has asks for a part of a node by its name, and a %s holds no named parts — ask what it calls, calls \"x\", or its name, name ~ \"...\"", at, kind)
 	}
-	node := p.node()
-	if atLeast(loom, 2) {
-		node.literal()
-	}
-	return &Select{Kind: kind, Pred: node}, nil
+	return &Select{Kind: kind, Pred: p.node()}, nil
 }
 
 // emptyLines refuses empty for lines: a line holds nothing under it, so every line is empty, and a
@@ -335,14 +331,6 @@ func (p *oPred) node() *Pred {
 		out.Kids = append(out.Kids, *p.kids[i].node())
 	}
 	return out
-}
-
-// literal drops the underscore rule from every term, for a Loom 2 tree.
-func (p *Pred) literal() {
-	p.Ident = false
-	for i := range p.Kids {
-		p.Kids[i].literal()
-	}
 }
 
 // kindType is the type whose default node kind this is, so a predicate can ask whether that type

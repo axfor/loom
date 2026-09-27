@@ -8,7 +8,7 @@
 
 > **实现状态：全部建成。** 两处按版本分开，一处规格自相矛盾由实现裁决，见 [TODO.md](TODO.md)：
 >
-> - **`loom "2.0"`**：点号原样匹配（下划线不再代空格），裸字符串是字面量。
+> - **`loom "2.0"`**：裸字符串是字面量。（点号后不加引号的名字按「词」匹配，两个版本相同，见 §1。）
 >   `loom "1.0"` 或不声明的树保持原义——已经写下的东西不会在脚下改变意思。
 > - **`join()` 要 `reason:`**：规格 §7.2 把它归为结构变换（不需要理由），而 §12 要求
 >   「上游内容不见了且无人认领」必须报错。join 删掉的是上游一个标题，两条规则打架；
@@ -77,11 +77,16 @@ base.sections[level == 2]           方括号 = 谓词，不是名字
 
 点号后面还可以是**语言的词**——类别、位置、操作、轴，固定一张表。
 
-### 点号是原样匹配，没有任何替换
+### 不加引号的名字按「词」匹配
 
-这是和今天最大的区别。今天 `base.How_Skills_Work` 里的下划线**代表空格**，还配了一条「两个名字撞车时改用引号」的规则。
+**不加引号时，名字按它由哪些词组成来匹配**：在 `_`、`-`、空格和驼峰的词首处切开，再忽略大小写比较。
+`Foo_Bar`、`fooBar`、`FooBar`、`foo_bar` 都能找到标题 "Foo Bar" 或 "foo-bar"。
 
-新规则里 **`.foo` 就是名字 `foo`，一个字符都不差**。没有下划线魔法，也就没有撞名规则。
+**加了引号就是原样**：`."How it compares"` 一个字符都不差，大小写也不差。
+
+**不许有冲突**：同样的词对上了不止一个名字（比如既有 "Foo Bar" 又有 "fooBar"），编译时报错，列出两处，要求改用引号写法。**不挑一个。**
+
+两个版本相同。（这一条原先规定 2.0 里「点号原样匹配、没有下划线魔法」；实现后改为按词匹配、冲突报错，见 TODO.md。）
 
 ### 和语言的词撞了怎么办
 
@@ -159,7 +164,7 @@ base.servers.github.url             json / toml 的路径
 base."mcp-servers".github.url       第一段有连字符
 ```
 
-**点号是原样匹配**：`.Phase_1` 找的是名字 `Phase_1`，不是 `Phase 1`。名字里真有空格就只能加引号。
+**不加引号按词匹配**：`.Phase_1`、`.phase1`……——`.Phase_1` 找的是 `Phase 1`（词是 phase、1），`.Phase1` 只找 `Phase1`（数字不切词）。有冲突就报错，加引号写原样。
 
 ### 4.2 按谓词：取一组
 
@@ -702,7 +707,7 @@ target     = root { selector | "." word } ;
 root       = "base" | "self" | ident ;   (* import 进来的名字、函数参数 *)
 selector   = "[" predicate "]" ;                (* 方括号只用于谓词 *)
 word       = class | axis | place | op | "as" "(" kind ")" | name ;
-name       = ident | string ;                   (* 名字，原样匹配；不加引号时语言的词优先 *)
+name       = ident | string ;                   (* 引号内原样匹配；不加引号按词匹配、冲突报错，且语言的词优先 *)
 
 class      = "sections" | "lines" | "functions" | "markers"
            | "keys" | "values" | "frontmatter" | "body" ;
@@ -761,14 +766,14 @@ kind       = "markdown" | "shell" | "toml" | "json" | "text" ;
 
 | 今天 | 全新 |
 |---|---|
-| `base.How_Skills_Work.after("X")` | `base."How Skills Work".after(self."X")`（下划线不再代表空格） |
+| `base.How_Skills_Work.after("X")` | `base.How_Skills_Work.after(self."X")`（名字按词匹配，裸字符串是字面量） |
 | `base."How it compares".drop(reason: "r")` | `base."How it compares".drop(reason: "r")` |
 | `base.merge(self)`（文本 / shell） | `return self  // reason: ...` |
 | `base.merge(self)`（json registry） | `base.merge(self)` —— 不变，它是另一件事 |
 | `base.replace(self, reason: "r")` | `return self  // reason: r` |
 | `base.frontmatter.description.start(x)` | 不变 |
 | `base.prompt.as(markdown).Steps` | `base.prompt.as(markdown).Steps` |
-| 标识符形式（下划线代空格）+ 撞名规则 | 点号原样匹配，拼不出时加引号 |
+| 标识符形式（下划线代空格）+ 撞名规则 | 按词匹配（分隔符与大小写不计）+ 冲突报错，加引号写原样 |
 | 16 行逐节翻译 | 仍是 16 行 —— 见 §7.7，收成一行的算子不可能安全 |
 
 ---

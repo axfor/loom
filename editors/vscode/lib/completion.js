@@ -105,12 +105,10 @@ function nodeText(name) {
   return id;
 }
 
-// nodeTextFor writes a name for a tree that declares a version, as lang.NameTextFor does. From
-// Loom 2 an unquoted name is the name as written, so a space cannot become an underscore: a name
-// that is not already an identifier is quoted.
+// nodeTextFor writes a name for a tree that declares a version, as lang.NameTextFor does: an
+// unquoted name is matched by its words in every version, so it is written the same in all.
 function nodeTextFor(name, version) {
-  if (!loom.atLeast(version, 2)) return nodeText(name);
-  return IDENT.test(name) && !RESERVED.has(name) ? name : loom.quote(name);
+  return nodeText(name);
 }
 
 // typedAs: what an identifier typed for this name looks like, so `Usage_T` still finds "Usage Tips".
@@ -311,7 +309,17 @@ function stepItems(cx, chain, index, range, quoted) {
     // is written as NameText does it, because lm sync rewrites that token when upstream renames
     // something; content of ours is always quoted, because that is what anchor completion appends.
     // Matching both is what keeps a template from being rewritten the moment the build touches it.
-    const name = r.obj.layer === 'base' ? (n) => nodeTextFor(n, cx.t.cfg.loom) : loom.quote;
+    // An unquoted name matches every node with its words, so one whose words another node here
+    // shares is written quoted — written bare, the build would refuse it as two.
+    const count = new Map();
+    for (const n of loom.nodesOf(src.lines.join('\n'), loom.DEFAULT_KIND[r.typ], r.typ)) {
+      count.set(loom.words(n.name), (count.get(loom.words(n.name)) || 0) + 1);
+    }
+    const bare = (n) => {
+      const text = nodeTextFor(n, cx.t.cfg.loom);
+      return !text.startsWith('"') && count.get(loom.words(n)) > 1 ? loom.quote(n) : text;
+    };
+    const name = r.obj.layer === 'base' ? bare : loom.quote;
     const write = quoted
       ? (parts) => ({ insertText: parts.map(loom.quote).join('.'), filterText: loom.quote(parts[parts.length - 1]) })
       : (parts) => ({
