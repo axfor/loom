@@ -51,7 +51,7 @@ func TestMergeTemplate(t *testing.T) {
 	for src, want := range map[string]string{
 		"base.merge(self)\nbase.main.after(`x`)\n": "our file is the product",
 		"base.merge(other)\n":                      "merge takes our file",
-		"base.patch(\"run.diff\")\n":               "base.merge(self)",
+		"base.patch(\"run.diff\")\n":               "up.merge(self)",
 	} {
 		mustWrite(t, filepath.Join(dir, "me", "run.lm"), src)
 		if _, err := build.PlanBuild(c, false); err == nil || !strings.Contains(err.Error(), want) {

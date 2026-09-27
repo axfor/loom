@@ -73,7 +73,7 @@ func Weave(c *lang.Config, t *lang.Template) (string, error) {
 			if len(t.Stmts) > 0 {
 				at = t.Stmts[0].Rng.String()
 			}
-			return "", fmt.Errorf("%s: %s is a registry: the product is upstream's entries plus ours, ours replacing the upstream entry that calls the same scripts — the template is exactly `base.merge(self)`",
+			return "", fmt.Errorf("%s: %s is a registry: the product is upstream's entries plus ours, ours replacing the upstream entry that calls the same scripts — the template is exactly `up.merge(self)`",
 				at, t.Target)
 		}
 		return mergeRegistry(c, t)
@@ -526,8 +526,8 @@ func apply(c *lang.Config, t *lang.Template, stmts []lang.Stmt, tree ast.Tree, r
 		}
 		// At the same line, what rewrites a span goes before what inserts there. Applied the
 		// other way round, the insertion lands inside the span, and the rewrite — working from
-		// the old line numbers — deletes it with the span: `base.Install.drop(...)` followed by
-		// `base.Install.before(x)` wove a product without x, and said nothing.
+		// the old line numbers — deletes it with the span: `up.Install.drop(...)` followed by
+		// `up.Install.before(x)` wove a product without x, and said nothing.
 		if ri, rj := edits[i].e > edits[i].s, edits[j].e > edits[j].s; ri != rj {
 			return ri
 		}
@@ -690,7 +690,7 @@ func one(s lang.Stmt, hits [][2]int, kind, anchor string) ([2]int, error) {
 		}
 		hint := "be more specific"
 		if kind == "heading" {
-			hint = "name the section it is under: base.\"Parent\".\"" + anchor + "\""
+			hint = "name the section it is under: up.\"Parent\".\"" + anchor + "\""
 		}
 		return [2]int{}, fmt.Errorf("%s: anchor matches %d places: %s %q at upstream %s — "+
 			"no \"take the first one\": that would silently insert in the wrong place; %s", s.Rng, len(hits), kind, anchor, strings.Join(at, ", "), hint)
@@ -997,7 +997,7 @@ func applyValue(c *lang.Config, t *lang.Template, tree ast.Tree, s lang.Stmt) er
 		// Upstream's value may be a list or a nested map. Writing one line over its first line would
 		// leave the rest of it behind, as lines belonging to a key that is no longer there.
 		if i+1 < len(lines) && strings.TrimSpace(l) == s.SetKey+":" && belongsToKey(lines[i+1]) {
-			return fmt.Errorf("%s: upstream's key %q has a value over several lines — a value like that can only be taken whole: base.frontmatter.set(self.frontmatter)", s.Rng, s.SetKey)
+			return fmt.Errorf("%s: upstream's key %q has a value over several lines — a value like that can only be taken whole: up.frontmatter.set(self.frontmatter)", s.Rng, s.SetKey)
 		}
 		lines[i], done = s.SetKey+": "+val, true
 		break
@@ -1185,7 +1185,7 @@ func walkAxis(tree ast.Tree, s lang.Stmt, name string) ([][2]int, error) {
 		return nil, fmt.Errorf("%s: %q is at the top level and has no parent", s.Rng, name)
 	case "children":
 		if keyed {
-			return nil, fmt.Errorf("%s: children follows markdown's headings; a key's are named by its path, base.jobs.build — or all of them at once, base.keys[name ~ \"^jobs\\.[^.]+$\"]", s.Rng)
+			return nil, fmt.Errorf("%s: children follows markdown's headings; a key's are named by its path, up.jobs.build — or all of them at once, up.keys[name ~ \"^jobs\\.[^.]+$\"]", s.Rng)
 		}
 		if !nests {
 			return nil, fmt.Errorf("%s: a %s holds no nodes of its own, so it has no children", s.Rng, s.Kind)
@@ -1219,7 +1219,7 @@ func selected(tree ast.Tree, sel *lang.Select) ([]ast.Named, error) {
 	// sits, so there is nothing to walk. Saying that is the difference between a rule of the
 	// language and a regular expression the author will go hunting for a typo in.
 	if _, isJSON := tree.(*ast.JSONTree); isJSON {
-		return nil, fmt.Errorf("a json file has no list of keys to pick from — name the ones you mean: base.key(\"a.b\")")
+		return nil, fmt.Errorf("a json file has no list of keys to pick from — name the ones you mean: up.key(\"a.b\")")
 	}
 	var re *regexp.Regexp
 	if sel.Match != "" {

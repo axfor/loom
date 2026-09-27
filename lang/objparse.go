@@ -232,6 +232,13 @@ func parseObjects(file string, src []byte) ([]oImport, []oNode, []oResource, err
 			if _, dup := fns[name]; dup {
 				return nil, nil, nil, fmt.Errorf("%s: `%s` is defined twice", f.pos, name)
 			}
+			// A parameter stands for what a call passes; one called up, base or self would hide
+			// the file of that name inside the body, and up.after(x) would read two ways.
+			for _, prm := range f.params {
+				if prm == "up" || prm == "base" || prm == "self" {
+					return nil, nil, nil, fmt.Errorf("%s: a parameter cannot be called %s — that is the %s file; name it for what it holds: fn %s(at, ours)", f.pos, prm, map[bool]string{true: "upstream", false: "our"}[prm != "self"], name)
+				}
+			}
 			// A fn's body is inlined where it is called, so a return in it would end the whole
 			// template, not the fn — read one way and done another. return err.format(...)
 			// fails the build wherever it is written, so that one may stand.
@@ -371,7 +378,7 @@ func substNodes(body []oNode, env map[string]*oExpr) []oNode {
 }
 
 // substExpr puts the argument in the parameter's place, keeping whatever was written after it:
-// with up = base.Overview, `up.after(x)` is `base.Overview.after(x)`.
+// with up = base.Overview, `up.after(x)` is `up.Overview.after(x)`.
 func substExpr(e *oExpr, env map[string]*oExpr) *oExpr {
 	if e == nil {
 		return nil
@@ -416,7 +423,7 @@ func (p *oparser) expr() (*oExpr, error) {
 		if p.peek().Kind == KLBracket {
 			// A predicate belongs to the step before it: sections[level == 2].
 			if len(e.steps) == 0 {
-				return nil, fmt.Errorf("%s: a predicate picks from a group — say which one: base.sections[...]", p.peek().Pos)
+				return nil, fmt.Errorf("%s: a predicate picks from a group — say which one: up.sections[...]", p.peek().Pos)
 			}
 			pr, err := p.predicate()
 			if err != nil {
@@ -621,7 +628,9 @@ func ParseTemplateFor(file, target string, src []byte, resolve Resolver, loom st
 		return nil, err
 	}
 	t := &Template{Path: file, Target: target, Type: TypeOf(target), BasePath: target}
+	// up is the upstream file at this path; base is its old name, and the same object.
 	in := &interp{t: t, loom: loom, vars: map[string]Pos{}, used: map[string]bool{}, objects: map[string]object{
+		"up":   {layer: "base", file: target, typ: TypeOf(target)},
 		"base": {layer: "base", file: target, typ: TypeOf(target)},
 		"self": {layer: "self", typ: TypeOf(target)},
 	}}
@@ -643,7 +652,7 @@ func ParseTemplateFor(file, target string, src []byte, resolve Resolver, loom st
 		}
 		seen[name] = im.pos
 		layer := "self"
-		if name == "base" {
+		if isUp(name) {
 			layer = "base"
 		}
 		rel := im.spec
@@ -653,7 +662,9 @@ func ParseTemplateFor(file, target string, src []byte, resolve Resolver, loom st
 			}
 		}
 		in.objects[name] = object{layer: layer, file: rel, typ: TypeOf(rel)}
-		if name == "base" {
+		if isUp(name) {
+			// import up "/old/name": upstream moved the file; up and base both point there
+			in.objects["up"], in.objects["base"] = in.objects[name], in.objects[name]
 			t.BasePath = rel
 		}
 	}
@@ -715,8 +726,8 @@ func (in *interp) statement(e *oExpr) error {
 	if !ok {
 		return in.unknownObject(e.root, e.pos)
 	}
-	if e.root != "base" {
-		return fmt.Errorf("%s: %s is only a content source and cannot be changed — only base can", e.pos, e.root)
+	if !isUp(e.root) {
+		return fmt.Errorf("%s: %s is only a content source and cannot be changed — only up can", e.pos, e.root)
 	}
 	if len(e.steps) == 0 || !e.steps[len(e.steps)-1].call {
 		return fmt.Errorf("%s: this statement does nothing — end it with a method call such as .after(...)", e.pos)
@@ -752,7 +763,7 @@ func (in *interp) select_(r *receiver, st oStep) error {
 			return unknownIn(typ, typeWords(), "type", st.args[0].pos)
 		}
 		if r.viewOf != "" || r.kind != defaultKind[r.typ] || !hasValues(r.typ) {
-			return fmt.Errorf("%s: as only applies to a key whose value is a document — toml, yaml or json: base.prompt.as(markdown)", st.pos)
+			return fmt.Errorf("%s: as only applies to a key whose value is a document — toml, yaml or json: up.prompt.as(markdown)", st.pos)
 		}
 		*r = receiver{typ: typ, viewOf: r.anchor, viewAs: typ, pos: r.pos}
 		return nil
@@ -771,7 +782,7 @@ func (in *interp) select_(r *receiver, st oStep) error {
 	if r.node {
 		// A predicate picks from the whole file, so it cannot hang off a node already chosen.
 		if (st.call || st.pred != nil) && classCalls[r.typ][st.name] != "" {
-			return fmt.Errorf("%s: %s selects from the whole file, so it comes first: base.%s(...)", st.pos, st.name, st.name)
+			return fmt.Errorf("%s: %s selects from the whole file, so it comes first: up.%s(...)", st.pos, st.name, st.name)
 		}
 		// A frontmatter key is a node of its own: base.frontmatter.description
 		if r.kind == "frontmatter" && !st.call {
@@ -788,7 +799,7 @@ func (in *interp) select_(r *receiver, st oStep) error {
 				return fmt.Errorf("%s: %s walks from one node; a group has first and last", st.pos, st.name)
 			}
 			if !r.many && one {
-				return fmt.Errorf("%s: %s picks from a group: base.sections[...].%s", st.pos, st.name, st.name)
+				return fmt.Errorf("%s: %s picks from a group: up.sections[...].%s", st.pos, st.name, st.name)
 			}
 			// children lands on a group; every other step lands on one node.
 			r.many = st.name == "children"
@@ -808,7 +819,7 @@ func (in *interp) select_(r *receiver, st oStep) error {
 		}
 		// Section path: base."Example 2"."Phase 1" — look for the child within the parent's whole section
 		if st.call || r.typ != "markdown" || r.kind != "heading" || (!st.str && (st.name == "frontmatter" || st.name == "body")) {
-			return fmt.Errorf("%s: below a node you can only select a markdown section by name, base.\"Parent\".\"Child\", or a frontmatter key, base.frontmatter.description", st.pos)
+			return fmt.Errorf("%s: below a node you can only select a markdown section by name, up.\"Parent\".\"Child\", or a frontmatter key, up.frontmatter.description", st.pos)
 		}
 		r.within = append(r.within, Seg{r.anchor, r.ident, r.pos})
 		r.anchor, r.ident, r.pos = st.name, in.ident(st), st.pos
@@ -865,7 +876,7 @@ func (in *interp) select_(r *receiver, st oStep) error {
 
 func (in *interp) method(r receiver, st oStep) error {
 	if st.name == "patch" {
-		return fmt.Errorf("%s: there are no patch files any more — our file is upstream plus our edits, and lm sync carries the edits onto each new upstream: write base.merge(self) and delete the .diff", st.pos)
+		return fmt.Errorf("%s: there are no patch files any more — our file is upstream plus our edits, and lm sync carries the edits onto each new upstream: write up.merge(self) and delete the .diff", st.pos)
 	}
 	if !contains(editMethods, st.name) {
 		if near := nearest(st.name, editMethods); near != "" {
@@ -883,7 +894,7 @@ func (in *interp) method(r receiver, st oStep) error {
 		}
 		if a.name == "after" || a.name == "before" {
 			if st.name != "move" {
-				return fmt.Errorf("%s: `%s:` is only for move: base.X.move(%s: base.Y)", a.pos, a.name, a.name)
+				return fmt.Errorf("%s: `%s:` is only for move: up.X.move(%s: up.Y)", a.pos, a.name, a.name)
 			}
 			if moveTo != nil {
 				return fmt.Errorf("%s: move takes one side, after: or before:", a.pos)
@@ -918,7 +929,7 @@ func (in *interp) method(r receiver, st oStep) error {
 	switch st.name {
 	case "after", "before":
 		if !r.node {
-			return fmt.Errorf("%s: %s applies to a node: base.Install.%s(...)", at, st.name, st.name)
+			return fmt.Errorf("%s: %s applies to a node: up.Install.%s(...)", at, st.name, st.name)
 		}
 		srcs, err := in.contents(pos, r.typ, r.viewOf != "")
 		if err != nil {
@@ -931,7 +942,7 @@ func (in *interp) method(r receiver, st oStep) error {
 	case "start", "append", "end":
 		if r.node {
 			if !isValue(r) {
-				return fmt.Errorf("%s: %s applies to the whole file or to a key's value: base.%s(...), base.frontmatter.description.%s(self.frontmatter.description)", at, st.name, st.name, st.name)
+				return fmt.Errorf("%s: %s applies to the whole file or to a key's value: up.%s(...), up.frontmatter.description.%s(self.frontmatter.description)", at, st.name, st.name, st.name)
 			}
 			v, err := in.valueArg(pos, r, st.name, at)
 			if err != nil {
@@ -969,7 +980,7 @@ func (in *interp) method(r receiver, st oStep) error {
 			// Whole file: base.replace(self, reason: ...)
 			v := pos[0].val
 			if v.kind != vExpr || len(v.expr.steps) != 0 {
-				return fmt.Errorf("%s: a whole-file replace takes a file object: base.replace(self, reason: \"...\")", pos[0].pos)
+				return fmt.Errorf("%s: a whole-file replace takes a file object: up.replace(self, reason: \"...\")", pos[0].pos)
 			}
 			obj, ok := in.objects[v.expr.root]
 			if !ok {
@@ -994,14 +1005,14 @@ func (in *interp) method(r receiver, st oStep) error {
 			return fmt.Errorf("%s: drop changes upstream content and needs a reason: drop(reason: \"...\")", at)
 		}
 		if !r.node || len(pos) != 0 {
-			return fmt.Errorf("%s: drop applies to a node and takes only a reason: base.X.drop(reason: \"...\")", at)
+			return fmt.Errorf("%s: drop applies to a node and takes only a reason: up.X.drop(reason: \"...\")", at)
 		}
 		out = append(out, Stmt{Op: "drop", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Axis: r.axis, Select: r.sel, Reason: reason, Rng: at})
 	case "wrap":
 		// wrap(a, b) is before(a) and after(b): one statement because the two halves belong
 		// together, two statements because that is all it is.
 		if !r.node || len(pos) != 2 {
-			return fmt.Errorf("%s: wrap takes what goes before and what goes after: base.X.wrap(self.top, self.tail)", at)
+			return fmt.Errorf("%s: wrap takes what goes before and what goes after: up.X.wrap(self.top, self.tail)", at)
 		}
 		head, err := in.contents(pos[:1], r.typ, r.viewOf != "")
 		if err != nil {
@@ -1018,7 +1029,7 @@ func (in *interp) method(r receiver, st oStep) error {
 		// Two moves, each reading the other's place before either has moved — which is what
 		// resolving both against upstream already gives.
 		if !r.node || len(pos) != 1 {
-			return fmt.Errorf("%s: swap takes the node to trade places with: base.X.swap(base.Y)", at)
+			return fmt.Errorf("%s: swap takes the node to trade places with: up.X.swap(up.Y)", at)
 		}
 		other, err := in.moveTarget("after", pos[0].val, r.typ, r.viewOf)
 		if err != nil {
@@ -1041,7 +1052,7 @@ func (in *interp) method(r receiver, st oStep) error {
 		out = append(out, Stmt{Op: "unwrap", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Axis: r.axis, Select: r.sel, Reason: reason, Rng: at})
 	case "join":
 		if r.kind != "heading" {
-			return fmt.Errorf("%s: join runs two markdown sections together; to put our value next to upstream's, say where it goes: base.frontmatter.description.start(self.frontmatter.description) puts ours before upstream's, append after it; in toml or yaml, base.description.start(self.description)", at)
+			return fmt.Errorf("%s: join runs two markdown sections together; to put our value next to upstream's, say where it goes: up.frontmatter.description.start(self.frontmatter.description) puts ours before upstream's, append after it; in toml or yaml, up.description.start(self.description)", at)
 		}
 		if reason == "" {
 			return fmt.Errorf("%s: join takes the next heading out of the product and needs a reason: join(reason: \"...\")", at)
@@ -1055,7 +1066,7 @@ func (in *interp) method(r receiver, st oStep) error {
 		// the second half, at this section's own level. Cutting anywhere else does need one, so
 		// the second half has something to be called.
 		if !r.node || len(pos) == 0 || len(pos) > 2 || pos[0].val.kind != vExpr {
-			return fmt.Errorf("%s: split takes where to cut: base.X.split(base.X.Step_1), or where and what to call the second half: base.X.split(base.line(\"…\"), \"X, part two\")", at)
+			return fmt.Errorf("%s: split takes where to cut: up.X.split(up.X.Step_1), or where and what to call the second half: up.X.split(up.line(\"…\"), \"X, part two\")", at)
 		}
 		if len(pos) == 1 {
 			if r.typ != "markdown" || r.kind != "heading" {
@@ -1070,7 +1081,7 @@ func (in *interp) method(r receiver, st oStep) error {
 			break
 		}
 		if pos[1].val.kind != vString {
-			return fmt.Errorf("%s: the second half needs a name: base.X.split(where, \"X, part two\")", at)
+			return fmt.Errorf("%s: the second half needs a name: up.X.split(where, \"X, part two\")", at)
 		}
 		cut, err := in.moveTarget("before", pos[0].val, r.typ, r.viewOf)
 		if err != nil {
@@ -1086,17 +1097,17 @@ func (in *interp) method(r receiver, st oStep) error {
 		// the selection says what shape it is read from, the block is how each node is written.
 		// The other spelling, base.start(sel.project(`…`)), means the same and goes the same way.
 		if r.place == "" {
-			return fmt.Errorf("%s: project writes somewhere: base.start.project(...), base.append.project(...)", at)
+			return fmt.Errorf("%s: project writes somewhere: up.start.project(...), up.append.project(...)", at)
 		}
 		if len(pos) != 2 || pos[0].val.kind != vExpr || (pos[1].val.kind != vRaw && pos[1].val.kind != vString) {
-			return fmt.Errorf("%s: project takes what to read and how to write it: base.start.project(base.sections[level == 2], `- {name}`), or the template in a block on lines of its own", at)
+			return fmt.Errorf("%s: project takes what to read and how to write it: up.start.project(up.sections[level == 2], `- {name}`), or the template in a block on lines of its own", at)
 		}
 		ref, ok, err := in.projectionOf(pos[0].val.expr, pos[1].val.str, at)
 		if err != nil {
 			return err
 		}
 		if !ok {
-			return fmt.Errorf("%s: project reads a group of upstream: base.sections[...]", at)
+			return fmt.Errorf("%s: project reads a group of upstream: up.sections[...]", at)
 		}
 		op, anchor := placeOp(r.place)
 		out = append(out, Stmt{Op: op, Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Srcs: []Ref{ref}, Rng: at})
@@ -1119,10 +1130,10 @@ func (in *interp) method(r receiver, st oStep) error {
 			}
 		}
 		if !r.node || len(pos) != 0 {
-			return fmt.Errorf("%s: move applies to a node and takes one side: base.X.move(after: base.Y) or base.X.move(base.Y.after)", at)
+			return fmt.Errorf("%s: move applies to a node and takes one side: up.X.move(after: up.Y) or up.X.move(up.Y.after)", at)
 		}
 		if moveTo == nil {
-			return fmt.Errorf("%s: move needs a side: move(after: base.Y) or move(before: base.Y)", at)
+			return fmt.Errorf("%s: move needs a side: move(after: up.Y) or move(before: up.Y)", at)
 		}
 		if moveTo.Kind == r.kind && moveTo.Anchor == r.anchor && len(moveTo.Within) == len(r.within) {
 			return fmt.Errorf("%s: move takes a different node as its target", at)
@@ -1130,7 +1141,7 @@ func (in *interp) method(r receiver, st oStep) error {
 		out = append(out, Stmt{Op: "move", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Axis: r.axis, Move: moveTo, Rng: at})
 	case "promote", "demote":
 		if !r.node || len(pos) != 0 {
-			return fmt.Errorf("%s: %s applies to a node and takes nothing: base.X.%s()", at, st.name, st.name)
+			return fmt.Errorf("%s: %s applies to a node and takes nothing: up.X.%s()", at, st.name, st.name)
 		}
 		if r.typ != "markdown" || r.kind != "heading" {
 			return fmt.Errorf("%s: %s is about heading level, so it applies to a markdown section", at, st.name)
@@ -1138,7 +1149,7 @@ func (in *interp) method(r receiver, st oStep) error {
 		out = append(out, Stmt{Op: st.name, Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Axis: r.axis, Select: r.sel, Rng: at})
 	case "set":
 		if !r.node || len(pos) != 1 {
-			return fmt.Errorf("%s: set applies to a node and takes one value: base.frontmatter.set(self.frontmatter)", at)
+			return fmt.Errorf("%s: set applies to a node and takes one value: up.frontmatter.set(self.frontmatter)", at)
 		}
 		src, err := in.contents(pos, r.typ, false)
 		if err != nil {
@@ -1162,10 +1173,10 @@ func (in *interp) method(r receiver, st oStep) error {
 		out = append(out, Stmt{Op: "value", Mode: "set", Kind: r.kind, SetKey: r.anchor, SetRef: v, Rng: at})
 	case "merge":
 		if r.node || r.viewOf != "" {
-			return fmt.Errorf("%s: merge applies to the whole file: base.merge(self)", at)
+			return fmt.Errorf("%s: merge applies to the whole file: up.merge(self)", at)
 		}
 		if len(pos) != 1 || pos[0].val.kind != vExpr || pos[0].val.expr.root != "self" || len(pos[0].val.expr.steps) != 0 {
-			return fmt.Errorf("%s: merge takes our file at the same path: base.merge(self)", at)
+			return fmt.Errorf("%s: merge takes our file at the same path: up.merge(self)", at)
 		}
 		// Both layers hold a file and the product is the two of them together — what that means follows
 		// the type: for a script our file is the product (lm sync carries upstream's changes onto it),
@@ -1195,12 +1206,12 @@ func (in *interp) method(r receiver, st oStep) error {
 
 // contents interprets "which of our content to insert". typ is the type of the position it
 // goes into; with inView, a bare name refers to content inside the view.
-// moveTarget resolves the node a move goes next to: `after: base.X`, or a path —
-// `after: base."A"."B"` for a markdown section, `after: base.jobs.test` for a key.
+// moveTarget resolves the node a move goes next to: `after: up.X`, or a path —
+// `after: up."A"."B"` for a markdown section, `after: up.jobs.test` for a key.
 // The target is in the same file as the node being moved, so it is named on the warp.
 func (in *interp) moveTarget(side string, v oValue, typ, viewOf string) (*Move, error) {
 	if v.kind != vExpr {
-		return nil, fmt.Errorf("%s: move takes a node of this file: move(%s: base.X)", v.pos, side)
+		return nil, fmt.Errorf("%s: move takes a node of this file: move(%s: up.X)", v.pos, side)
 	}
 	e := v.expr
 	obj, ok := in.objects[e.root]
@@ -1208,10 +1219,10 @@ func (in *interp) moveTarget(side string, v oValue, typ, viewOf string) (*Move, 
 		return nil, in.unknownObject(e.root, v.pos)
 	}
 	if obj.layer == "self" {
-		return nil, fmt.Errorf("%s: a move goes next to a node of this same file, which is upstream: move(%s: base.X)", v.pos, side)
+		return nil, fmt.Errorf("%s: a move goes next to a node of this same file, which is upstream: move(%s: up.X)", v.pos, side)
 	}
 	if len(e.steps) == 0 {
-		return nil, fmt.Errorf("%s: move needs a node to go next to: move(%s: base.X)", v.pos, side)
+		return nil, fmt.Errorf("%s: move needs a node to go next to: move(%s: up.X)", v.pos, side)
 	}
 	// The target is read exactly as the same path is where it starts a statement — names by
 	// their spelling, a kind such as line("…"), axes, first / last of a group — so
@@ -1238,7 +1249,7 @@ func (in *interp) moveTarget(side string, v oValue, typ, viewOf string) (*Move, 
 		return nil, fmt.Errorf("%s: a move goes next to a node of the same document — inside a view, a node of that view", v.pos)
 	}
 	if !r.node || r.many || r.place != "" {
-		return nil, fmt.Errorf("%s: a move goes next to one node of this file: move(%s: base.X)", v.pos, side)
+		return nil, fmt.Errorf("%s: a move goes next to one node of this file: move(%s: up.X)", v.pos, side)
 	}
 	return &Move{Side: side, Kind: r.kind, Anchor: r.anchor, Ident: r.ident, Within: r.within, Axis: r.axis, Select: r.sel, At: r.pos}, nil
 }
@@ -1648,6 +1659,9 @@ func fenceKind(tag string) string {
 	}
 	return ""
 }
+
+// isUp says whether a name is the upstream file: up, or base, its old name.
+func isUp(name string) bool { return name == "up" || name == "base" }
 
 // ident says whether a name is matched by its words — written unquoted, in either version. A
 // quoted name is the name exactly as written.

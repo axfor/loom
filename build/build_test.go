@@ -468,7 +468,7 @@ func TestFrontmatterCompleted(t *testing.T) {
 		t.Fatalf("build: %v", err)
 	}
 	got := readFile(t, tpl)
-	if !strings.HasPrefix(got, "base.frontmatter.description.start(self.frontmatter.description)\n") {
+	if !strings.HasPrefix(got, "up.frontmatter.description.start(self.frontmatter.description)\n") {
 		t.Errorf("the statement was not written into the template:\n%s", got)
 	}
 	var noted bool
@@ -530,7 +530,7 @@ func TestKeysCompleted(t *testing.T) {
 		t.Fatalf("build: %v", err)
 	}
 	got := readFile(t, tpl)
-	if !strings.HasPrefix(got, "base.description.start(self.description)\n") {
+	if !strings.HasPrefix(got, "up.description.start(self.description)\n") {
 		t.Errorf("the statement was not written into the template:\n%s", got)
 	}
 	if strings.Count(got, "base.prompt") != 1 {
@@ -623,7 +623,7 @@ func TestBodyTakenWhole(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
-	if got := readFile(t, tpl); got != "base.append(self.body)\n" {
+	if got := readFile(t, tpl); got != "up.append(self.body)\n" {
 		t.Errorf("the statement was not written into the template: %q", got)
 	}
 	var noted bool
@@ -638,7 +638,7 @@ func TestBodyTakenWhole(t *testing.T) {
 	if _, err := build.PlanBuild(c, true); err != nil {
 		t.Fatalf("second build: %v", err)
 	}
-	if again := readFile(t, tpl); again != "base.append(self.body)\n" {
+	if again := readFile(t, tpl); again != "up.append(self.body)\n" {
 		t.Errorf("a second build wrote again: %q", again)
 	}
 

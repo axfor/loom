@@ -226,7 +226,7 @@ func TestIfAndCaughtResults(t *testing.T) {
 // `fn` groups statements inside a file, and is inlined where it is called.
 func TestFunctions(t *testing.T) {
 	weave := newTree(t, "base \"up\"\nself \"me\"\n", upDoc, "## Ours\n\no\n")
-	got, err := weave("fn part(up, ours) {\n\tup.after(ours)\n}\npart(base.Setup, self.Ours)\npart(base.Other, self.Ours)\n")
+	got, err := weave("fn part(at, ours) {\n\tat.after(ours)\n}\npart(base.Setup, self.Ours)\npart(base.Other, self.Ours)\n")
 	if err != nil {
 		t.Fatalf("fn: %v", err)
 	}
@@ -463,7 +463,7 @@ func TestElseIfChain(t *testing.T) {
 	if len(p.Report.Skipped) != 2 {
 		t.Fatalf("each link that did not run is reported: %+v", p.Report.Skipped)
 	}
-	if !strings.Contains(p.Report.Skipped[0].Detail, "base.has.Nope did not hold") || !strings.Contains(p.Report.Skipped[1].Detail, "base.has.Missing did not hold") {
+	if !strings.Contains(p.Report.Skipped[0].Detail, "up.has.Nope did not hold") || !strings.Contains(p.Report.Skipped[1].Detail, "up.has.Missing did not hold") {
 		t.Errorf("the report names each question, in order: %+v", p.Report.Skipped)
 	}
 }
@@ -1229,7 +1229,7 @@ func TestATextFileLosesNoLineInSilence(t *testing.T) {
 	const ours = "// check the skills, ours too\nconst a = require('./a');\nrun(a);\n"
 	err := build(ours, "base.merge(self)\n")
 	if err == nil || !strings.Contains(err.Error(), `line "// check the skills" is not in the product`) ||
-		!strings.Contains(err.Error(), `base.line("// check the skills").drop(reason:`) {
+		!strings.Contains(err.Error(), `up.line("// check the skills").drop(reason:`) {
 		t.Errorf("a rewritten line is lost unless a reason is given, and the error says how: %v", err)
 	}
 	if err := build(ours, "base.merge(self)\nbase.line(\"// check the skills\").drop(reason: \"we check ours too\")\n"); err != nil {
@@ -1276,14 +1276,14 @@ func TestTheAdviceInAnErrorBuilds(t *testing.T) {
 	const up = "# T\n\n## Setup\n\nintro\n\n## B\n\nbb\n"
 	weave := newTree(t, "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n", up, "")
 	_, err := weave("base.Setup.split()\n")
-	if err == nil || !strings.Contains(err.Error(), `base.X.split(base.line("…"), "X, part two")`) {
+	if err == nil || !strings.Contains(err.Error(), `up.X.split(up.line("…"), "X, part two")`) {
 		t.Fatalf("split says how to cut at a line: %v", err)
 	}
 	if _, err := weave("base.Setup.split(base.line(\"intro\"), \"Setup, part two\")\n"); err != nil {
 		t.Errorf("and that form builds: %v", err)
 	}
 	_, err = weave("base.start.project()\n")
-	if err == nil || !strings.Contains(err.Error(), "base.start.project(base.sections[level == 2], `- {name}`)") {
+	if err == nil || !strings.Contains(err.Error(), "up.start.project(up.sections[level == 2], `- {name}`)") {
 		t.Fatalf("project says how it is written: %v", err)
 	}
 	if _, err := weave("base.start.project(base.sections[level == 2], `- {name}`)\n"); err != nil {
@@ -1478,8 +1478,8 @@ func TestVariablesInSelfSections(t *testing.T) {
 func TestTheReportSaysWhichWayEachQuestionWent(t *testing.T) {
 	const tpl = "if base.has.Overview {\n    base.Overview.after(self.Ours)\n} else {\n    base.start(self.Ours)\n}\n"
 	for _, c := range []struct{ up, want string }{
-		{"# T\n\n## Overview\n\no\n", "a.md: else skipped (base.has.Overview held)"},
-		{"# T\n\n## Intro\n\ni\n", "a.md skipped (base.has.Overview did not hold)"},
+		{"# T\n\n## Overview\n\no\n", "a.md: else skipped (up.has.Overview held)"},
+		{"# T\n\n## Intro\n\ni\n", "a.md skipped (up.has.Overview did not hold)"},
 	} {
 		dir := t.TempDir()
 		mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n")
@@ -1537,7 +1537,7 @@ func TestTheReportNamesSwapsAndSplits(t *testing.T) {
 // is — the body's line has no such name on it.
 func TestAnErrorInAFunctionNamesTheCall(t *testing.T) {
 	weave := newTree(t, "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n", "# T\n\n## Overview\n\no\n", "## Ours\n\no\n")
-	_, err := weave("fn put(up) {\n    up.after(self.Ours)\n}\nput(base.Nope)\n")
+	_, err := weave("fn put(at) {\n    at.after(self.Ours)\n}\nput(base.Nope)\n")
 	if err == nil || !strings.Contains(err.Error(), "the call at 4:10") {
 		t.Errorf("the error names the call that passed Nope: %v", err)
 	}
@@ -1798,7 +1798,7 @@ func TestPredicatesThatCannotMeanWhatTheySay(t *testing.T) {
 // pointed at the same line twice.
 func TestCatchingAgainAfterReading(t *testing.T) {
 	weave := newTree(t, "base \"up\"\nself \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n", "# T\n\n## Overview\n\no\n\n## Usage\n\nu\n", "")
-	fn := "fn put(up) {\n    ok = up.after(`x`)\n    if !ok {\n        return err.format(\"no: %s\", ok)\n    }\n}\n"
+	fn := "fn put(at) {\n    ok = at.after(`x`)\n    if !ok {\n        return err.format(\"no: %s\", ok)\n    }\n}\n"
 	got, err := weave(fn + "put(base.Overview)\nput(base.Usage)\n")
 	if err != nil {
 		t.Fatalf("a fn that catches a result, called twice: %v", err)
@@ -1857,5 +1857,56 @@ func TestSelfSectionsTakeTagAliases(t *testing.T) {
 	got, err := weave("base.Overview.after(self.job)\n---\nSelf:\n    ```md\n    ## job\n    ```\n")
 	if err != nil || !strings.Contains(got, "## job") {
 		t.Errorf("```md is markdown in a Self: section too: %v\n%s", err, got)
+	}
+}
+
+// up is the upstream file, and base its old name: the same object, the same setting, the same
+// ways of pointing it somewhere else.
+func TestUpIsTheUpstreamFile(t *testing.T) {
+	build := func(om string, files map[string]string) (string, error) {
+		dir := t.TempDir()
+		mustWrite(t, filepath.Join(dir, "loom.om"), om+"self \"me\"\nmark markdown \"<!-- B -->\" \"<!-- E -->\"\n")
+		for p, s := range files {
+			mustWrite(t, filepath.Join(dir, p), s)
+		}
+		c, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
+		if err != nil {
+			return "", err
+		}
+		out := filepath.Join(dir, "out")
+		if _, err := buildTree(t, c, out); err != nil {
+			return "", err
+		}
+		return readFile(t, filepath.Join(out, "a.md")), nil
+	}
+	up := map[string]string{"up/a.md": "# T\n\n## Overview\n\no\n", "up/old/b.md": "# B\n\n## Moved\n\nm\n"}
+	with := func(tpl string) map[string]string {
+		m := map[string]string{"me/a.md.lm": tpl}
+		for k, v := range up {
+			m[k] = v
+		}
+		return m
+	}
+	for _, c := range []struct{ om, tpl, want string }{
+		{"up \"up\"\n", "up.Overview.after(`x`)\n", "## Overview\n\no\n\n<!-- B -->\nx"},
+		{"base \"up\"\n", "base.Overview.after(`x`)\n", "## Overview\n\no\n\n<!-- B -->\nx"},
+		{"up \"up\"\n", "base.Overview.after(`x`)\nup.Overview.before(`y`)\n", "y\n<!-- E -->\n## Overview"},
+		{"up \"up\"\n", "import up \"/old/b\"\nup.Moved.after(`x`)\n", "## Moved\n\nm\n\n<!-- B -->\nx"},
+		{"up \"up\"\n", "up = \"old/b.md\"\nup.Moved.after(`x`)\n", "## Moved\n\nm\n\n<!-- B -->\nx"},
+	} {
+		got, err := build(c.om, with(c.tpl))
+		if err != nil {
+			t.Errorf("%q %s%v", c.om, c.tpl, err)
+			continue
+		}
+		if !strings.Contains(got, c.want) {
+			t.Errorf("%q %s  got\n%s", c.om, c.tpl, got)
+		}
+	}
+	if _, err := build("up \"up\"\nbase \"up\"\n", with("up.Overview.after(`x`)\n")); err == nil || !strings.Contains(err.Error(), "up and base are one setting") {
+		t.Errorf("both settings is one said twice: %v", err)
+	}
+	if _, err := build("up \"up\"\n", with("fn put(up) {\n    up.after(`x`)\n}\nput(up.Overview)\n")); err == nil || !strings.Contains(err.Error(), "a parameter cannot be called up") {
+		t.Errorf("a parameter called up is refused: %v", err)
 	}
 }

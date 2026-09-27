@@ -40,13 +40,13 @@ func (in *interp) node(n oNode) error {
 		return in.returnStmt(n.ret)
 	case n.rebase != "":
 		if in.rebased {
-			return fmt.Errorf("%s: base is already pointed somewhere else", n.pos)
+			return fmt.Errorf("%s: up is already pointed somewhere else", n.pos)
 		}
 		in.rebased = true
 		in.t.BasePath = strings.TrimPrefix(n.rebase, "/")
-		o := in.objects["base"]
+		o := in.objects["up"]
 		o.file = in.t.BasePath
-		in.objects["base"] = o
+		in.objects["up"], in.objects["base"] = o, o
 		return nil
 	}
 	before := len(*in.out())
@@ -121,7 +121,7 @@ func (in *interp) cond(e *oExpr, not bool) (*Cond, error) {
 	c := &Cond{Not: not, Rng: e.pos}
 	if len(e.steps) == 0 {
 		if _, ok := in.vars[e.root]; !ok {
-			return nil, fmt.Errorf("%s: `%s` is not a result caught earlier — write `ok = base....` first, or ask about the document: if base.has.Overview", e.pos, e.root)
+			return nil, fmt.Errorf("%s: `%s` is not a result caught earlier — write `ok = up....` first, or ask about the document: if up.has.Overview", e.pos, e.root)
 		}
 		if err := in.readable(e.root, e.pos); err != nil {
 			return nil, err
@@ -145,7 +145,7 @@ func (in *interp) cond(e *oExpr, not bool) (*Cond, error) {
 		st := e.steps[0]
 		kind := classCalls[obj.typ][st.name]
 		if kind == "" || st.str {
-			return nil, fmt.Errorf("%s: `.%s` asks whether a group has anything in it: if base.sections[level == 2].any", e.pos, e.steps[1].name)
+			return nil, fmt.Errorf("%s: `.%s` asks whether a group has anything in it: if up.sections[level == 2].any", e.pos, e.steps[1].name)
 		}
 		// The group is read as it is everywhere else: a predicate in brackets, the same in
 		// arguments, or the bare class — every node of the kind.
@@ -165,7 +165,7 @@ func (in *interp) cond(e *oExpr, not bool) (*Cond, error) {
 		c.Sel, c.Any, c.Kind = sel, true, kind
 		return c, nil
 	}
-	return nil, fmt.Errorf("%s: an `if` asks a question that writes nothing: `if base.has.Name` or `if base.sections[...].any`", e.pos)
+	return nil, fmt.Errorf("%s: an `if` asks a question that writes nothing: `if up.has.Name` or `if up.sections[...].any`", e.pos)
 }
 
 func (in *interp) returnStmt(r *oReturn) error {

@@ -48,7 +48,7 @@ func findGaps(c *lang.Config, t *lang.Template) ([]anchorGap, error) {
 		return nil, errWholeBody
 	}
 	return nil, fmt.Errorf("%s: in our layer's %s, %d sections are not woven into the product (%s), and the template has no section for them to follow — "+
-		"can't infer an anchor; say where they go: base.<upstream section>.after(\"...\")",
+		"can't infer an anchor; say where they go: up.<upstream section>.after(\"...\")",
 		t.Path, t.Target, len(missing), quoteAll(missing))
 }
 
@@ -468,7 +468,7 @@ func completeAnchors(c *lang.Config, t *lang.Template, write bool, r *Report) (*
 			if part == "frontmatter" {
 				path = "frontmatter." + path
 			}
-			add = append(add, fmt.Sprintf("base.%s.%s(self.%s)", path, mode, path))
+			add = append(add, fmt.Sprintf("up.%s.%s(self.%s)", path, mode, path))
 			r.Anchored = append(r.Anchored, ReportLine{rel,
 				fmt.Sprintf("%s %s written (loom.om says %s)", part, k, mode)})
 		}
@@ -483,10 +483,10 @@ func completeAnchors(c *lang.Config, t *lang.Template, write bool, r *Report) (*
 	gaps, err := findGaps(c, t)
 	if errors.Is(err, errWholeBody) {
 		if !write {
-			return t, fmt.Errorf("%s: none of our sections can follow an upstream one — lm build writes `base.%s(self.body)`, since loom.om says `body %s`",
+			return t, fmt.Errorf("%s: none of our sections can follow an upstream one — lm build writes `up.%s(self.body)`, since loom.om says `body %s`",
 				t.Path, c.Body, c.Body)
 		}
-		src = append(src, []byte(fmt.Sprintf("base.%s(self.body)\n", c.Body))...)
+		src = append(src, []byte(fmt.Sprintf("up.%s(self.body)\n", c.Body))...)
 		if err := os.WriteFile(t.Path, src, 0o644); err != nil {
 			return nil, err
 		}

@@ -26,11 +26,11 @@
 // xsdd/skills/testing/SKILL.lm
 // 产物是 skills/testing/SKILL.md
 
-base.frontmatter.description.start(self.description)
+up.frontmatter.description.start(self.description)
 
-base.Overview.after(self.job)
+up.Overview.after(self.job)
 
-base.Verification.before{
+up.Verification.before{
     ```markdown
     ## 自检清单
 
@@ -38,7 +38,7 @@ base.Verification.before{
     ```
 }
 
-base."How it compares".drop(reason: "上游在和别的项目比，与我们无关")
+up."How it compares".drop(reason: "上游在和别的项目比，与我们无关")
 
 ---
 Self:
@@ -68,11 +68,11 @@ Self:
 分隔符永远是点号。名字本身是标识符就直接写，拼不出来就加引号——但**始终是点号**。方括号只有一个用途：谓词。
 
 ```go
-base.Overview                       标识符，直接写
-base.frontmatter.description        键名也一样
-base."How Skills Work"              有空格，加引号
-base."1. Clone the repository"      数字开头带标点，加引号
-base.sections[level == 2]           方括号 = 谓词，不是名字
+up.Overview                       标识符，直接写
+up.frontmatter.description        键名也一样
+up."How Skills Work"              有空格，加引号
+up."1. Clone the repository"      数字开头带标点，加引号
+up.sections[level == 2]           方括号 = 谓词，不是名字
 ```
 
 点号后面还可以是**语言的词**——类别、位置、操作、轴，固定一张表。
@@ -93,8 +93,8 @@ base.sections[level == 2]           方括号 = 谓词，不是名字
 文档里真有一节叫 `sections`、或一个键叫 `after` 时：
 
 ```go
-base.sections        语言的词：全部节
-base."sections"      加引号 = 文档里那个叫 sections 的部分
+up.sections        语言的词：全部节
+up."sections"      加引号 = 文档里那个叫 sections 的部分
 ```
 
 **不加引号时先按语言的词查，查不到才当名字；加了引号就一定是名字。** 所以撞名永远有解，而且解法只有一个。
@@ -121,15 +121,17 @@ base."sections"      加引号 = 文档里那个叫 sections 的部分
 
 | 根 | 是什么 | 可写吗 |
 |---|---|---|
-| `base` | 上游层里同路径的那份文档 | **可以**——产物就是被织过的 base |
+| `up` | 上游层里同路径的那份文档 | **可以**——产物就是被织过的上游文档 |
 | `self` | 我们层里同路径的那份文档 | 不可以，它是内容来源 |
+
+`base` 是 `up` 的旧名，指同一份文档，仍然可用；编辑器把它标为不推荐。loom.om 里的设置同理：`up "upstream"`，`base "upstream"` 仍然可读。
 
 它们的**种类由产物的扩展名决定**，作者不写类型。`SKILL.lm` 产出 `SKILL.md`，于是两者都是 `markdown`。
 
-`base` 指向别处时显式改：
+`up` 指向别处时显式改：
 
 ```go
-base = up."old/NAME.md"        // 上游改过路径
+up = "old/NAME.md"        // 上游改过路径（up = up."old/NAME.md" 同义）
 ```
 
 ---
@@ -141,27 +143,27 @@ base = up."old/NAME.md"        // 上游改过路径
 名字就是作者写的那串字——标题、函数名、键名。能当标识符写就用点号：
 
 ```go
-base.Overview                       标题是 Overview
-base.frontmatter.description        键是 description
-base.boot                           shell 函数 boot
+up.Overview                       标题是 Overview
+up.frontmatter.description        键是 description
+up.boot                           shell 函数 boot
 self.安装说明                        任何文字都行，标识符不限 ASCII
 ```
 
 拼不出来的加引号——**仍然是点号**：
 
 ```go
-base."Quick Start (Any Agent)"      有空格和括号
-base."1. clone 仓库"                 数字开头
-base."argument-hint"                有连字符
+up."Quick Start (Any Agent)"      有空格和括号
+up."1. clone 仓库"                 数字开头
+up."argument-hint"                有连字符
 ```
 
 两种写法可以混着接：
 
 ```go
-base."Example 2"."Phase 1"          两段都有空格
-base."Example 2".Notes              章名要引号，节名恰好是标识符
-base.servers.github.url             json / toml 的路径
-base."mcp-servers".github.url       第一段有连字符
+up."Example 2"."Phase 1"          两段都有空格
+up."Example 2".Notes              章名要引号，节名恰好是标识符
+up.servers.github.url             json / toml 的路径
+up."mcp-servers".github.url       第一段有连字符
 ```
 
 **不加引号按词匹配**：`.Phase_1`、`.phase1`……——`.Phase_1` 找的是 `Phase 1`（词是 phase、1），`.Phase1` 只找 `Phase1`（数字不切词）。有冲突就报错，加引号写原样。
@@ -169,10 +171,10 @@ base."mcp-servers".github.url       第一段有连字符
 ### 4.2 按谓词：取一组
 
 ```go
-base.sections[level == 2]
-base.sections[name ~ "^Step "]
-base.functions[calls "curl"]
-base.keys[value == ""]
+up.sections[level == 2]
+up.sections[name ~ "^Step "]
+up.functions[calls "curl"]
+up.keys[value == ""]
 ```
 
 谓词里能用的东西是**固定的一小组**，不是通用表达式：
@@ -203,12 +205,12 @@ base.keys[value == ""]
 在一个选择上继续走：
 
 ```go
-base.Overview.children      子部分
-base.Overview.next          下一个同级
-base.Overview.prev          上一个同级
-base.Overview.parent        所属的上级
-base.sections.first            第一个
-base.sections.last             最后一个
+up.Overview.children      子部分
+up.Overview.next          下一个同级
+up.Overview.prev          上一个同级
+up.Overview.parent        所属的上级
+up.sections.first            第一个
+up.sections.last             最后一个
 ```
 
 ### 4.5 一组上的操作
@@ -216,7 +218,7 @@ base.sections.last             最后一个
 对一个**组**调用操作 = 对组里每个元素各做一次：
 
 ```go
-base.sections[name ~ "^Step "].demote()     每个 Step 节都降一级
+up.sections[name ~ "^Step "].demote()     每个 Step 节都降一级
 ```
 
 ---
@@ -228,28 +230,28 @@ base.sections[name ~ "^Step "].demote()     每个 Step 节都降一级
 部分的**边界**也是地址，它们的长度为零：
 
 ```go
-base.Overview.after      Overview 之后
-base.Overview.before     之前
-base.start                  文档开头
-base.end                    文档结尾
+up.Overview.after      Overview 之后
+up.Overview.before     之前
+up.start                  文档开头
+up.end                    文档结尾
 ```
 
 ### 5.2 写就是在地址上加括号
 
 ```go
-base.Overview.after(self."Where this fits")
-base.start(self."Read this first")
-base.end(self.Appendix)
+up.Overview.after(self."Where this fits")
+up.start(self."Read this first")
+up.end(self.Appendix)
 ```
 
-`base.append(x)` 是 `base.end(x)` 的别名，因为读起来更顺。
+`up.append(x)` 是 `up.end(x)` 的别名，因为读起来更顺。
 
 ### 5.3 打开一层
 
 值里面是另一种文档时，用 `as` 打开，之后照常寻址：
 
 ```go
-base.prompt.as(markdown).Steps.after(self.我们的步骤)
+up.prompt.as(markdown).Steps.after(self.我们的步骤)
 ```
 
 ---
@@ -259,9 +261,9 @@ base.prompt.as(markdown).Steps.after(self.我们的步骤)
 ### 6.1 三种内容
 
 ```go
-base.Overview.after(self.job)          引用：我们的一个部分
-base.Overview.after("Where this fits") 字符串：直接插入这行字
-base.Overview.after{                   围栏：直接插入多行
+up.Overview.after(self.job)          引用：我们的一个部分
+up.Overview.after("Where this fits") 字符串：直接插入这行字
+up.Overview.after{                   围栏：直接插入多行
     ```markdown
     ## Where this fits
 
@@ -281,9 +283,9 @@ base.Overview.after{                   围栏：直接插入多行
 ### 6.1.1 参数：一行用 `()`，多行用 `{}`
 
 ```go
-base.Overview.after(self.a, self.b)
+up.Overview.after(self.a, self.b)
 
-base.Overview.after{
+up.Overview.after{
     self.a
     self.b
     ```markdown
@@ -299,7 +301,7 @@ base.Overview.after{
 围栏是**唯一的多行字面量形式**，和资源段里用的是同一种东西：
 
 ```go
-base.Overview.after{
+up.Overview.after{
     ```markdown
     反引号 `lm build`、代码块，都只是普通文本。
     ```
@@ -328,8 +330,8 @@ base.Overview.after{
 import "/commands/ship"           名字取自文件名：ship
 import b "/data/registry"         改个名
 
-base.append(ship.body)
-base.Overview.after(b.servers.github)
+up.append(ship.body)
+up.Overview.after(b.servers.github)
 ```
 
 引什么都行——`.md` `.sh` `.js` `.json` `.yaml` `.toml`⋯⋯**扩展名就是种类**，编译器按种类解析成有名字的部分，之后和 `self` 一样寻址。
@@ -343,7 +345,7 @@ base.Overview.after(b.servers.github)
 内容短、和位置语句一起读才说得清时，写在文件里：
 
 ```go
-base.Overview.after(self.job)
+up.Overview.after(self.job)
 
 ---
 Self:
@@ -377,7 +379,7 @@ self.job                 种类省掉 —— 只有一份有 job 时，编译器
 #### 具名资源
 
 ```go
-base.Overview.after(self.n1.job)
+up.Overview.after(self.n1.job)
 
 ---
 Self as n1:
@@ -443,13 +445,13 @@ Self:
 
 ```go
 fn frontmatter() {
-    base.frontmatter.description.start(self.frontmatter.description)
-    base.append(self.body)
+    up.frontmatter.description.start(self.frontmatter.description)
+    up.append(self.body)
 }
 
 fn sections() {
-    base.Overview.after(self.job)
-    base.Verification.before(self.checklist)
+    up.Overview.after(self.job)
+    up.Verification.before(self.checklist)
 }
 
 frontmatter()
@@ -463,12 +465,14 @@ sections()
 参数可以传地址：
 
 ```go
-fn bilingual(up, ours) {
-    up.after(ours)
+fn bilingual(at, ours) {
+    at.after(ours)
 }
 
-bilingual(base.Overview, self.job)
+bilingual(up.Overview, self.job)
 ```
+
+参数不能叫 `up`、`base` 或 `self`——那会在函数体里遮住同名的文件，`up.after(x)` 就有了两种读法。
 
 ## 7. 操作
 
@@ -478,8 +482,8 @@ bilingual(base.Overview, self.job)
 |---|---|
 | `地址.after(内容...)` | 该部分之后 |
 | `地址.before(内容...)` | 之前 |
-| `base.start(内容...)` | 文档开头 |
-| `base.end(内容...)` / `base.append(...)` | 文档结尾 |
+| `up.start(内容...)` | 文档开头 |
+| `up.end(内容...)` / `up.append(...)` | 文档结尾 |
 | `地址.wrap(前, 后)` | 该部分两端各一次 |
 
 ### 7.2 结构变换（保证比放置还强）
@@ -492,8 +496,8 @@ bilingual(base.Overview, self.job)
 | `地址.split(在哪)` / `.join()` | 拆 / 并 | 除边界标记外逐字节不变 |
 
 ```go
-base.Troubleshooting.move(base.sections.last.after)
-base.sections[name ~ "^Step "].demote()
+up.Troubleshooting.move(up.sections.last.after)
+up.sections[name ~ "^Step "].demote()
 ```
 
 ### 7.3 改写（需要理由）
@@ -507,21 +511,21 @@ base.sections[name ~ "^Step "].demote()
 | `地址.unwrap(reason: "...")` | 去掉包裹层 |
 
 ```go
-base."How it compares".drop(reason: "上游在和别的项目比，与我们无关")
+up."How it compares".drop(reason: "上游在和别的项目比，与我们无关")
 ```
 
 ### 7.4 值
 
 ```go
-base.frontmatter.description.set(self.frontmatter.description)
-base.frontmatter.description.start(self.frontmatter.description)   我们的 + 上游的
-base.frontmatter.description.end(self.frontmatter.description)     上游的 + 我们的
+up.frontmatter.description.set(self.frontmatter.description)
+up.frontmatter.description.start(self.frontmatter.description)   我们的 + 上游的
+up.frontmatter.description.end(self.frontmatter.description)     上游的 + 我们的
 ```
 
 ### 7.5 投影（产出新文档，来源不动）
 
 ```go
-base.start.project(base.sections[level == 2]){
+up.start.project(up.sections[level == 2]){
     ```markdown
     - [{name}](#{anchor})
     ```
@@ -534,7 +538,7 @@ base.start.project(base.sections[level == 2]){
 ### 7.6 按身份合并（registry）
 
 ```go
-base.merge(self)
+up.merge(self)
 ```
 
 json 这类**注册表**用它：两边的条目按**身份**合并——我们的条目顶替掉上游那条「调用同一个处理器」的，我们独有的加进去，上游独有的留着。
@@ -545,7 +549,7 @@ json 这类**注册表**用它：两边的条目按**身份**合并——我们�
 
 ### 7.7 为什么没有对齐算子
 
-逐节翻译的文件今天写十六条同形状的语句——上游每节之后跟一节译文。看起来该有个 `align(base.sections, self.sections)` 把它收成一行。
+逐节翻译的文件今天写十六条同形状的语句——上游每节之后跟一节译文。看起来该有个 `align(up.sections, self.sections)` 把它收成一行。
 
 **不做，因为它不可能安全。**
 
@@ -566,8 +570,8 @@ json 这类**注册表**用它：两边的条目按**身份**合并——我们�
 写操作**可以**返回结果，但只有你显式接住时才返回：
 
 ```go
-base.Overview.after(self.job)          没接 → 失败即停止构建，报锚点找不到
-ok = base.Overview.after(self.job)     接住 → 构建不停，你负责
+up.Overview.after(self.job)          没接 → 失败即停止构建，报锚点找不到
+ok = up.Overview.after(self.job)     接住 → 构建不停，你负责
 if !ok {
     return err.format("上游没有 Overview: %s", ok)
 }
@@ -578,7 +582,7 @@ if !ok {
 接住了不用也是错误（和 Go 的未使用变量一样）：
 
 ```go
-ok = base.Overview.after(self.job)     ⛔ ok 声明了没用到
+ok = up.Overview.after(self.job)     ⛔ ok 声明了没用到
 ```
 
 否则「接住」就成了吞掉的同义词。
@@ -603,12 +607,12 @@ if !ok {
 问文档**长什么样**不需要先写再看结果：
 
 ```go
-if base.has.Overview {
-    base.Overview.after(self.job)
+if up.has.Overview {
+    up.Overview.after(self.job)
 }
 
-if base.sections[level == 2].any {
-    base.start.project(base.sections[level == 2]){
+if up.sections[level == 2].any {
+    up.start.project(up.sections[level == 2]){
         ```markdown
         - [{name}](#{anchor})
         ```
@@ -622,7 +626,7 @@ if base.sections[level == 2].any {
 
 | 写法 | 说的是 |
 |---|---|
-| `if base.has.Overview { … }` | **我知道它可能没有**，没有就跳过 |
+| `if up.has.Overview { … }` | **我知道它可能没有**，没有就跳过 |
 | `ok = …; if !ok { … }` | **我要自己处理失败**，包括报我自己的错 |
 
 前者更清楚，优先用。
@@ -644,7 +648,7 @@ return                             提前结束，已经写下的算数
 真正被条件影响的是**可预测性**——同一份模板对不同版本的上游可能写不同的东西。这不是错误，但报告里要说清楚：
 
 ```
-SKILL.md   extended  +2   跳过 1 处（base.has.Overview 为假）
+SKILL.md   extended  +2   跳过 1 处（up.has.Overview 为假）
 ```
 
 ## 9. `return self`：整份都是我们的
@@ -656,7 +660,7 @@ return self   // reason: 上游那份和我们的会跑两遍
 
 `return` 在顶层，因为文件就是函数体。**返回 = 写了根跨度 = 保证量为零**，所以和 `drop` 一样必须给理由。
 
-这取代了今天的 `base.merge(self)` 和 `base.replace(self, reason:)`——它们是同一件事，不需要两个词。
+这取代了今天的 `up.merge(self)` 和 `up.replace(self, reason:)`——它们是同一件事，不需要两个词。
 
 `return` 之后不能再有语句：整份都换掉了，写别的地方没有意义。
 
@@ -667,16 +671,16 @@ return self   // reason: 上游那份和我们的会跑两遍
 每个地址都有类型：**（种类，类别）**。
 
 ```
-base.Overview          markdown / section
+up.Overview          markdown / section
 self.boot                 shell / function
-base.frontmatter."x"     markdown / fmkey
-base.prompt.as(markdown)   markdown / document
+up.frontmatter."x"     markdown / fmkey
+up.prompt.as(markdown)   markdown / document
 ```
 
 写操作要求**内容的类型与落点相符**，不符在解析期就报错：
 
 ```go
-base.Overview.after(self.boot)
+up.Overview.after(self.boot)
                        ~~~~~~~~~ shell/function 写不进 markdown/section
 ```
 
@@ -704,7 +708,7 @@ return     = "return" [ target | err ] [ "//" reason ] ;
 err        = "err" "." "format" "(" string { "," arg } ")" ;
 
 target     = root { selector | "." word } ;
-root       = "base" | "self" | ident ;   (* import 进来的名字、函数参数 *)
+root       = "up" | "base" | "self" | ident ;   (* base 是 up 的旧名；import 进来的名字、函数参数 *)
 selector   = "[" predicate "]" ;                (* 方括号只用于谓词 *)
 word       = class | axis | place | op | "as" "(" kind ")" | name ;
 name       = ident | string ;                   (* 引号内原样匹配；不加引号按词匹配、冲突报错，且语言的词优先 *)
@@ -766,13 +770,13 @@ kind       = "markdown" | "shell" | "toml" | "json" | "text" ;
 
 | 今天 | 全新 |
 |---|---|
-| `base.How_Skills_Work.after("X")` | `base.How_Skills_Work.after(self."X")`（名字按词匹配，裸字符串是字面量） |
-| `base."How it compares".drop(reason: "r")` | `base."How it compares".drop(reason: "r")` |
-| `base.merge(self)`（文本 / shell） | `return self  // reason: ...` |
-| `base.merge(self)`（json registry） | `base.merge(self)` —— 不变，它是另一件事 |
-| `base.replace(self, reason: "r")` | `return self  // reason: r` |
-| `base.frontmatter.description.start(x)` | 不变 |
-| `base.prompt.as(markdown).Steps` | `base.prompt.as(markdown).Steps` |
+| `up.How_Skills_Work.after("X")` | `up.How_Skills_Work.after(self."X")`（名字按词匹配，裸字符串是字面量） |
+| `up."How it compares".drop(reason: "r")` | `up."How it compares".drop(reason: "r")` |
+| `up.merge(self)`（文本 / shell） | `return self  // reason: ...` |
+| `up.merge(self)`（json registry） | `up.merge(self)` —— 不变，它是另一件事 |
+| `up.replace(self, reason: "r")` | `return self  // reason: r` |
+| `up.frontmatter.description.start(x)` | 不变 |
+| `up.prompt.as(markdown).Steps` | `up.prompt.as(markdown).Steps` |
 | 标识符形式（下划线代空格）+ 撞名规则 | 按词匹配（分隔符与大小写不计）+ 冲突报错，加引号写原样 |
 | 16 行逐节翻译 | 仍是 16 行 —— 见 §7.7，收成一行的算子不可能安全 |
 
@@ -790,64 +794,64 @@ kind       = "markdown" | "shell" | "toml" | "json" | "text" ;
 
 // ── 选择：按名字 ─────────────────────────────────────────────
 
-base.Overview                        一个节
-base."Quick Start (Any Agent)"         名字里有标点，照写
-base."Example 2"."Phase 1"            嵌套：在 Example 2 那一章里找
-base.frontmatter.description         frontmatter 是语言的词，键名是数据
-base.servers.github.url        json / toml 的路径，逐层点号
+up.Overview                        一个节
+up."Quick Start (Any Agent)"         名字里有标点，照写
+up."Example 2"."Phase 1"            嵌套：在 Example 2 那一章里找
+up.frontmatter.description         frontmatter 是语言的词，键名是数据
+up.servers.github.url        json / toml 的路径，逐层点号
 
 
 // ── 选择：按类别（取全部） ───────────────────────────────────
 
-base.sections                           markdown：全部节
-base.lines                              全部行
-base.frontmatter                        整个 frontmatter
-base.body                               正文（frontmatter 之后的全部）
-base.functions                          shell：全部函数
-base.markers                            shell：全部横幅注释
-base.keys                               toml / json：全部键
-base.values                             全部值
+up.sections                           markdown：全部节
+up.lines                              全部行
+up.frontmatter                        整个 frontmatter
+up.body                               正文（frontmatter 之后的全部）
+up.functions                          shell：全部函数
+up.markers                            shell：全部横幅注释
+up.keys                               toml / json：全部键
+up.values                             全部值
 
 
 // ── 选择：按谓词 ─────────────────────────────────────────────
 
-base.sections[level == 2]               层级
-base.sections[level >= 3]               比较：== != < <= > >=
-base.sections[name == "Setup"]          名字相等
-base.sections[name ~ "^Step [0-9]+"]    名字匹配正则
-base.sections[empty]                    内容为空
-base.functions[calls "curl"]            shell 函数里调用了 curl
-base.sections[has["Verification"]]      含有名为 Verification 的子部分
+up.sections[level == 2]               层级
+up.sections[level >= 3]               比较：== != < <= > >=
+up.sections[name == "Setup"]          名字相等
+up.sections[name ~ "^Step [0-9]+"]    名字匹配正则
+up.sections[empty]                    内容为空
+up.functions[calls "curl"]            shell 函数里调用了 curl
+up.sections[has["Verification"]]      含有名为 Verification 的子部分
 
-base.sections[level == 2 && !empty]                     与、非
-base.sections[name ~ "^Step " || name == "Setup"]       或
-base.sections[!(level == 1 || empty)]                   括号
+up.sections[level == 2 && !empty]                     与、非
+up.sections[name ~ "^Step " || name == "Setup"]       或
+up.sections[!(level == 1 || empty)]                   括号
 
 
 // ── 选择：轴 ─────────────────────────────────────────────────
 
-base.Overview.children               子部分
-base.Overview.next                   下一个同级
-base.Overview.prev                   上一个同级
-base.Overview.parent                 所属的上级
-base.sections.first                     第一个
-base.sections.last                      最后一个
-base.sections[level == 2].first.children   轴可以接着走
+up.Overview.children               子部分
+up.Overview.next                   下一个同级
+up.Overview.prev                   上一个同级
+up.Overview.parent                 所属的上级
+up.sections.first                     第一个
+up.sections.last                      最后一个
+up.sections[level == 2].first.children   轴可以接着走
 
 
 // ── 打开一层 ─────────────────────────────────────────────────
 
-base.prompt.as(markdown)                    值里是 markdown
-base.prompt.as(markdown).Steps           打开后照常寻址
-base.script.as(shell).functions[calls "rm"]   打开后照常选择
+up.prompt.as(markdown)                    值里是 markdown
+up.prompt.as(markdown).Steps           打开后照常寻址
+up.script.as(shell).functions[calls "rm"]   打开后照常选择
 
 
 // ── 派生地址（长度为零的跨度） ───────────────────────────────
 
-base.Overview.after                  该节之后
-base.Overview.before                 之前
-base.start                              文档开头
-base.end                                文档结尾
+up.Overview.after                  该节之后
+up.Overview.before                 之前
+up.start                              文档开头
+up.end                                文档结尾
 
 
 // ═══ 以上全是「指向哪」。以下是「做什么」。═══════════════════
@@ -855,18 +859,18 @@ base.end                                文档结尾
 
 // ── 放置：上游 100% 保留 ─────────────────────────────────────
 
-base.Overview.after(self."Where this fits")         引用我们的一个节
-base.Overview.before(self.前言)
-base.start(self."Read this first")
-base.end(self.Appendix)
-base.append(self.Appendix)                           end 的别名
-base.Overview.after(self.A, self.B, self.C)   多个，按序
-base.Overview.wrap(self.开头, self.结尾)        两端各一次
+up.Overview.after(self."Where this fits")         引用我们的一个节
+up.Overview.before(self.前言)
+up.start(self."Read this first")
+up.end(self.Appendix)
+up.append(self.Appendix)                           end 的别名
+up.Overview.after(self.A, self.B, self.C)   多个，按序
+up.Overview.wrap(self.开头, self.结尾)        两端各一次
 
-base.append(self.body)                                  我们的正文
-base.append(self.frontmatter)                           整个 frontmatter
+up.append(self.body)                                  我们的正文
+up.append(self.frontmatter)                           整个 frontmatter
 
-base.Overview.after{                                 围栏：多行字面量
+up.Overview.after{                                 围栏：多行字面量
     ````markdown
     ## 直接写在这里
 
@@ -883,37 +887,37 @@ base.Overview.after{                                 围栏：多行字面量
 
 // ── 结构变换：保证比放置还强 ─────────────────────────────────
 
-base.Troubleshooting.move(base.sections.last.after)   移动：字节多重集不变
-base.A.swap(base.B)                                互换
-base.sections[name ~ "^Step "].demote()                  一组：每个都降一级
-base.Overview.promote()                               升一级
-base.Setup.split(base.Setup.children.first)        在某处拆开
-base.Setup.join()                                     与下一个并起来
+up.Troubleshooting.move(up.sections.last.after)   移动：字节多重集不变
+up.A.swap(up.B)                                互换
+up.sections[name ~ "^Step "].demote()                  一组：每个都降一级
+up.Overview.promote()                               升一级
+up.Setup.split(up.Setup.children.first)        在某处拆开
+up.Setup.join()                                     与下一个并起来
 
 
 // ── 改写：降低保证量，必须给理由 ─────────────────────────────
 
-base."How it compares".drop(reason: "上游在和别的项目比，与我们无关")
-base.Install.replace(self.安装, reason: "上游的装法在内网不通")
-base.Notes.unwrap(reason: "这层包裹在产物里没有意义")
+up."How it compares".drop(reason: "上游在和别的项目比，与我们无关")
+up.Install.replace(self.安装, reason: "上游的装法在内网不通")
+up.Notes.unwrap(reason: "这层包裹在产物里没有意义")
 
 
 // ── 值 ───────────────────────────────────────────────────────
 
-base.frontmatter.description.set(self.frontmatter.description)    换成我们的
-base.frontmatter.description.start(self.frontmatter.description)   我们的 + 上游的
-base.frontmatter.description.end(self.frontmatter.description)    上游的 + 我们的
+up.frontmatter.description.set(self.frontmatter.description)    换成我们的
+up.frontmatter.description.start(self.frontmatter.description)   我们的 + 上游的
+up.frontmatter.description.end(self.frontmatter.description)    上游的 + 我们的
 
 
 // ── 投影：产出新文档，来源不动 ───────────────────────────────
 
-base.start.project(base.sections[level == 2]){
+up.start.project(up.sections[level == 2]){
     ```markdown
     - [{name}](#{anchor})
     ```
 }
 
-base.append.project(base.functions){
+up.append.project(up.functions){
     ```markdown
     ### {name}
 
@@ -926,7 +930,7 @@ base.append.project(base.functions){
 
 // ── 按身份合并：json registry ────────────────────────────────
 
-base.merge(self)
+up.merge(self)
 
 
 // ── 整份都是我们的：顶层 return，之后不能再有语句 ─────────────
@@ -965,7 +969,7 @@ return self   // reason: 两份 AGENTS 会被 agent 同时读到，必须只有�
 
 ```
 loom.om
-agent-skills/                  上游（base）—— 一个字节都不碰
+agent-skills/                  上游（up）—— 一个字节都不碰
   AGENTS.md
   skills/testing/SKILL.md
   docs/getting-started.md
@@ -980,7 +984,7 @@ xsdd/                          我们（self）
 ## loom.om
 
 ```
-base      "agent-skills"
+up      "agent-skills"
 self      "xsdd"
 output    "../plugins/XSDD"
 
@@ -1028,11 +1032,11 @@ description: 先写会失败的测试。
 **`xsdd/skills/testing/SKILL.lm`**
 
 ```go
-base.frontmatter.description.start(self.frontmatter.description)
+up.frontmatter.description.start(self.frontmatter.description)
 
-base.Overview.after(self."Where this fits")
+up.Overview.after(self."Where this fits")
 
-base.Verification.before{
+up.Verification.before{
     ```markdown
     ## 自检清单
 
@@ -1040,7 +1044,7 @@ base.Verification.before{
     ```
 }
 
-base."How it compares".drop(reason: "上游在和别的项目比，与我们无关")
+up."How it compares".drop(reason: "上游在和别的项目比，与我们无关")
 ```
 
 **产物 `../plugins/XSDD/skills/testing/SKILL.md`**
@@ -1086,10 +1090,10 @@ skills/testing/SKILL.md   extended   +3   保证 100%（去掉 drop 的那节）
 上游 4 节，我们 4 节中文，一一对应。**每一条都显式写出来**：
 
 ```go
-base.How_Skills_Work.after(self."Skill 如何工作")
-base."Quick Start".after(self."Quick Start（任何 agent）")
-base.Recommended_Setup.after(self."推荐 Setup")
-base.Tips.after(self.提示)
+up.How_Skills_Work.after(self."Skill 如何工作")
+up."Quick Start".after(self."Quick Start（任何 agent）")
+up.Recommended_Setup.after(self."推荐 Setup")
+up.Tips.after(self.提示)
 ```
 
 看起来该有个算子把它收成一行。**没有，而且不会有**——见 §7.7：任何按位置配对的算子，在上游删一节又加一节时会静默配错，而产物看起来完全正常。
@@ -1146,7 +1150,7 @@ AGENTS.md   returned   保证 0%   两份 AGENTS 会被 agent 同时读到，必
 **`xsdd/hooks/hooks.lm`**
 
 ```go
-base.merge(self)
+up.merge(self)
 ```
 
 **产物**

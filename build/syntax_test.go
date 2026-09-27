@@ -354,7 +354,7 @@ func TestFrontmatterKeyValues(t *testing.T) {
 		"base.frontmatter.nope.start(self.frontmatter.description)": `upstream has no key "nope"`,
 		"base.frontmatter.description.start(self.frontmatter.nope)": `no key "nope"`,
 		"base.frontmatter.description.start(self.description)":      "self.frontmatter.description",
-		"base.frontmatter.join(\"description\")":                    "base.frontmatter.description.start(self.frontmatter.description)",
+		"base.frontmatter.join(\"description\")":                    "up.frontmatter.description.start(self.frontmatter.description)",
 		"base.A.start(self.frontmatter.description)":                "whole file or to a key",
 	} {
 		if _, err := fm(src); err == nil || !strings.Contains(err.Error(), want) {

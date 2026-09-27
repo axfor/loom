@@ -122,12 +122,12 @@ type Cond struct {
 	Not  bool
 	Var  string // `if !ok`
 	Kind string // the node kind the question is about
-	Has  string // `if base.has.Overview`
+	Has  string // `if up.has.Overview`
 	// HasIdent: Has is written unquoted and read by the underscore rule (Loom 1); HasAt is where,
 	// so lm sync can follow a rename of it.
 	HasIdent bool
 	HasAt    Pos
-	Sel      *Select // `if base.sections[level == 2].any`
+	Sel      *Select // `if up.sections[level == 2].any`
 	Any      bool
 	Rng      Pos
 }

@@ -18,7 +18,7 @@ import (
 // oNode is one thing at the top level of a file, or inside a fn or an if.
 type oNode struct {
 	expr   *oExpr // a write, or a bare call to a fn
-	assign string // `ok = base.X.after(...)`: the name the result is caught in
+	assign string // `ok = up.X.after(...)`: the name the result is caught in
 	ifN    *oIf
 	ret    *oReturn
 	rebase string // `base = "path"`: the upstream file this template is woven onto
@@ -101,7 +101,7 @@ func (p *oparser) node() (oNode, error) {
 	case t.Kind == KIdent && t.Text == "return":
 		n, err := p.returnNode()
 		return oNode{ret: n, pos: t.Pos}, err
-	case t.Kind == KIdent && t.Text == "base" && p.toks[p.i+1].Kind == KAssign && rebaseAhead(p.toks[p.i+2:]):
+	case t.Kind == KIdent && (t.Text == "up" || t.Text == "base") && p.toks[p.i+1].Kind == KAssign && rebaseAhead(p.toks[p.i+2:]):
 		// base = "old/NAME.md", or as the spec writes it, base = up."old/NAME.md": upstream moved
 		// the file this one is woven onto. `up` names the upstream layer here and nowhere else —
 		// the spec's own fn example uses it as a parameter, so it cannot be a reserved word, and

@@ -29,7 +29,7 @@ func TestTheReadmeExamplesParse(t *testing.T) {
 
 // statementStart is how a template's first line begins, as opposed to a report, a layout or a
 // document shown beside it.
-var statementStart = regexp.MustCompile(`^(base[.( ]|self\.|import |if |fn |ok = |return|// )`)
+var statementStart = regexp.MustCompile(`^((?:up|base)[.( ]|self\.|import |if |fn |ok = |return|// )`)
 
 // readmeTemplates returns the README's template examples: the code blocks with no language tag
 // whose first line is a statement, without the prose some of them align after the code, and

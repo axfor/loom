@@ -29,7 +29,7 @@ import (
 )
 
 // registry is listed to be refused with what to do instead, not to be taken as an unknown word
-var settingKeywords = []string{"loom", "frontmatter", "keys", "body", "base", "self", "templates", "output", "mark", "registry", "take", "mirror", "manifest"}
+var settingKeywords = []string{"loom", "frontmatter", "keys", "body", "up", "base", "self", "templates", "output", "mark", "registry", "take", "mirror", "manifest"}
 
 // LoadConfig reads loom.om.
 func LoadConfig(path string) (*Config, error) {
@@ -105,7 +105,7 @@ func parseSettings(path string, src []byte) (*Config, error) {
 			c.Frontmatter = as[0].Text
 		case "keys":
 			// The same thing one level out: a toml or yaml file's own top-level keys. The .gemini
-			// commands say `base.description.start(self.description)` nine times over, which is
+			// commands say `up.description.start(self.description)` nine times over, which is
 			// the frontmatter rule wearing a different hat.
 			if len(as) != 1 || as[0].Kind != KIdent || !contains([]string{"set", "start", "append"}, as[0].Text) {
 				return nil, fmt.Errorf("%s: `keys` takes set, start or append — what to do with a top-level key of ours that upstream also has: keys start", first.Pos)
@@ -119,13 +119,18 @@ func parseSettings(path string, src []byte) (*Config, error) {
 				return nil, fmt.Errorf("%s: `body` takes start or append — where our body goes when none of it can follow an upstream section: body append", first.Pos)
 			}
 			c.Body = as[0].Text
-		case "base", "self", "templates", "output", "manifest":
+		case "up", "base", "self", "templates", "output", "manifest":
 			if len(as) != 1 || as[0].Kind != KString {
 				return nil, fmt.Errorf("%s: `%s` takes one quoted directory: %s \"...\"", first.Pos, kw, kw)
 			}
 			v := as[0].Text
 			switch kw {
-			case "base":
+			case "up", "base":
+				// up names the upstream layer; base is its old name and still reads. Said twice is
+				// one layer said two ways, and which one wins is not a question worth answering.
+				if c.Warp != "" {
+					return nil, fmt.Errorf("%s: the upstream layer is already set — up and base are one setting, the second its old name", first.Pos)
+				}
 				c.Layers["base"] = &Layer{Name: "base", Dir: v, Role: "warp", Marks: map[string]Marks{}}
 				c.Order = append(c.Order, "base")
 				c.Warp = "base"
@@ -174,7 +179,7 @@ func parseSettings(path string, src []byte) (*Config, error) {
 		case "registry":
 			// There is nothing left to configure: a json product is both layers' registrations together,
 			// and an element of ours takes the place of the upstream one calling the same scripts.
-			return nil, fmt.Errorf("%s: `registry` is not a setting any more — a json product is built from both layers, ours replacing the upstream registration that calls the same scripts; write base.merge(self) in its template and delete this line", first.Pos)
+			return nil, fmt.Errorf("%s: `registry` is not a setting any more — a json product is built from both layers, ours replacing the upstream registration that calls the same scripts; write up.merge(self) in its template and delete this line", first.Pos)
 		}
 	}
 	if c.Warp == "" {

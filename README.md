@@ -25,7 +25,7 @@ saying where your content belongs in theirs, and `lm build` weaves them into the
 
 **Extending, not forking.** Your layer holds only what is yours — no copy of upstream to keep in
 step, no context lines around your changes. Upstream's own names are the anchors: a markdown
-heading, a shell function, a toml key, a json path. `base.Overview.after("Where this fits")` means
+heading, a shell function, a toml key, a json path. `up.Overview.after("Where this fits")` means
 *after their overview*, and goes on meaning it when they rewrite the paragraph under it or move the
 section down the file.
 
@@ -107,9 +107,9 @@ A section appended at the end.
 each piece belongs to.
 
 ```
-base.frontmatter.description.start(self.frontmatter.description)
-base.Overview.after("Where this fits")
-base.append("Appendix")
+up.frontmatter.description.start(self.frontmatter.description)
+up.Overview.after("Where this fits")
+up.append("Appendix")
 ```
 
 `lm build` weaves them:
@@ -173,7 +173,7 @@ correct one, and that is the most expensive way to fail.
 ## Files with nothing to anchor to
 
 Some files have no names to weave by — a shell script where you changed a few lines inside a
-function, or a json registry both layers add entries to. There the template is `base.merge(self)`:
+function, or a json registry both layers add entries to. There the template is `up.merge(self)`:
 your file is the product, and `lm sync` carries each new upstream release onto it with a three-way
 merge, leaving conflict markers only where upstream changed the lines you changed. The build still
 checks that no upstream function went missing without a stated reason. See
@@ -203,12 +203,12 @@ checks that no upstream function went missing without a stated reason. See
 ```
 loom.om                           settings
 lm.e                              variables (optional)
-upstream/                         base: the upstream project, untouched
+upstream/                         up: the upstream project, untouched
 mine/                             self: our layer, laid out like the product
   skills/testing/SKILL.md           our content for that product file
   skills/testing/SKILL.lm           its template: how upstream and ours are woven
   hooks/run.sh                      our version of an upstream script
-  hooks/run.lm                      its template: base.merge(self)
+  hooks/run.lm                      its template: up.merge(self)
 ```
 
 Both trees share the product's layout, so "what is this product file made of" needs no lookup
@@ -246,7 +246,7 @@ frontmatter start   // a markdown file's frontmatter
 keys        start   // a toml or yaml file's top-level keys
 body        append  // where our body goes when no section of it can follow an upstream one
 
-base      "upstream"
+up        "upstream"
 self      "mine"
 output    "../dist"
 
@@ -266,10 +266,10 @@ manifest  ".build-manifest"
 | Setting | Meaning |
 |---|---|
 | `frontmatter` | what the build should do with a frontmatter key of ours that upstream also has: `set`, `start` or `append`. Say it once and the build writes the statement into each template that needs it, the way it completes anchors. Leave it out and an unaccounted key is an error, as before — whether ours replaces upstream's value or goes before it changes what the product says, and nothing decides that for you |
-| `body` | where our body goes when *none* of its sections can follow an upstream one — our headings share nothing with upstream's, most often because they are a translation. Anchor completion says so and stops today; with `start` or `append` the tree has answered once, and `base.append(self.body)` is written into the template. Where even one section of ours has a neighbour, the neighbour rule still decides: this answers having no neighbour, it does not switch that rule off |
+| `body` | where our body goes when *none* of its sections can follow an upstream one — our headings share nothing with upstream's, most often because they are a translation. Anchor completion says so and stops today; with `start` or `append` the tree has answered once, and `up.append(self.body)` is written into the template. Where even one section of ours has a neighbour, the neighbour rule still decides: this answers having no neighbour, it does not switch that rule off |
 | `keys` | the same, one level out: the top-level keys of a toml or yaml file. A key a statement already speaks for is left alone, including one opened as a view; a key upstream does not have is added to the file rather than written into upstream's, so the setting does not cover it |
 | `loom` | the language version this tree is written for; an lm that speaks an older one refuses it and says to update. Leaving it out is allowed and keeps the 1.0 meaning. `"2.0"` reads a bare string as text — see [What a version changes](#what-a-version-changes) |
-| `base` | upstream directory (required); in a template, `base` is the file at the product's path in it |
+| `up` | upstream directory (required); in a template, `up` is the file at the product's path in it. `base` is its old name and still reads; the editor marks it as not recommended |
 | `self` | our layer's directory; in a template, `self` is the file at the product's path in it |
 | `templates` | template directory; without it, templates live next to our files in `self` |
 | `output` | default output directory of `lm build` |
@@ -295,10 +295,10 @@ A template is a list of statements, one per line.
 // mine/skills/testing/SKILL.lm
 import ship "/.claude/commands/ship"
 
-base.frontmatter.description.start(self.frontmatter.description)
-base.Overview.after("Where this skill sits", "Customers are not users")
-base."How it compares".drop(reason: "compares upstream with other projects; does not apply here")
-base.append(ship.body)
+up.frontmatter.description.start(self.frontmatter.description)
+up.Overview.after("Where this skill sits", "Customers are not users")
+up."How it compares".drop(reason: "compares upstream with other projects; does not apply here")
+up.append(ship.body)
 ```
 
 Read it as: *upstream's `Overview` section, insert after it our sections "Where this skill sits" and
@@ -326,11 +326,12 @@ Lexical rules:
 
 | Object | What it is | Layer | Can be changed |
 |---|---|---|---|
-| `base` | the upstream file at the product's path | upstream | yes — the product *is* the woven base |
+| `up` | the upstream file at the product's path | upstream | yes — the product *is* the woven upstream file |
+| `base` | the old name for `up`: the same file. It still works; the editor marks it as not recommended | upstream | as `up` |
 | `self` | our layer's file at the product's path | ours | no, it is a content source |
 | an imported name | another file of our layer | ours | no, it is a content source |
 
-Only `base` can be changed: a template produces exactly one file. Calling a method on `self`
+Only `up` can be changed: a template produces exactly one file. Calling a method on `self`
 would read as if another file were changed while nothing happens, so it is an error.
 
 ### import
@@ -338,14 +339,14 @@ would read as if another file were changed while nothing happens, so it is an er
 ```
 import "../commands/ship"             // name taken from the file: ship
 import cmd "/.claude/commands/ship"   // named cmd
-import base "/old/name"               // base is a renamed upstream file
+import up "/old/name"               // up is a renamed upstream file
 ```
 
 | Rule | |
 |---|---|
 | path | `./` and `../` are relative to the product's directory; `/` starts at the layer root |
 | extension | may be left out when exactly one file matches (templates do not count); several matches is an error |
-| layer | `base` resolves in upstream, every other name in our layer |
+| layer | `up` resolves in upstream, every other name in our layer |
 | name | without a name, the file name without extension; it must be a valid identifier |
 | duplicates | importing a name twice is an error; `self` cannot be redirected |
 | type | taken from the extension: `.md` markdown, `.toml`, `.yaml` / `.yml`, `.json`, `.sh` shell, anything else text |
@@ -377,7 +378,7 @@ do. Each row was checked by running the build, not read off the code.
 | toml | by key | by key | the whole file, unless a value is written | — | yes |
 | yaml | by key | by key | the whole file, unless a value is written | — | yes |
 | json | by construction: a registry merge is upstream's entries plus ours | — | — (a registry is merged whole) | — | — |
-| text | by line — see below | **no** | the whole file | — | yes: `base.line("x").move(before: base.line("y"))` |
+| text | by line — see below | **no** | the whole file | — | yes: `up.line("x").move(before: up.line("y"))` |
 
 Anchor completion stops where order stops meaning anything: a section follows the section before
 it, and so does a function, but a toml key's neighbour says nothing about where a new key belongs.
@@ -385,21 +386,21 @@ it, and so does a function, but a toml key's neighbour says nothing about where 
 **text is held to more than the others.** Its nodes are lines, and a line *is* its content, so
 "this node is still here" — the question asked of the other types, indifferent to what changed
 inside it — becomes "this line is unchanged". A merge of a `.js` file that rewrites an upstream
-line has to say why, `base.line("...").drop(reason: "...")`, and the build checks the line really
+line has to say why, `up.line("...").drop(reason: "...")`, and the build checks the line really
 is gone. That is a far stricter promise than the other types make, and it was made on purpose:
 without it a text merge could lose upstream's lines in silence, which is the one thing this
 language exists to prevent.
 
-A nested key is reached by chaining names, `base.jobs.test`, or by quoting the whole path,
-`base."jobs.test"`, for a segment a dot cannot spell. A trailing part of a path is enough while it
-is unambiguous: `base.steps` finds `jobs.build.steps` as long as nothing else ends in `steps`.
+A nested key is reached by chaining names, `up.jobs.test`, or by quoting the whole path,
+`up."jobs.test"`, for a segment a dot cannot spell. A trailing part of a path is enough while it
+is unambiguous: `up.steps` finds `jobs.build.steps` as long as nothing else ends in `steps`.
 
 ### String form and identifier form
 
 ```
-base."How it compares"     // string form: exactly this name, case and all
-base.How_it_compares       // identifier form: any name with the same words
-base.howItCompares         // the same words, so the same name
+up."How it compares"     // string form: exactly this name, case and all
+up.How_it_compares       // identifier form: any name with the same words
+up.howItCompares         // the same words, so the same name
 ```
 
 - An identifier is matched by its **words**: split at `_`, `-`, spaces and where camelCase starts a
@@ -415,7 +416,7 @@ base.howItCompares         // the same words, so the same name
   name: a group (`sections`, `functions`, `markers`, `lines`, `keys`, `values`), an axis
   (`children`, `next`, `prev`, `parent`, `first`, `last`), a place (`after`, `before`, `start`,
   `end`, `append`) and `has`. A section literally called `append` or `children` is
-  `base."append"`, `base."children"`.
+  `up."append"`, `up."children"`.
 
 ### Sections and subsections
 
@@ -423,21 +424,21 @@ A markdown section runs from its heading to the **next heading of any level**. S
 of their own:
 
 ```markdown
-## Setup              ← base.Setup is these two lines
+## Setup              ← up.Setup is these two lines
 intro
 
-### Option 1          ← base.Option_1
+### Option 1          ← up.Option_1
 ...
 ```
 
-So `base.Setup.after(...)` inserts after the intro, before `### Option 1`.
+So `up.Setup.after(...)` inserts after the intro, before `### Option 1`.
 
 ### Section paths
 
 The same subsection name often appears under several sections. A path says which one:
 
 ```
-base."Example 2"."Phase 1".after(self."Example 2 notes"."Phase 1")
+up."Example 2"."Phase 1".after(self."Example 2 notes"."Phase 1")
 ```
 
 Every name but the last is looked up inside the previous section's whole chapter (down to the next
@@ -453,23 +454,23 @@ exactly one heading.
 | `after` | node | insert after the node | content, one or more |
 | `before` | node | insert before the node | content, one or more |
 | `start` | file / view | insert at the start | content, one or more |
-| `start` | key value | the value becomes ours followed by upstream's: `base.frontmatter.description.start(self.frontmatter.description)` | one value |
+| `start` | key value | the value becomes ours followed by upstream's: `up.frontmatter.description.start(self.frontmatter.description)` | one value |
 | `append` / `end` | file / view | insert at the end — two words for the same thing | content, one or more |
 | `append` / `end` | key value | the value becomes upstream's followed by ours | one value |
 | `replace` | node | replace the node with content | one content, `reason:` |
-| `replace` | `base` | whole-file replace: `base.replace(self, reason: "...")` | a file object, `reason:` |
+| `replace` | `up` | whole-file replace: `up.replace(self, reason: "...")` | a file object, `reason:` |
 | `drop` | node or group | leave the node out of the product on purpose | `reason:` |
-| `move` | node | put the node somewhere else in the same file | `after:` or `before:` naming a node of upstream, or the place itself: `move(base.Usage.after)` |
+| `move` | node | put the node somewhere else in the same file | `after:` or `before:` naming a node of upstream, or the place itself: `move(up.Usage.after)` |
 | `promote` / `demote` | markdown section, or a group of them | take the heading up or down one level | none |
 | `wrap` | node | insert before and after in one statement | what goes before, what goes after |
 | `swap` | node | two nodes trade places | the other node |
 | `unwrap` | markdown section, or a group of them | the heading goes, what was under it comes up a level | `reason:` |
 | `join` | markdown section | the next section's heading goes, so the two run together | `reason:` |
 | `split` | markdown section | cut it in two | where: a heading inside it, which becomes the second half; or anywhere, with the second half's name |
-| `project` | a place | write content derived from upstream's shape: `base.start.project(...)` | a group, and a template |
-| `set` | `frontmatter` | take our whole frontmatter: `base.frontmatter.set(self.frontmatter)` | `self.frontmatter` |
-| `set` | key value | the value becomes ours: `base.frontmatter."argument-hint".set(self.frontmatter."argument-hint")`, `base.description.set(self.description)`; adds a frontmatter key upstream does not have | one value |
-| `merge` | `base` | the product is upstream's file and ours together. For a script ours is the product and `lm sync` carries the edits onto each new upstream ([Following upstream](#following-upstream)); for a json registry the entries are merged by identity, ours winning where both register the same handler ([Registries](#registries)) | `self` |
+| `project` | a place | write content derived from upstream's shape: `up.start.project(...)` | a group, and a template |
+| `set` | `frontmatter` | take our whole frontmatter: `up.frontmatter.set(self.frontmatter)` | `self.frontmatter` |
+| `set` | key value | the value becomes ours: `up.frontmatter."argument-hint".set(self.frontmatter."argument-hint")`, `up.description.set(self.description)`; adds a frontmatter key upstream does not have | one value |
+| `merge` | `up` | the product is upstream's file and ours together. For a script ours is the product and `lm sync` carries the edits onto each new upstream ([Following upstream](#following-upstream)); for a json registry the entries are merged by identity, ours winning where both register the same handler ([Registries](#registries)) | `self` |
 | `as` | toml / yaml / json key | view the key's value as another type; methods follow | a type name |
 
 ### Arguments
@@ -483,14 +484,14 @@ exactly one heading.
 | `self`, `cmd` | a whole file |
 | `` `...` `` | literal content |
 | `reason: "..."` | named argument: why upstream content is changed |
-| `base.Usage.after`, `base.Setup.children.first` | where a `move` goes, what a `swap` trades with, where a `split` cuts — read exactly as the same path would be where it starts a statement |
+| `up.Usage.after`, `up.Setup.children.first` | where a `move` goes, what a `swap` trades with, where a `split` cuts — read exactly as the same path would be where it starts a statement |
 
 `(...)` on one line and `{ }` over several lines mean exactly the same:
 
 ```
-base.Install.after("Install XSDD", "Proxy settings")
+up.Install.after("Install XSDD", "Proxy settings")
 
-base.Install.after{
+up.Install.after{
     "Install XSDD"
     "Proxy settings"
 }
@@ -505,7 +506,7 @@ real markdown is full of inline `code` and fenced blocks. **Three or more backti
 closed by as many again at the start of a line, and a tag says what the content is:
 
 `````
-base."Where this fits".before(````markdown
+up."Where this fits".before(````markdown
 ## Where this fits
 
 Run `lm build` to weave it:
@@ -522,9 +523,9 @@ gives the editor the language to highlight the content as, so writing content in
 reads the way writing it in its own file does.
 
 ```
-base.start(`> Generated from mine/README.md — do not edit`)
+up.start(`> Generated from mine/README.md — do not edit`)
 
-base.start{
+up.start{
     "Read this first"
     `
     > Generated from mine/README.md — do not edit
@@ -541,10 +542,10 @@ is a group, and the operation is done to every node in it. A predicate in bracke
 ([Predicates](#predicates) has them all):
 
 ```
-base.sections[name ~ "^Step "].demote()
-base.sections[empty].drop(reason: "upstream left the shells of sections it never wrote")
-base.sections[level == 3].demote()
-base.functions[name ~ "^_"].drop(reason: "private helpers we replace wholesale")
+up.sections[name ~ "^Step "].demote()
+up.sections[empty].drop(reason: "upstream left the shells of sections it never wrote")
+up.sections[level == 3].demote()
+up.functions[name ~ "^_"].drop(reason: "private helpers we replace wholesale")
 ```
 
 The same predicates can also be written as arguments, the spelling that came first:
@@ -569,8 +570,8 @@ report lists each one, so a predicate is a way of writing less, never of knowing
 predicate finds, put through a template once.
 
 ```
-base.start(base.sections[name ~ "^Step "].project(`- {name}`))
-base.append(base.functions[name ~ "^test_"].project(`### {name}
+up.start(up.sections[name ~ "^Step "].project(`- {name}`))
+up.append(up.functions[name ~ "^test_"].project(`### {name}
 
 {body}`))
 ```
@@ -597,11 +598,11 @@ upstream stays whole and our own content ends up on no ledger at all.
 
 ```
 import r "/run.sh"
-base.Overview.after(r.boot)
+up.Overview.after(r.boot)
                     ~~~~~~~ shell does not go into markdown
 ```
 
-Inside a view our own file is read as the view's type, so `base.prompt.as(markdown).append(self.body)`
+Inside a view our own file is read as the view's type, so `up.prompt.as(markdown).append(self.body)`
 takes the markdown in our prompt rather than the toml around it. A file named explicitly is still
 whatever its extension says, view or no view.
 
@@ -635,19 +636,19 @@ exactly that — not that the file still parses, but that the moved node is byte
 upstream wrote — and the report lists the move with where it went.
 
 ```
-base.Troubleshooting.move(after: base.B)
-base."Quick Start".move(before: base.Install)
+up.Troubleshooting.move(after: up.B)
+up."Quick Start".move(before: up.Install)
 ```
 
 A markdown section lands with a blank line on each side; anything else moves as exactly the lines
-it is. Inside a view the target is written from the view, `move(before: base.Steps)`, or in full,
-`move(before: base.prompt.as(markdown).Steps)`.
+it is. Inside a view the target is written from the view, `move(before: up.Steps)`, or in full,
+`move(before: up.prompt.as(markdown).Steps)`.
 
 `promote` and `demote` are the same kind of thing for heading level — when you wrap upstream's
 sections under one of your own, everything below has to shift a level:
 
 ```
-base.Setup.demote()
+up.Setup.demote()
 ```
 
 Only the `#` markers change. The build strips the markers from both sides and the section must be
@@ -668,8 +669,8 @@ a json string:
 
 ```
 import cmd "/.claude/commands/ship"
-base.prompt.as(markdown).append(cmd.body)
-base.prompt.as(markdown).Steps.after("Our step")
+up.prompt.as(markdown).append(cmd.body)
+up.prompt.as(markdown).Steps.after("Our step")
 ```
 
 The value is parsed as that type and woven section by section, then put back where it came from,
@@ -679,7 +680,7 @@ not a literal in the template.
 Inside a view, a bare string names a section of the same key's value in our file.
 
 This is also why markdown frontmatter needs no special case: it is yaml, so
-`base.frontmatter.description` and a yaml key are the same thing reached two ways.
+`up.frontmatter.description` and a yaml key are the same thing reached two ways.
 
 ### Combinations
 
@@ -694,12 +695,12 @@ Five more operations change a file's shape rather than its words — `wrap` and 
 the other three on markdown sections, since only those have a heading to cut at or take out:
 
 ```
-base.Examples.wrap(self.intro, self.outro)                 before and after, in one statement
-base.Install.swap(base.Usage)                              the two trade places
-base.Setup.split(base.Setup."Step B")                      Step B becomes the second half, at Setup's level
-base.Setup.split(base.line("Then:"), "Setup, part two")    a heading of ours cuts it at that line
-base.Details.unwrap(reason: "one level is enough")         the heading goes; what was under it comes up
-base.Install.join(reason: "one procedure")                 the next heading goes, so the two run together
+up.Examples.wrap(self.intro, self.outro)                 before and after, in one statement
+up.Install.swap(up.Usage)                              the two trade places
+up.Setup.split(up.Setup."Step B")                      Step B becomes the second half, at Setup's level
+up.Setup.split(up.line("Then:"), "Setup, part two")    a heading of ours cuts it at that line
+up.Details.unwrap(reason: "one level is enough")         the heading goes; what was under it comes up
+up.Install.join(reason: "one procedure")                 the next heading goes, so the two run together
 ```
 
 `wrap` is `before` and `after` said once, so nothing of upstream's changes. `swap` reads both
@@ -718,24 +719,24 @@ A template can ask before it writes. The question reads the document and writes 
 always safe:
 
 ```
-if base.has.Overview {
-    base.Overview.after(self.notes)
+if up.has.Overview {
+    up.Overview.after(self.notes)
 }
 
-if base.sections[level == 2].any {
-    base.start(base.sections[level == 2].project(`- {name}`))
+if up.sections[level == 2].any {
+    up.start(up.sections[level == 2].project(`- {name}`))
 }
 ```
 
 Questions chain, and the first that holds decides:
 
 ```
-if base.has.Overview {
-    base.Overview.after(self.notes)
-} else if base.has.Summary {
-    base.Summary.after(self.notes)
+if up.has.Overview {
+    up.Overview.after(self.notes)
+} else if up.has.Summary {
+    up.Summary.after(self.notes)
 } else {
-    base.start(self.notes)
+    up.start(self.notes)
 }
 ```
 
@@ -744,7 +745,7 @@ through, so it has to be written down — and a caught result that nothing reads
 catching would be a synonym for swallowing:
 
 ```
-ok = base.Overview.after(self.notes)
+ok = up.Overview.after(self.notes)
 if !ok {
     return err.format("upstream dropped Overview: %s", ok)
 }
@@ -765,16 +766,16 @@ outside it, it is refused where it is written, rather than working or failing by
 | `return` | stop here; what was written so far stands |
 
 Besides `has`, a question can ask whether a group has anything in it, `.any`, or how many,
-`.count` — which holds when the number is not zero: `base.sections[level == 2].any`, or
-`base.sections.any` for any section at all. Both read the document and write nothing.
+`.count` — which holds when the number is not zero: `up.sections[level == 2].any`, or
+`up.sections.any` for any section at all. Both read the document and write nothing.
 
 The report says which way each question went, because that is the one thing a reader cannot see
 from the template alone:
 
 ```
 skipped              2 places  a question decided against it
-  me/SKILL.md.lm                               SKILL.md skipped (base.has.Nope did not hold)
-  me/other.md.lm                               other.md: else skipped (base.has.Overview held)
+  me/SKILL.md.lm                               SKILL.md skipped (up.has.Nope did not hold)
+  me/other.md.lm                               other.md: else skipped (up.has.Overview held)
 ```
 
 Every branch that did not run is listed, then-branch or else, one line per question of a chain.
@@ -799,8 +800,8 @@ of that name inside this one, not the word somewhere in its text. A yaml key hol
 it, so every ancestor of a path answers to it.
 
 ```
-base.sections[level == 3 && name ~ "^Step "].demote()
-base.sections[empty].drop(reason: "upstream left the shells of sections it never wrote")
+up.sections[level == 3 && name ~ "^Step "].demote()
+up.sections[empty].drop(reason: "upstream left the shells of sections it never wrote")
 ```
 
 `.first` and `.last` take one out of a group, and `has."Usage"` may also be written `has["Usage"]`.
@@ -812,16 +813,16 @@ on a function, a banner or a line, which hold no named parts. An unquoted `has.U
 like any other name.
 
 ```
-base.lines[name ~ "^TODO"].drop(reason: "ours tracks these")
+up.lines[name ~ "^TODO"].drop(reason: "ours tracks these")
 ```
 
 A bare class name is every node of that kind:
 
 ```
-base.sections.demote()
+up.sections.demote()
 ```
 
-An empty call, `base.sections()`, stays an error — that reads as a call someone meant to fill in,
+An empty call, `up.sections()`, stays an error — that reads as a call someone meant to fill in,
 and guessing what they meant is the one thing this language will not do.
 
 ### Axes
@@ -829,10 +830,10 @@ and guessing what they meant is the one thing this language will not do.
 From a node to one the document relates to it:
 
 ```
-base.Setup.children.demote()     the sections one level down
-base.Setup.next.promote()        the next section at this level
-base.Setup.prev                  the one before
-base."Step A".parent             the section this one sits in
+up.Setup.children.demote()     the sections one level down
+up.Setup.next.promote()        the next section at this level
+up.Setup.prev                  the one before
+up."Step A".parent             the section this one sits in
 ```
 
 Only markdown nests by level, so `children` and `parent` are its alone. A yaml or json key nests
@@ -843,11 +844,11 @@ Axes chain, and each step is checked against what it lands on — `children` giv
 `first` may follow it; `next` wants one node, so it may not:
 
 ```
-base.sections[level == 2].first.children.demote()
+up.sections[level == 2].first.children.demote()
 ```
 
 A path is read the same wherever it is written, so an axis also says where a `move` goes, what a
-`swap` trades with and where a `split` cuts: `base.Setup.split(base.Setup.children.first)`.
+`swap` trades with and where a `split` cuts: `up.Setup.split(up.Setup.children.first)`.
 
 ### Writing at a place
 
@@ -855,17 +856,17 @@ A path is read the same wherever it is written, so an axis also says where a `mo
 derived content there:
 
 ```
-base.start.project(base.sections[level == 2]){
+up.start.project(up.sections[level == 2]){
     ```markdown
     - {name}
     ```
 }
 ```
 
-`base.start.project(base.sections[level == 2], `- {name}`)` and
-`base.start(base.sections[level == 2].project(`- {name}`))` say the same thing on one line. A
+`up.start.project(up.sections[level == 2], `- {name}`)` and
+`up.start(up.sections[level == 2].project(`- {name}`))` say the same thing on one line. A
 `{ }` block always puts its content on lines of its own. Inside a view a projection reads the
-view: `base.prompt.as(markdown).start(base.prompt.as(markdown).sections.project(`- {name}`))`.
+view: `up.prompt.as(markdown).start(up.prompt.as(markdown).sections.project(`- {name}`))`.
 
 The fields a template can use are `{name}`, `{level}`, `{body}` and `{anchor}`. `{anchor}` is
 GitHub's link target for a heading — lower-cased, punctuation removed, spaces made hyphens, a
@@ -879,12 +880,12 @@ a typo cannot reach the product as a literal `{nmae}`.
 recursion:
 
 ```
-fn bilingual(up, ours) {
-    up.after(ours)
+fn bilingual(at, ours) {
+    at.after(ours)
 }
 
-bilingual(base.Overview, self.overview)
-bilingual(base.Usage, self.usage)
+bilingual(up.Overview, self.overview)
+bilingual(up.Usage, self.usage)
 ```
 
 A parameter is whatever the call passes — an address of upstream's, content of ours — and each
@@ -899,7 +900,7 @@ Content short enough to read beside the statement that places it can live in the
 line of dashes. It is addressed exactly as a file of ours would be:
 
 ````
-base.Overview.after(self.job)
+up.Overview.after(self.job)
 
 ---
 Self:
@@ -915,8 +916,8 @@ The fence's language tag is the kind — the same tags a content fence takes, `m
 command whose prompt is markdown, say:
 
 ````
-base.description.start(self.toml.description)
-base.prompt.as(markdown).Steps.after(self.markdown.job)
+up.description.start(self.toml.description)
+up.prompt.as(markdown).Steps.after(self.markdown.job)
 
 ---
 Self:
@@ -934,8 +935,8 @@ Self:
 and a template can have several sections, named:
 
 ````
-base.Overview.after(self.docs.job)
-base.Usage.after(self.notes.tip)
+up.Overview.after(self.docs.job)
+up.Usage.after(self.notes.tip)
 
 ---
 Self as docs:
@@ -977,7 +978,7 @@ those, our file is upstream plus our edits, and the template says so:
 
 ```
 // mine/hooks/run.lm
-base.merge(self)
+up.merge(self)
 ```
 
 Edit `mine/hooks/run.sh` as you would any file; the build uses it as the product and still checks
@@ -1037,7 +1038,7 @@ file. A json product is built from both layers, and its template says exactly th
 
 ```
 // mine/hooks/hooks.lm
-base.merge(self)
+up.merge(self)
 ```
 
 The objects are merged key by key. In a list, an entry of ours takes the place of the upstream entry
@@ -1085,8 +1086,8 @@ refused rather than handing back upstream's file under our name.
      taken with `set` or put next to upstream's with `start` / `append`, a toml or yaml file's
      top-level keys the same — or the build fails. A frontmatter value over several lines (a list,
      a nested map) is not joined on one line: it can only be taken whole, with
-     `base.frontmatter.set(self.frontmatter)`, and the build says so when it has to be. A key
-     upstream does not have is added to the file with `base.append(self.<key>)`.
+     `up.frontmatter.set(self.frontmatter)`, and the build says so when it has to be. A key
+     upstream does not have is added to the file with `up.append(self.<key>)`.
 4. Copies our layer's files. A file of ours at the same path as an upstream file, with no template,
    is an error — it would silently replace upstream with no reason. An identical copy is fine.
 5. Copies upstream files listed in `take`, applies `mirror`, writes `manifest`.
@@ -1147,7 +1148,7 @@ key's neighbour says nothing about where a new key belongs), and inferring one w
 an order upstream never had; a key of ours that the product does not have is reported instead.
 
 - after the nearest preceding section that the template does place, in the same statement
-  (`base.Install.after("Install XSDD")` becomes `base.Install.after("Install XSDD", "Proxy settings")`);
+  (`up.Install.after("Install XSDD")` becomes `up.Install.after("Install XSDD", "Proxy settings")`);
 - or, if it comes first in our file, before the nearest following one.
 - Where that neighbour is placed in both branches of an `if`, the section is written into both, so
   it is in the product whichever way the question goes.
@@ -1162,7 +1163,7 @@ When a completed call gets a section path, or would pass 100 characters on one l
 written as a block with one argument per line:
 
 ```
-base."Example 2".after{
+up."Example 2".after{
     "Example 2 notes"
     self."Example 2 notes"."Phase 1"
 }
@@ -1292,7 +1293,7 @@ settings, variables files and `{{@name}}` placeholders; the compiler's own error
 type; completion of nodes, the methods each node takes, predicates, axes, `Self:` sections, a
 function's parameters and a projection's fields; hover help and signature help for every word of
 the language; a live preview of the product a template builds; a unified diff of that product
-against upstream, with the edits a `base.merge(self)` file carries marked as such; and go to
+against upstream, with the edits a `up.merge(self)` file carries marked as such; and go to
 definition from a template to the upstream or our file and section it names — through a
 function's parameters and into `Self:` sections too. It reads a tree's `loom` version the way the
 build does. `make vs` runs its tests and packages it.

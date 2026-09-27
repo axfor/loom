@@ -59,7 +59,7 @@ func TestRegistrySettingIsGone(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, filepath.Join(dir, "loom.om"), "base \"up\"\nself \"me\"\nregistry \"hooks\" \"hooks/(x)\"\n")
 	_, err := lang.LoadConfig(filepath.Join(dir, "loom.om"))
-	if err == nil || !strings.Contains(err.Error(), "base.merge(self)") {
+	if err == nil || !strings.Contains(err.Error(), "up.merge(self)") {
 		t.Errorf("want the line refused with what to do instead, got: %v", err)
 	}
 }
@@ -73,13 +73,13 @@ func TestStatementsInAJsonTemplateAreRefused(t *testing.T) {
 		"me/hooks/hooks.lm":   "base.merge(self)\nbase.SessionStart.after(`x`)\n",
 	})
 	_, err := buildTree(t, c, filepath.Join(dir, "out"))
-	if err == nil || !strings.Contains(err.Error(), "base.merge(self)") {
+	if err == nil || !strings.Contains(err.Error(), "up.merge(self)") {
 		t.Fatalf("want an error naming the one statement a registry takes, got: %v", err)
 	}
 
 	// and an empty template is refused too: it would be the only way to ask for this, and it says nothing
 	mustWrite(t, filepath.Join(dir, "me", "hooks", "hooks.lm"), "// merged somehow?\n")
-	if _, err := buildTree(t, c, filepath.Join(dir, "out")); err == nil || !strings.Contains(err.Error(), "base.merge(self)") {
+	if _, err := buildTree(t, c, filepath.Join(dir, "out")); err == nil || !strings.Contains(err.Error(), "up.merge(self)") {
 		t.Fatalf("want the same error for a template with no statement, got: %v", err)
 	}
 }

@@ -166,7 +166,7 @@ func PlanBuild(c *lang.Config, writeAnchors bool) (*Plan, error) {
 			}
 			if upHas(rel) && !sameEntry(abs, filepath.Join(upRoot, filepath.FromSlash(rel))) {
 				fail(fmt.Errorf("%s: this file in our layer shadows the upstream file at the same path, but no template accounts for it — "+
-					"to use ours whole, write template %s: base.replace(self, reason: \"...\"); otherwise weave it in section by section",
+					"to use ours whole, write template %s: up.replace(self, reason: \"...\"); otherwise weave it in section by section",
 					filepath.Join(meRoot, filepath.FromSlash(rel)), lang.TemplateName(c, rel)))
 				return nil
 			}

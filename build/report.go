@@ -221,7 +221,7 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 				// only arrives whole. Upstream's would otherwise stand in the product with ours nowhere.
 				if strings.TrimSpace(want) == "" {
 					if t.Type == "markdown" && keyBlock(ours, k) != keyBlock(out, k) {
-						errs = append(errs, fmt.Errorf("%s: our frontmatter key %q has a value over several lines and the product has upstream's — a value like that can only be taken whole: base.frontmatter.set(self.frontmatter)", t.Path, k))
+						errs = append(errs, fmt.Errorf("%s: our frontmatter key %q has a value over several lines and the product has upstream's — a value like that can only be taken whole: up.frontmatter.set(self.frontmatter)", t.Path, k))
 					}
 					continue
 				}
@@ -229,7 +229,7 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 				theirs, _ := unquote(got)
 				if !found || !strings.Contains(theirs, mine) {
 					if t.Type == "markdown" {
-						errs = append(errs, fmt.Errorf("%s: our frontmatter key %q is not in the product %s — base.frontmatter.set(self.frontmatter) takes all of ours, base.frontmatter.%s.start(self.frontmatter.%s) puts ours before upstream's",
+						errs = append(errs, fmt.Errorf("%s: our frontmatter key %q is not in the product %s — up.frontmatter.set(self.frontmatter) takes all of ours, up.frontmatter.%s.start(self.frontmatter.%s) puts ours before upstream's",
 							t.Path, k, t.Target, k, k))
 						continue
 					}
@@ -237,11 +237,11 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 					// upstream to have it. Where it does not, the key is new to the file and is
 					// added to it: naming a mode here would send the author to an error instead.
 					if _, shared := keyValue(t.Type, up, k); !shared {
-						errs = append(errs, fmt.Errorf("%s: our key %q is not in the product %s, and upstream has no such key — add it to the file: base.append(self.%s)",
+						errs = append(errs, fmt.Errorf("%s: our key %q is not in the product %s, and upstream has no such key — add it to the file: up.append(self.%s)",
 							t.Path, k, t.Target, lang.NameTextFor(k, c.Loom)))
 						continue
 					}
-					errs = append(errs, fmt.Errorf("%s: our key %q is not in the product %s — say what to do with it: base.%s.start(self.%s), or once for the whole tree with `keys start` in loom.om",
+					errs = append(errs, fmt.Errorf("%s: our key %q is not in the product %s — say what to do with it: up.%s.start(self.%s), or once for the whole tree with `keys start` in loom.om",
 						t.Path, k, t.Target, lang.NameTextFor(k, c.Loom), lang.NameTextFor(k, c.Loom)))
 				}
 			}
@@ -631,9 +631,9 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 			what := nodeWord(kind)
 			// A line is named by its text, which is rarely an identifier: say it the way that
 			// always reads as a line.
-			how := "base." + lang.NameTextFor(name, c.Loom)
+			how := "up." + lang.NameTextFor(name, c.Loom)
 			if kind == "line" {
-				how = "base.line(" + lang.Quote(name) + ")"
+				how = "up.line(" + lang.Quote(name) + ")"
 			}
 			errs = append(errs, fmt.Errorf("%s: upstream content lost: in %s, %s %q is not in the product and no drop / replace gives a reason. "+
 				"Weave it in, or write: %s.drop(reason: \"...\")", t.Path, t.Target, what, name, how))

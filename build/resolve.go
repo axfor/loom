@@ -9,7 +9,7 @@ package build
 // build that did not happen.
 //
 // Every question is asked of upstream as it arrives, not of the product half-built. That is what
-// the questions mean: `base.has.Overview` asks whether upstream has that section, and a write
+// the questions mean: `up.has.Overview` asks whether upstream has that section, and a write
 // fails when upstream has no such anchor. Neither depends on the order edits are applied in, which
 // is why one pass up front is enough.
 
@@ -206,7 +206,7 @@ func describeCond(c *lang.Cond, loom string, held bool) string {
 	case c.Var != "":
 		what = c.Var
 	case c.Has != "":
-		what = "base.has." + lang.NameTextFor(c.Has, loom)
+		what = "up.has." + lang.NameTextFor(c.Has, loom)
 	}
 	if inner {
 		return what + " held"
