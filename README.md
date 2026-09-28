@@ -181,6 +181,7 @@ checks that no upstream function went missing without a stated reason. See
 
 ## Reference
 
+- [The language at a glance](#the-language-at-a-glance)
 - [Layout](#layout)
 - [Settings: loom.om](#settings-loomom)
 - [Templates](#templates)
@@ -195,6 +196,213 @@ checks that no upstream function went missing without a stated reason. See
 - [Install](#install)
 - [Commands](#commands)
 - [Editor](#editor)
+
+---
+
+## The language at a glance
+
+A template is a list of statements, one per line. Each names a place in upstream's file — `up` —
+and says what to do there, usually with content of ours. This section is the whole language on one
+page; every row links to where it is explained in full.
+
+### A template that uses most of it
+
+```
+import job "/shared/job"
+
+fn place(at, ours) {
+    at.after(ours)
+}
+
+up.frontmatter.description.start(self.frontmatter.description)
+
+if up.has.Overview {
+    place(up.Overview, self.Where_this_fits)
+} else {
+    up.start(self.Where_this_fits)
+}
+
+up.sections[name ~ "^Step " && level == 2].demote()
+up."How it compares".drop(reason: "compares upstream with other projects; not ours")
+up.Usage.move(before: up.Troubleshooting)
+up.Troubleshooting.after(self.troubleshootingNotes)
+up.append(job.Job)
+```
+
+Line by line: take another file of ours as `job`; define a function that places our content after
+an upstream node; put our description in front of upstream's; place "Where this fits" after the
+overview, or at the start if upstream has none; take every level-two "Step …" section down a level;
+leave one section out, saying why; move a section, byte for byte; put our notes after
+Troubleshooting; append a section from the imported file. `self.Where_this_fits` and
+`self.troubleshootingNotes` both find their sections by their words — "Where this fits",
+"Troubleshooting notes".
+
+### Names and addresses
+
+| Written | Means | More |
+|---|---|---|
+| `up` | the upstream file at the product's path — the only thing a template changes. `base` is its old name | [Objects](#objects) |
+| `self` | our file at the same path, or the template's own `Self:` sections | [Objects](#objects) |
+| `import cmd "/.claude/commands/ship"` | another file of ours, named `cmd` | [import](#import) |
+| `import up "/old/name"`, `up = "old/NAME.md"` | upstream moved the file this one is woven onto | [import](#import) |
+| `up.Install`, `up.usageTips`, `up.Usage_Tips` | a node by its name, matched by its **words**: separators and case do not count | [String form and identifier form](#string-form-and-identifier-form) |
+| `up."How it compares"` | a node by its exact name | [String form and identifier form](#string-form-and-identifier-form) |
+| `up."Example 2"."Phase 1"` | a section path: each name looked up inside the one before | [Section paths](#section-paths) |
+| `up.jobs.build.steps`, `up.steps` | a key by its dotted path, or a trailing part of it | [Nodes](#nodes) |
+| `up.frontmatter.description` | a frontmatter key | [Nodes](#nodes) |
+| `up.section("…")`, `up.line("…")`, `up.function("…")`, `up.marker("# ── …")`, `up.key("a.b")` | a node of a kind other than the file's default | [Nodes](#nodes) |
+| `self.body`, `self.frontmatter` | a part of our file | [Arguments](#arguments) |
+| `up.prompt.as(markdown)` | a key's value read as a document of another type | [Views](#views) |
+
+A name that matches two nodes stops the build where it is written; the quoted form says which.
+
+### Groups and predicates
+
+| Written | Means | More |
+|---|---|---|
+| `up.sections` | every section — likewise `functions`, `markers`, `lines`, `keys`, `values` | [Selecting a group](#selecting-a-group) |
+| `up.sections[level == 2 && name ~ "^Step "]` | the ones a predicate picks | [Predicates](#predicates) |
+| `up.sections(level: 2, match: "^Step ")` | the same, in the spelling that came first | [Selecting a group](#selecting-a-group) |
+| `….first`, `….last` | one node out of a group | [Predicates](#predicates) |
+
+| Predicate | Asks | Of |
+|---|---|---|
+| `level == 2` · `!=` `<` `<=` `>` `>=` | how deep a heading sits | sections |
+| `name == "Setup"` · `name ~ "^Step "` | what a node is called, exactly or by a regular expression | every kind |
+| `value == ""` | what a key holds | keys |
+| `empty` | whether nothing sits under the node | not lines |
+| `calls "curl"` | what a shell function runs, where a command goes | functions |
+| `has."Usage"` · `has["Usage"]` · `has.Usage` | whether the node holds a part by that name | sections, keys |
+| `&&` · `\|\|` · `!` · `( )` | combine terms | |
+
+A group takes what means the same done to each of it: `drop`, and for sections `promote`, `demote`
+and `unwrap`. A predicate that picks nothing is an error.
+
+### Structure: axes and places
+
+| Written | Means | More |
+|---|---|---|
+| `up.Setup.children` | the sections one level down — a group | [Axes](#axes) |
+| `up.Setup.next`, `up.Setup.prev` | the next or previous section at its level; for a key, its sibling under the same parent | [Axes](#axes) |
+| `up."Step A".parent` | the section this one sits in | [Axes](#axes) |
+| `up.sections[level == 2].first.children` | axes chain, each step checked against what it lands on | [Axes](#axes) |
+| `up.Usage.after`, `up.Usage.before`, `up.start`, `up.end`, `up.append` | a place — a span of length zero — where `project` writes and a `move` goes | [Writing at a place](#writing-at-a-place) |
+
+### What a statement does
+
+| Kind | Statement | Needs a reason | More |
+|---|---|---|---|
+| insert | `up.X.after(…)`, `up.X.before(…)`, `up.start(…)`, `up.append(…)`, `up.end(…)` | no | [Methods](#methods) |
+| wrap | `up.X.wrap(before, after)` | no | [Restructuring](#restructuring) |
+| value | `up.key.set(v)`, `.start(v)`, `.append(v)`, `.end(v)`; `up.frontmatter.set(self.frontmatter)` | no | [Methods](#methods) |
+| rewrite | `up.X.replace(content, reason: "…")`, `up.X.drop(reason: "…")` | **yes** | [Reasons](#reasons) |
+| restructure | `up.X.move(after: up.Y)` or `move(up.Y.after)`, `up.X.swap(up.Y)`, `promote()`, `demote()` | no — checked byte for byte | [Reasons](#reasons) |
+| restructure | `up.X.split(up.X."Step B")`, `split(up.line("Then:"), "Part two")` | no | [Restructuring](#restructuring) |
+| restructure | `up.X.unwrap(reason: "…")`, `up.X.join(reason: "…")` | **yes** — a heading of upstream's goes | [Restructuring](#restructuring) |
+| derive | ``up.start.project(up.sections[level == 2], `- {name}`)`` | no — it is ours | [Projecting upstream's shape](#projecting-upstreams-shape) |
+| whole file | `up.merge(self)` · `return self // reason: …` · `up.replace(self, reason: "…")` | see each | [Following upstream](#following-upstream), [Registries](#registries), [Returning our file](#returning-our-file) |
+
+### Content
+
+| Written | Is | More |
+|---|---|---|
+| `self.Where_this_fits`, `self."A"."B"`, `cmd.Job` | a node of ours, by name or path | [Arguments](#arguments) |
+| `"Where this fits"` | our section of that name — under `loom "2.0"`, the text itself | [What a version changes](#what-a-version-changes) |
+| `` `> Generated — do not edit` `` | literal content, ours | [Literals](#literals) |
+| ```` ```markdown … ``` ```` | a fence: literal content that says what it is, checked against where it goes | [Literals](#literals), [Content and its place](#content-and-its-place) |
+| `after(a, b)` · `after{ a ⏎ b }` | several pieces, in order; a block puts one per line | [Arguments](#arguments) |
+| `{name}` `{level}` `{body}` `{anchor}` | the fields a projection writes for each node | [Writing at a place](#writing-at-a-place) |
+| `{{@url}}` | a variable, expanded wherever our content is written | [Variables](#variables) |
+
+### Questions, results and returns
+
+| Written | Means | More |
+|---|---|---|
+| `if up.has.Overview { … }` | write only if upstream has the part; reads, never writes | [Asking the document a question](#asking-the-document-a-question) |
+| `} else if up.has.Summary { … } else { … }` | the first question that holds decides | [Asking the document a question](#asking-the-document-a-question) |
+| `if up.sections[level == 2].any`, `….count` | whether a group has anything in it | [Asking the document a question](#asking-the-document-a-question) |
+| `ok = up.Overview.after(…)` | catch a write's result instead of stopping the build | [Asking the document a question](#asking-the-document-a-question) |
+| `if !ok { return err.format("no Overview: %s", ok) }` | read it, and fail with our own message | [Asking the document a question](#asking-the-document-a-question) |
+| `return self // reason: …` · `return err.format(…)` · `return` | the product is our file · fail · stop here | [Returning our file](#returning-our-file) |
+
+A caught result has to be read, is read in the `if` branch that caught it or deeper, and a name may
+catch again once what it held has been read. The report lists every branch that did not run.
+
+### Functions
+
+```
+fn place(at, ours) {
+    at.after(ours)
+}
+
+place(up.Overview, self.Where_this_fits)
+place(up.Usage, self.Usage_notes)
+```
+
+A function is inlined where it is called: a parameter is whatever the call passes, an error in it
+names the call, and it returns nothing. `up`, `base` and `self` cannot name a parameter, a
+function or a caught result, a function cannot call itself, and a `return` in its body is refused
+except `return err.format(…)`. [Grouping statements in a file](#grouping-statements-in-a-file)
+
+### Content written in the template
+
+````
+up.Overview.after(self.job)
+
+---
+Self:
+    ```markdown
+    ## job
+
+    Where it sits in the build.
+    ```
+````
+
+After a line of dashes, `Self:` and `Self as name:` sections hold our content in fences whose tags
+say what each is. The address is `self[.section][.kind].part`; each middle step may be left out when
+only one document holds the name. A template with such sections has no file of ours beside it, and
+every section written there must be placed. [Our content, written in the template](#our-content-written-in-the-template)
+
+### Versions
+
+`loom "2.0"` in `loom.om` changes one thing: a bare string is the text itself rather than the name
+of a section of ours. Everything else reads the same in both versions.
+[What a version changes](#what-a-version-changes)
+
+### In brief
+
+```ebnf
+template   = { line } [ "---" { resource } ] ;
+line       = import | fn | statement | comment ;
+import     = "import" [ ident ] string ;
+fn         = "fn" ident "(" [ ident { "," ident } ] ")" "{" { statement } "}" ;
+statement  = [ ident "=" ] address "." method ( "(" [ args ] ")" | "{" { arg } "}" )
+           | "if" [ "!" ] question block { "else" "if" [ "!" ] question block } [ "else" block ]
+           | "return" [ "self" [ "//" "reason:" text ] | "err" "." "format" "(" string { "," ident } ")" ]
+           | ident "(" [ address { "," address } ] ")"             (* a fn call *)
+           | "up" "=" string ;                                      (* upstream moved the file *)
+question   = ident | "up" "." "has" "." name | group "." ( "any" | "count" ) ;
+address    = ( "up" | "self" | ident ) { "." step } ;
+step       = name | kind "(" string ")" | group | axis | place | "frontmatter" | "body"
+           | "as" "(" type ")" ;
+group      = class [ "[" predicate "]" | "(" { named } ")" ] ;
+name       = ident | string ;                   (* ident: by its words · string: exactly *)
+class      = "sections" | "functions" | "markers" | "lines" | "keys" | "values" ;
+axis       = "children" | "next" | "prev" | "parent" | "first" | "last" ;
+place      = "after" | "before" | "start" | "end" | "append" ;
+method     = "after" | "before" | "start" | "append" | "end" | "replace" | "drop" | "set"
+           | "merge" | "move" | "swap" | "promote" | "demote" | "wrap" | "unwrap" | "split"
+           | "join" | "project" ;
+arg        = address | string | literal | fence | "reason" ":" string
+           | ( "after" | "before" ) ":" address ;
+predicate  = term { ( "&&" | "||" ) term } ;
+term       = [ "!" ] ( "level" cmp number | "name" ( "==" | "!=" | "~" ) string
+           | "value" ( "==" | "!=" | "~" ) string | "empty" | "calls" string
+           | "has" ( "." name | "[" string "]" ) | "(" predicate ")" ) ;
+resource   = "Self" [ "as" ident ] ":" { fence } ;
+```
+
+`base` reads wherever `up` does. [SYNTAX.md](SYNTAX.md) is the specification this implements.
 
 ---
 
