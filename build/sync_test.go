@@ -24,6 +24,26 @@ const (
 	meRun = "#!/bin/sh\nmain() {\n  echo me\n}\n\nhelp() {\n  echo help\n}\n"
 )
 
+// Two vanished nodes with the same content cannot both be renamed to one new node.
+func TestSyncLeavesManyToOneRenamesAlone(t *testing.T) {
+	old := "## A\n\nsame\n\n## B\n\nsame\n\n## Keep\n\nk\n"
+	now := "## C\n\nsame\n\n## Keep\n\nk\n"
+	tpl := "up.A.after(`one`)\nup.B.after(`two`)\n"
+	c, dir := treeRepo(t, "", map[string]string{"up/doc.md": old, "t/doc.md.lm": tpl})
+	next := t.TempDir()
+	mustWrite(t, filepath.Join(next, "doc.md"), now)
+	r, err := build.Sync(c, next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, filepath.Join(dir, "t", "doc.md.lm")); got != tpl {
+		t.Errorf("an ambiguous rename rewrote the template:\n%s", got)
+	}
+	if len(r.Followed) != 0 || len(r.Ambiguous) != 2 {
+		t.Errorf("both old nodes must be reported as ambiguous, never followed: %+v", r)
+	}
+}
+
 // A merge template builds our file as it is, still checked for upstream content it lost.
 func TestMergeTemplate(t *testing.T) {
 	c, dir := besideRepo(t, map[string]string{

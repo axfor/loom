@@ -30,7 +30,7 @@ type Rename struct {
 	New  string
 }
 
-// Ambiguity is a name that vanished and could have become any of several — so it is left alone.
+// Ambiguity is a vanished name that cannot be paired uniquely with a new one — so it is left alone.
 type Ambiguity struct {
 	File  string
 	Kind  string
@@ -39,8 +39,8 @@ type Ambiguity struct {
 }
 
 // renames compares one file's two versions and reports what was renamed. A name is treated as
-// renamed only when exactly one new name holds byte-identical content; a vanished name with no
-// such partner was deleted, and one with several is ambiguous.
+// renamed only when the pairing is unique in both directions and the content is byte-identical.
+// A vanished name with no such partner was deleted; competing old or new nodes are ambiguous.
 func renames(file, typ, old, now string) ([]Rename, []Ambiguity) {
 	oldTree, nowTree := ast.New(typ, old), ast.New(typ, now)
 	if oldTree == nil || nowTree == nil {
@@ -59,6 +59,12 @@ func renames(file, typ, old, now string) ([]Rename, []Ambiguity) {
 		for _, n := range oldNodes {
 			oldNames[n.Name] = true
 		}
+		oldBodies := map[string]int{}
+		for _, n := range oldNodes {
+			if !nowNames[n.Name] {
+				oldBodies[body(oldTree, n)]++
+			}
+		}
 		for _, g := range oldNodes {
 			if nowNames[g.Name] {
 				continue
@@ -76,9 +82,9 @@ func renames(file, typ, old, now string) ([]Rename, []Ambiguity) {
 					could = append(could, f.Name)
 				}
 			}
-			switch len(could) {
-			case 0:
-			case 1:
+			switch {
+			case len(could) == 0:
+			case len(could) == 1 && oldBodies[want] == 1:
 				out = append(out, Rename{file, kind, g.Name, could[0]})
 			default:
 				amb = append(amb, Ambiguity{file, kind, g.Name, could})

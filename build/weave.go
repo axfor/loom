@@ -258,6 +258,9 @@ func apply(c *lang.Config, t *lang.Template, stmts []lang.Stmt, tree ast.Tree, r
 			if err != nil {
 				return err
 			}
+			if dst[0] == src[0] {
+				return fmt.Errorf("%s: move takes a different node as its target", s.Rng)
+			}
 			if dst[0] >= src[0] && dst[0] < src[1] {
 				return fmt.Errorf("%s: move takes a target outside the node being moved", s.Rng)
 			}
@@ -337,13 +340,12 @@ func apply(c *lang.Config, t *lang.Template, stmts []lang.Stmt, tree ast.Tree, r
 				if g == nil {
 					return fmt.Errorf("%s: %s is not a heading", s.Rng, s.Anchor)
 				}
-				out := make([]string, 0, len(lines)-1)
-				for _, l := range lines[1:] {
-					if h := reHeading.FindStringSubmatch(l); h != nil && len(h[1]) > len(g[1]) {
-						l = l[1:]
+				for _, n := range ast.Addressable(tree, "heading") {
+					if n.Line > span[0] && n.Line < end {
+						lines[n.Line-span[0]] = lines[n.Line-span[0]][1:]
 					}
-					out = append(out, l)
 				}
+				out := lines[1:]
 				// The blank line the heading left behind goes with it.
 				for len(out) > 0 && strings.TrimSpace(out[0]) == "" {
 					out = out[1:]
@@ -412,9 +414,9 @@ func apply(c *lang.Config, t *lang.Template, stmts []lang.Stmt, tree ast.Tree, r
 				drop := len(h[1]) - len(g[1])
 				end := extent(tree, s.Kind, cut)
 				out := append([]string{}, lines[cut[0]:end]...)
-				for i, l := range out {
-					if m := reHeading.FindStringSubmatch(l); m != nil && len(m[1]) > drop {
-						out[i] = l[drop:]
+				for _, n := range ast.Addressable(tree, "heading") {
+					if n.Line >= cut[0] && n.Line < end {
+						out[n.Line-cut[0]] = out[n.Line-cut[0]][drop:]
 					}
 				}
 				edits = append(edits, edit{cut[0], end, out, len(edits)})
@@ -1162,15 +1164,6 @@ func targets(tree ast.Tree, s lang.Stmt) ([][2]int, error) {
 // walkAxes follows a chain of axes, one at a time, carrying every node each step lands on into the
 // next. first and last narrow a group; the rest step from one node to another.
 func walkAxes(tree ast.Tree, s lang.Stmt, from [][2]int) ([][2]int, error) {
-	nodes := ast.Addressable(tree, s.Kind)
-	nameAt := func(line int) string {
-		for _, n := range nodes {
-			if n.Line == line {
-				return n.Name
-			}
-		}
-		return ""
-	}
 	cur := from
 	for _, axis := range strings.Split(s.Axis, ".") {
 		if len(cur) == 0 {
@@ -1188,7 +1181,7 @@ func walkAxes(tree ast.Tree, s lang.Stmt, from [][2]int) ([][2]int, error) {
 		for _, span := range cur {
 			step := s
 			step.Axis = axis
-			hit, err := walkAxis(tree, step, nameAt(span[0]))
+			hit, err := walkAxis(tree, step, span[0])
 			if err != nil {
 				return nil, err
 			}
@@ -1202,18 +1195,19 @@ func walkAxes(tree ast.Tree, s lang.Stmt, from [][2]int) ([][2]int, error) {
 // walkAxis steps from a node to the nodes the document relates it to. Only markdown nests, so
 // children and parent are its alone; next and prev are the neighbours in file order, which every
 // kind has.
-func walkAxis(tree ast.Tree, s lang.Stmt, name string) ([][2]int, error) {
+func walkAxis(tree ast.Tree, s lang.Stmt, line int) ([][2]int, error) {
 	nodes := ast.Addressable(tree, s.Kind)
 	at := -1
 	for i, n := range nodes {
-		if n.Name == name {
+		if n.Line == line {
 			at = i
 			break
 		}
 	}
 	if at < 0 {
-		return nil, fmt.Errorf("%s: %s %q is not one of this file's nodes, so there is nothing to step from", s.Rng, s.Kind, name)
+		return nil, fmt.Errorf("%s: line %d is not a %s node, so there is nothing to step from", s.Rng, line+1, s.Kind)
 	}
+	name := nodes[at].Name
 	nests := nodes[at].Level > 0
 	// A key nests too, by its path: jobs.build and jobs.test are siblings under jobs, and
 	// jobs.build.runs-on is below the first, not beside it. Taking the next node in file order
@@ -1368,10 +1362,18 @@ func project(c *lang.Config, t *lang.Template, r lang.Ref, rel string) (string, 
 	}
 	var out []string
 	slugs := newSlugger()
+	anchors := map[int]string{}
+	nodes := ast.Addressable(tree, r.Project.Kind)
+	if md, ok := tree.(*ast.Markdown); ok && r.Project.Kind == "heading" {
+		nodes = md.Headings()
+	}
+	for _, n := range nodes {
+		anchors[n.Line] = slugs.slug(n.Name)
+	}
 	for _, n := range found {
 		line := r.Literal
 		if strings.Contains(line, "{anchor}") {
-			line = strings.ReplaceAll(line, "{anchor}", slugs.slug(n.Name))
+			line = strings.ReplaceAll(line, "{anchor}", anchors[n.Line])
 		}
 		line = strings.ReplaceAll(line, "{name}", n.Name)
 		line = strings.ReplaceAll(line, "{level}", strconv.Itoa(n.Level))
@@ -1541,10 +1543,14 @@ func (s *slugger) slug(heading string) string {
 		}
 	}
 	base := b.String()
-	n := s.seen[base]
-	s.seen[base] = n + 1
-	if n == 0 {
-		return base
+	slug := base
+	for {
+		if _, used := s.seen[slug]; !used {
+			break
+		}
+		s.seen[base]++
+		slug = fmt.Sprintf("%s-%d", base, s.seen[base])
 	}
-	return fmt.Sprintf("%s-%d", base, n)
+	s.seen[slug] = 0
+	return slug
 }

@@ -930,7 +930,7 @@ func (in *interp) method(r receiver, st oStep) error {
 		reason = a.val.str
 	}
 	at := st.pos
-	if r.sel != nil && !contains(groupMethods, st.name) {
+	if r.sel != nil && !contains(groupMethods, st.name) && !(st.name == "join" && !r.many) {
 		return fmt.Errorf("%s: %s selected a group, and %s is not something to do to each of them — a group takes %s",
 			st.pos, "the predicate", st.name, strings.Join(groupMethods, " / "))
 	}
@@ -1044,10 +1044,7 @@ func (in *interp) method(r receiver, st oStep) error {
 		if err != nil {
 			return err
 		}
-		if other.Kind == r.kind && other.Anchor == r.anchor {
-			return fmt.Errorf("%s: swap takes a different node", at)
-		}
-		out = append(out, Stmt{Op: "swap", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Move: other, Rng: at})
+		out = append(out, Stmt{Op: "swap", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Axis: r.axis, Move: other, Rng: at})
 	case "unwrap":
 		if reason == "" {
 			return fmt.Errorf("%s: unwrap takes a heading out of the product and needs a reason: unwrap(reason: \"...\")", at)
@@ -1069,7 +1066,7 @@ func (in *interp) method(r receiver, st oStep) error {
 		if !r.node || len(pos) != 0 {
 			return fmt.Errorf("%s: join applies to a node and takes only a reason", at)
 		}
-		out = append(out, Stmt{Op: "join", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Axis: r.axis, Reason: reason, Rng: at})
+		out = append(out, Stmt{Op: "join", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Axis: r.axis, Select: r.sel, Reason: reason, Rng: at})
 	case "split":
 		// Cutting at a heading already inside the section needs no new name: that heading becomes
 		// the second half, at this section's own level. Cutting anywhere else does need one, so
@@ -1085,7 +1082,7 @@ func (in *interp) method(r receiver, st oStep) error {
 			if err != nil {
 				return err
 			}
-			out = append(out, Stmt{Op: "split", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within,
+			out = append(out, Stmt{Op: "split", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Axis: r.axis,
 				Move: cut, Rng: at})
 			break
 		}
@@ -1099,7 +1096,7 @@ func (in *interp) method(r receiver, st oStep) error {
 		if r.typ != "markdown" || r.kind != "heading" {
 			return fmt.Errorf("%s: split cuts a section in two, so it applies to a markdown section", at)
 		}
-		out = append(out, Stmt{Op: "split", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within,
+		out = append(out, Stmt{Op: "split", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Axis: r.axis,
 			Move: cut, Reason: pos[1].val.str, Rng: at})
 	case "project":
 		// base.start.project(sel){ template } — the place says where the derived content goes,
@@ -1143,9 +1140,6 @@ func (in *interp) method(r receiver, st oStep) error {
 		}
 		if moveTo == nil {
 			return fmt.Errorf("%s: move needs a side: move(after: up.Y) or move(before: up.Y)", at)
-		}
-		if moveTo.Kind == r.kind && moveTo.Anchor == r.anchor && len(moveTo.Within) == len(r.within) {
-			return fmt.Errorf("%s: move takes a different node as its target", at)
 		}
 		out = append(out, Stmt{Op: "move", Kind: r.kind, Anchor: r.anchor, Ident: r.ident, At: r.pos, Within: r.within, Axis: r.axis, Move: moveTo, Rng: at})
 	case "promote", "demote":
@@ -1197,16 +1191,7 @@ func (in *interp) method(r receiver, st oStep) error {
 		out = append(out, Stmt{Op: op, Rng: at})
 	}
 	if r.viewOf != "" {
-		// Statements in a view go into an in statement; adjacent ones on the same key and type
-		// merge into one, so the key's value is parsed and written back once
-		if n := len(*in.out()); n > 0 {
-			last := &(*in.out())[n-1]
-			if last.Op == "in" && last.Key == r.viewOf && last.As == r.viewAs {
-				last.Kids = append(last.Kids, out...)
-				return nil
-			}
-		}
-		*in.out() = append(*in.out(), Stmt{Op: "in", Key: r.viewOf, As: r.viewAs, Kids: out, Rng: r.pos})
+		in.appendView(Stmt{Op: "in", Key: r.viewOf, As: r.viewAs, Kids: out, Rng: r.pos})
 		return nil
 	}
 	*in.out() = append(*in.out(), out...)

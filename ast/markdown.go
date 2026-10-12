@@ -13,11 +13,12 @@ type mdNode struct {
 }
 
 type Markdown struct {
-	lines []string
-	nodes []mdNode
+	lines    []string
+	nodes    []mdNode
+	headings []Named // includes document titles for renderer anchor numbering
 }
 
-var reHeading = regexp.MustCompile(`^(#{2,6})` + ws + `+(.*)$`)
+var reHeading = regexp.MustCompile(`^(#{1,6})` + ws + `+(.*)$`)
 
 // NewMarkdown: nodes are headings (## / ### ...). A # inside a code fence is not a heading.
 func NewMarkdown(text string) *Markdown {
@@ -33,6 +34,14 @@ func NewMarkdown(text string) *Markdown {
 			continue
 		}
 		if g := reHeading.FindStringSubmatch(l); g != nil {
+			h := Named{Name: strings.TrimSpace(g[2]), Line: i, End: len(m.lines), Level: len(g[1])}
+			if k := len(m.headings); k > 0 {
+				m.headings[k-1].End = i
+			}
+			m.headings = append(m.headings, h)
+			if h.Level == 1 {
+				continue // a document title contributes an anchor, but is not an addressable section
+			}
 			if cur != nil {
 				cur.end = i
 				m.nodes = append(m.nodes, *cur)
@@ -46,6 +55,10 @@ func NewMarkdown(text string) *Markdown {
 	}
 	return m
 }
+
+// Headings lists every heading in document order, including h1 titles. Titles stay outside the
+// addressable sections, but renderers count them when numbering duplicate link anchors.
+func (m *Markdown) Headings() []Named { return m.headings }
 
 func (m *Markdown) Kinds() []string                { return Kinds("markdown") }
 func (m *Markdown) Lines() []string                { return m.lines }

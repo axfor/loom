@@ -49,18 +49,28 @@ func (in *interp) node(n oNode) error {
 		in.objects["up"], in.objects["base"] = o, o
 		return nil
 	}
-	before := len(*in.out())
-	if err := in.statement(n.expr); err != nil {
-		return err
-	}
 	if n.assign == "" {
-		return nil
+		return in.statement(n.expr)
+	}
+	// Read the caught statement separately so a previous statement in the same view cannot
+	// absorb it before its result is attached to the operation inside the view.
+	plain := n
+	plain.assign = ""
+	added, err := in.nodes([]oNode{plain})
+	if err != nil {
+		return err
 	}
 	// Catching the result is what lets a failure through, so exactly one statement may be caught:
 	// with two, "it failed" would not say which.
-	added := (*in.out())[before:]
 	if len(added) != 1 {
 		return fmt.Errorf("%s: `%s = ...` catches the result of one statement, and this is %d", n.pos, n.assign, len(added))
+	}
+	caught := &added[0]
+	if caught.Op == "in" {
+		if len(caught.Kids) != 1 {
+			return fmt.Errorf("%s: `%s = ...` catches the result of one statement, and this is %d", n.pos, n.assign, len(caught.Kids))
+		}
+		caught = &caught.Kids[0]
 	}
 	// up, base and self name files; a result caught in one would make if !up a question about
 	// a file or a result, depending on what was read first.
@@ -79,8 +89,25 @@ func (in *interp) node(n oNode) error {
 		in.scopes = map[string]string{}
 	}
 	in.scopes[n.assign] = in.scope
-	added[0].Assign = n.assign
+	caught.Assign = n.assign
+	if added[0].Op == "in" {
+		in.appendView(added[0])
+	} else {
+		*in.out() = append(*in.out(), added...)
+	}
 	return nil
+}
+
+// Adjacent operations on one view share its original coordinates and are applied together.
+func (in *interp) appendView(s Stmt) {
+	if n := len(*in.out()); n > 0 {
+		last := &(*in.out())[n-1]
+		if last.Op == "in" && last.Key == s.Key && last.As == s.As {
+			last.Kids = append(last.Kids, s.Kids...)
+			return
+		}
+	}
+	*in.out() = append(*in.out(), s)
 }
 
 // readable refuses to read a result outside the if branch that caught it: it has one only when

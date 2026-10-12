@@ -86,47 +86,75 @@ func (r *run) walk(c *lang.Config, t *lang.Template, tree ast.Tree, ss []lang.St
 				}
 				r.vars[s.Assign] = ""
 			}
-			// join is unwrap applied to the section after this one: the two sections run together
-			// because the second one's heading goes. Saying it once, here, means everything after
-			// this point deals with one operation instead of two that differ only in which node.
-			if s.Op == "join" {
-				name := s.Anchor
-				span, real, err := locate(tree, s.Kind, s.Within, s.Anchor, s.Ident, s)
-				if err != nil {
+			// A view's statements ask about its own document, and must be resolved before apply
+			// sees them too. The report uses this same walk, including any join lowered to unwrap.
+			if s.Op == "in" {
+				body, ok := tree.BodyOf(s.Key)
+				if !ok {
+					err := fmt.Errorf("%s: the base has no key `%s`", s.Rng, s.Key)
+					for _, child := range s.Kids {
+						if child.Assign == "" {
+							return err
+						}
+						r.vars[child.Assign] = err.Error()
+						r.skipped = append(r.skipped, ReportLine{lang.Rel(c, t.Path),
+							fmt.Sprintf("%s not written (%s caught it)", s.Key, child.Assign)})
+					}
+					continue
+				}
+				inner := &run{vars: r.vars}
+				if err := inner.walk(c, t, ast.New(s.As, body), s.Kids); err != nil {
 					return err
 				}
-				name = real
-				var next string
-				for _, n := range ast.Addressable(tree, s.Kind) {
-					if n.Line == span[1] {
-						next = n.Name
+				s.Kids = inner.stmts
+				r.skipped = append(r.skipped, inner.skipped...)
+				// A branch can separate two statements on one view. Apply them together against
+				// upstream, just like adjacent statements, so insertions cannot reverse their order.
+				merged := false
+				for i := range r.stmts {
+					prev := &r.stmts[i]
+					if prev.Op == "in" && prev.Key == s.Key && prev.As == s.As {
+						prev.Kids = append(prev.Kids, s.Kids...)
+						merged = true
+						break
 					}
 				}
-				if next == "" {
-					return fmt.Errorf("%s: %q has no section after it to join", s.Rng, name)
+				if !merged {
+					r.stmts = append(r.stmts, s)
 				}
-				s.Op, s.Anchor, s.Ident, s.Within, s.Axis = "unwrap", next, false, nil, ""
+				continue
 			}
 			// An axis names a node the document relates to this one; expanding it here means the
 			// accounting, the checks and the report all work by the name of the node actually hit,
 			// exactly as they do for a predicate.
-			if s.Axis != "" {
+			if s.Axis != "" || s.Op == "join" {
 				hit, err := targets(tree, s)
 				if err != nil {
 					return err
 				}
 				nodes := ast.Addressable(tree, s.Kind)
 				for _, span := range hit {
-					cp := s
-					cp.Axis, cp.Ident, cp.Within, cp.Select = "", false, nil, nil
-					for _, n := range nodes {
+					at := -1
+					for i, n := range nodes {
 						if n.Line == span[0] {
-							cp.Anchor = n.Name
+							at = i
+							break
 						}
 					}
-					if cp.Anchor == "" {
+					if at < 0 {
 						return fmt.Errorf("%s: the %s step landed somewhere with no name", s.Rng, s.Axis)
 					}
+					// Resolve the receiver first: A.next.join joins B with C, not A with B.
+					// join then becomes unwrap of the next section for both weave and accounting.
+					cp := s
+					if s.Op == "join" {
+						if at+1 == len(nodes) {
+							return fmt.Errorf("%s: %q has no section after it to join", s.Rng, nodes[at].Name)
+						}
+						at++
+						cp.Op = "unwrap"
+					}
+					cp = atNode(cp, nodes, at)
 					r.stmts = append(r.stmts, cp)
 				}
 				continue
@@ -135,6 +163,32 @@ func (r *run) walk(c *lang.Config, t *lang.Template, tree ast.Tree, ss []lang.St
 		}
 	}
 	return nil
+}
+
+// atNode keeps the selected heading's ancestors when turning an axis into a named statement.
+// A name alone would resolve to every equally named subsection in the document.
+func atNode(s lang.Stmt, nodes []ast.Named, at int) lang.Stmt {
+	s.Anchor, s.Axis, s.Ident, s.Within, s.Select = nodes[at].Name, "", false, nil, nil
+	same := 0
+	for _, n := range nodes {
+		if n.Name == s.Anchor {
+			same++
+		}
+	}
+	if same == 1 {
+		return s
+	}
+	level := nodes[at].Level
+	for i := at - 1; i >= 0; i-- {
+		if nodes[i].Level > 0 && nodes[i].Level < level {
+			s.Within = append(s.Within, lang.Seg{Name: nodes[i].Name})
+			level = nodes[i].Level
+		}
+	}
+	for i, j := 0, len(s.Within)-1; i < j; i, j = i+1, j-1 {
+		s.Within[i], s.Within[j] = s.Within[j], s.Within[i]
+	}
+	return s
 }
 
 // ask answers an if. Both forms read the document and write nothing.

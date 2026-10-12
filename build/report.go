@@ -115,11 +115,16 @@ type ReportLine struct {
 
 // account records a woven template in the report and checks that no upstream section was lost.
 func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
+	up, upOK, _ := c.Read(c.Warp, t.BasePath)
+	return accountDocument(c, t, up, upOK, out, oursOf(c, t), t.Type, r)
+}
+
+// A view is accounted against its own upstream and output documents, using the same checks as
+// a file. Marks still follow the containing file's type, as they do when weaving the view.
+func accountDocument(c *lang.Config, t *lang.Template, up string, upOK bool, out string, sources []ourSource, markType string, r *Report) []error {
 	var errs []error
 	whole := t.From != "" && t.From != c.Warp
 	merged := false
-
-	up, upOK, _ := c.Read(c.Warp, t.BasePath)
 
 	// The same resolution the weave did: an if took one branch there, and the report has to
 	// account for that branch and no other. Two lists would be a report about a build that did
@@ -140,6 +145,7 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 	// against the file's; but one that changes upstream's text inside the view still means the
 	// template is not insert-only.
 	viewChanged := false
+	var views []lang.Stmt
 	var walk func(ss []lang.Stmt)
 	walk = func(ss []lang.Stmt) {
 		for _, s := range ss {
@@ -182,11 +188,35 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 						viewChanged = true
 					}
 				}
-				walk(s.Kids)
+				views = append(views, s)
 			}
 		}
 	}
 	walk(stmts)
+	viewUnverified := 0
+	if upOK && !whole && !merged {
+		for _, v := range views {
+			before, _ := ast.New(t.Type, up).BodyOf(v.Key)
+			after, ok := ast.New(t.Type, out).BodyOf(v.Key)
+			if !ok {
+				errs = append(errs, fmt.Errorf("%s: the woven view %q is not in the product", v.Rng, v.Key))
+				continue
+			}
+			var innerSources []ourSource
+			for _, src := range sources {
+				if body, ok := ast.New(t.Type, src.text).BodyOf(v.Key); ok {
+					innerSources = append(innerSources, ourSource{body, src.where + " · " + v.Key})
+				}
+			}
+			inner := *t
+			inner.Type, inner.Stmts = v.As, v.Kids
+			upBytes, verified := r.UpBytes, r.VerifiedBytes
+			errs = append(errs, accountDocument(c, &inner, before, true, after, innerSources, markType, r)...)
+			viewUnverified += (r.UpBytes - upBytes) - (r.VerifiedBytes - verified)
+			// The containing file counts these bytes once; only its unverified share changes.
+			r.UpBytes, r.VerifiedBytes = upBytes, verified
+		}
+	}
 
 	// Our frontmatter must reach the product too: a key only in our file, left out because the template
 	// neither sets nor starts / appends a frontmatter key, would disappear with nothing to say so.
@@ -199,17 +229,11 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 		// upstream's value with ours worked into it, so our text is not expected to appear whole.
 		// The statements inside the view are accounted for on their own terms.
 		viewed := map[string]bool{}
-		var views func([]lang.Stmt)
-		views = func(ss []lang.Stmt) {
-			for _, s := range ss {
-				if s.Op == "in" {
-					viewed[s.Key] = true
-				}
-				views(s.Kids)
-			}
+		for _, v := range views {
+			viewed[v.Key] = true
 		}
-		views(t.Stmts)
-		if ours, ok, _ := c.Read(c.Weft, weftRel(c, t, c.Weft, t.Target)); ok {
+		for _, src := range sources {
+			ours := src.text
 			for _, k := range ourKeys(t.Type, ours) {
 				if viewed[k] {
 					continue
@@ -351,7 +375,7 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 	// byte for byte; a dropped or replaced node is inside it, and a merged or wholly replaced
 	// file is all of it.
 	if upOK {
-		verified := len(up)
+		verified := len(up) - viewUnverified
 		switch {
 		case whole || merged:
 			verified = 0
@@ -393,7 +417,7 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 	// begin with. A move reorders upstream, so the file cannot match it line for line — what a
 	// move promises instead is checked further down, and it is a stronger promise.
 	outText := out
-	if m, ok := c.MarksFor(c.Weft, t.Type); ok && c.Weft != "" && upOK {
+	if m, ok := c.MarksFor(c.Weft, markType); ok && c.Weft != "" && upOK {
 		outText = stripMarked(out, m)
 		insertOnly := !whole && !merged && len(drops)+len(replaces)+len(moves)+len(levels) == 0 && !viewChanged
 		if lang.HasValues(t.Type) && len(values) > 0 {
@@ -491,12 +515,12 @@ func account(c *lang.Config, t *lang.Template, out string, r *Report) []error {
 	// placed only in an if's then-branch went missing whenever upstream sent the build down the
 	// else, and one written in a Self: section that nothing named was never woven at all.
 	// What is ours sits inside our marks, so that is where each is looked for, counted by name.
-	if m, ok := c.MarksFor(c.Weft, t.Type); ok && !whole && !merged && (t.Type == "markdown" || t.Type == "shell") {
+	if m, ok := c.MarksFor(c.Weft, markType); ok && !whole && !merged && (t.Type == "markdown" || t.Type == "shell") {
 		woven := map[string]int{}
 		for _, n := range ast.Addressable(ast.New(t.Type, markedText(out, m)), kind) {
 			woven[n.Name]++
 		}
-		for _, src := range oursOf(c, t) {
+		for _, src := range sources {
 			need := map[string]int{}
 			var order []string
 			for _, n := range ast.Addressable(ast.New(t.Type, src.text), kind) {
